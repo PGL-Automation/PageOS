@@ -1,0 +1,48 @@
+openapi: 3.1.0
+info:
+  title: PageOS API
+  version: 0.1.0
+  description: >
+    PageOS backend API. This spec is the single source of truth for the HTTP
+    surface: the frontend generates its typed client from it, and future agent
+    (MCP) tools derive their schemas from the same capabilities.
+servers:
+  - url: http://localhost:8080
+    description: Local
+paths:
+  /healthz:
+    get:
+      summary: Liveness probe
+      responses:
+        "200":
+          description: Process is up
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+  /readyz:
+    get:
+      summary: Readiness probe (checks dependencies)
+      responses:
+        "200":
+          description: Ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+        "503":
+          description: A dependency is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+components:
+  schemas:
+    Health:
+      type: object
+      properties:
+        status:
+          type: string
+        db:
+          type: string
+      required: [status]

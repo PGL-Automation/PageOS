@@ -1,0 +1,29 @@
+# Go
+/bin/
+*.test
+*.out
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Node / Next
+web/node_modules/
+web/.next/
+web/out/
+web/next-env.d.ts
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Terraform (added in M-infra)
+**/.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+
+# Original spec kept locally, not in VCS
+PAGE Account Opening Form.pdf

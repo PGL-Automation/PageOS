@@ -1,0 +1,15 @@
+version: "2"
+# sqlc generates type-safe Go from hand-written SQL. One package per module,
+# reading that module's queries against the shared migration set.
+# Run: make sqlc  (uses `go run` — no global install needed).
+sql:
+  - engine: "postgresql"
+    schema: "db/migrations"
+    queries: "db/queries/onboarding"
+    gen:
+      go:
+        package: "onboardingdb"
+        out: "internal/onboarding/store/gen"
+        sql_package: "pgx/v5"
+        emit_json_tags: true
+        emit_pointers_for_null_types: true

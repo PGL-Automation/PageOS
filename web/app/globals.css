@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design tokens — the single source of truth for the visual system.
+   Professional first, distinctive second. Adjust the brand hue here. */
+@layer base {
+  :root {
+    --font-sans: "Inter", system-ui, sans-serif;
+    --radius: 0.75rem;
+
+    --background: 0 0% 100%;
+    --foreground: 222 22% 11%;
+    --card: 0 0% 100%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%;
+    --border: 220 13% 91%;
+
+    /* Page brand — deep indigo. Swap to the official brand color when known. */
+    --primary: 243 75% 44%;
+    --primary-foreground: 0 0% 100%;
+
+    --success: 152 60% 36%;
+    --danger: 0 72% 51%;
+  }
+
+  .dark {
+    --background: 222 30% 7%;
+    --foreground: 210 20% 96%;
+    --card: 222 24% 10%;
+    --muted: 220 18% 16%;
+    --muted-foreground: 220 12% 65%;
+    --border: 220 16% 20%;
+    --primary: 243 80% 66%;
+    --primary-foreground: 222 30% 7%;
+    --success: 152 55% 48%;
+    --danger: 0 72% 60%;
+  }
+
+  * {
+    border-color: hsl(var(--border));
+  }
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+}
