@@ -1,8 +1,87 @@
 version: "2"
-# sqlc generates type-safe Go from hand-written SQL. One package per module,
-# reading that module's queries against the shared migration set.
+# sqlc generates type-safe Go from hand-written SQL. One generated package per
+# module, all reading the shared goose migration set for the schema.
 # Run: make sqlc  (uses `go run` — no global install needed).
+overrides:
+  go:
+    overrides:
+      # Map Postgres uuid to google/uuid; pgx is taught this type in
+      # internal/platform/db (pgx-google-uuid). Keeps domain code clean.
+      # Both overrides use the identical object form so sqlc emits a single
+      # import (mixing shorthand + object form produces a duplicate import).
+      - db_type: "uuid"
+        go_type:
+          import: "github.com/google/uuid"
+          package: "uuid"
+          type: "UUID"
+      - db_type: "uuid"
+        nullable: true
+        go_type:
+          import: "github.com/google/uuid"
+          package: "uuid"
+          type: "UUID"
+          pointer: true
 sql:
+  - engine: "postgresql"
+    schema: "db/migrations"
+    queries: "db/queries/identity"
+    gen:
+      go:
+        package: "identitydb"
+        out: "internal/identity/store/gen"
+        sql_package: "pgx/v5"
+        emit_json_tags: true
+        emit_pointers_for_null_types: true
+  - engine: "postgresql"
+    schema: "db/migrations"
+    queries: "db/queries/organization"
+    gen:
+      go:
+        package: "orgdb"
+        out: "internal/organization/store/gen"
+        sql_package: "pgx/v5"
+        emit_json_tags: true
+        emit_pointers_for_null_types: true
+  - engine: "postgresql"
+    schema: "db/migrations"
+    queries: "db/queries/notification"
+    gen:
+      go:
+        package: "notificationdb"
+        out: "internal/notification/store/gen"
+        sql_package: "pgx/v5"
+        emit_json_tags: true
+        emit_pointers_for_null_types: true
+  - engine: "postgresql"
+    schema: "db/migrations"
+    queries: "db/queries/documents"
+    gen:
+      go:
+        package: "documentsdb"
+        out: "internal/documents/store/gen"
+        sql_package: "pgx/v5"
+        emit_json_tags: true
+        emit_pointers_for_null_types: true
+  - engine: "postgresql"
+    schema: "db/migrations"
+    queries: "db/queries/broker"
+    gen:
+      go:
+        package: "brokerdb"
+        out: "internal/broker/store/gen"
+        sql_package: "pgx/v5"
+        emit_json_tags: true
+        emit_pointers_for_null_types: true
+  - engine: "postgresql"
+    schema: "db/migrations"
+    queries: "db/queries/approval"
+    gen:
+      go:
+        package: "approvaldb"
+        out: "internal/approval/store/gen"
+        sql_package: "pgx/v5"
+        emit_json_tags: true
+        emit_pointers_for_null_types: true
   - engine: "postgresql"
     schema: "db/migrations"
     queries: "db/queries/onboarding"
@@ -10,6 +89,16 @@ sql:
       go:
         package: "onboardingdb"
         out: "internal/onboarding/store/gen"
+        sql_package: "pgx/v5"
+        emit_json_tags: true
+        emit_pointers_for_null_types: true
+  - engine: "postgresql"
+    schema: "db/migrations"
+    queries: "db/queries/reconciliation"
+    gen:
+      go:
+        package: "reconciliationdb"
+        out: "internal/reconciliation/store/gen"
         sql_package: "pgx/v5"
         emit_json_tags: true
         emit_pointers_for_null_types: true

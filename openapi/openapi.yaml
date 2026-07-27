@@ -4,8 +4,7 @@ info:
   version: 0.1.0
   description: >
     PageOS backend API. This spec is the single source of truth for the HTTP
-    surface: the frontend generates its typed client from it, and future agent
-    (MCP) tools derive their schemas from the same capabilities.
+    surface.
 servers:
   - url: http://localhost:8080
     description: Local
@@ -16,33 +15,509 @@ paths:
       responses:
         "200":
           description: Process is up
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Health"
   /readyz:
     get:
-      summary: Readiness probe (checks dependencies)
+      summary: Readiness probe
       responses:
         "200":
           description: Ready
+  /onboarding/cases:
+    get:
+      summary: List cases
+      parameters:
+        - name: subsidiary_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Cases listed
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Health"
-        "503":
-          description: A dependency is unavailable
+                type: array
+                items:
+                  $ref: "#/components/schemas/OnboardingCase"
+    post:
+      summary: Create case
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                client_id:
+                  type: string
+                  format: uuid
+              required: [client_id]
+      responses:
+        "201":
+          description: Case created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Health"
+                $ref: "#/components/schemas/OnboardingCase"
+  /onboarding/cases/{id}:
+    get:
+      summary: Get case details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Case details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CaseDetails"
+  /onboarding/cases/{id}/application:
+    put:
+      summary: Save application data
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApplicationData"
+      responses:
+        "200":
+          description: Application data saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationData"
+  /onboarding/cases/{id}/requirements:
+    get:
+      summary: List requirement instances for a case
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Requirements listed
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RequirementInstance"
+  /onboarding/cases/{id}/documents:
+    post:
+      summary: Upload and attach a document to a requirement slot
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                requirement_key:
+                  type: string
+              required: [file, requirement_key]
+      responses:
+        "201":
+          description: Document uploaded and attached
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  document:
+                    $ref: "#/components/schemas/Document"
+                  requirement:
+                    $ref: "#/components/schemas/RequirementInstance"
+  /onboarding/cases/{id}/submit:
+    post:
+      summary: Submit a case for review
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Case submitted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingCase"
+  /onboarding/cases/{id}/compliance:
+    get:
+      summary: List compliance checks for a case
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Compliance checks listed
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ComplianceCheck"
+    post:
+      summary: Record a compliance check
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                check_type: { type: string }
+                outcome: { type: string, enum: [pass, fail, needs_info] }
+                notes: { type: string }
+              required: [check_type, outcome]
+      responses:
+        "200":
+          description: Compliance check recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComplianceCheck"
+  /onboarding/clients:
+    get:
+      summary: List clients
+      parameters:
+        - name: subsidiary_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Clients listed
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Client"
+    post:
+      summary: Create a client
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                subsidiary_id: { type: string, format: uuid }
+                client_type: { type: string, enum: [individual, joint, corporate] }
+                display_name: { type: string }
+                broker_id: { type: string, format: uuid }
+              required: [subsidiary_id, display_name]
+      responses:
+        "201":
+          description: Client created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Client"
+  /onboarding/clients/{id}:
+    get:
+      summary: Get a client
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Client found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Client"
+  /onboarding/clients/{id}/rm:
+    post:
+      summary: Assign an RM to a client
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                rm_person_id: { type: string, format: uuid }
+                subsidiary_id: { type: string, format: uuid }
+              required: [rm_person_id, subsidiary_id]
+      responses:
+        "200":
+          description: RM assigned
+    delete:
+      summary: Unassign the RM from a client
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: RM unassigned
+  /approval/queue:
+    get:
+      summary: Get pending approval steps for the authenticated user
+      responses:
+        "200":
+          description: Queue items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ApprovalQueueItem"
+  /approval/requests/{id}:
+    get:
+      summary: Get an approval request with its steps
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Approval request details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovalRequestDetails"
+  /approval/requests/{id}/steps/{stepId}/decide:
+    post:
+      summary: Record an approve/reject/return decision on a step
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: stepId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                action: { type: string, enum: [approve, reject, return] }
+                notes: { type: string }
+              required: [action]
+      responses:
+        "200":
+          description: Decision recorded
+
 components:
   schemas:
-    Health:
+    OnboardingCase:
       type: object
       properties:
-        status:
-          type: string
-        db:
-          type: string
-      required: [status]
+        ID: { type: string, format: uuid }
+        ClientID: { type: string, format: uuid }
+        SubsidiaryID: { type: string, format: uuid }
+        ClientType: { type: string }
+        State: { type: string }
+        RiskFlag: { type: boolean }
+        CreatedAt: { type: string, format: date-time }
+      required: [ID, ClientID, SubsidiaryID, ClientType, State, RiskFlag]
+    ApplicationData:
+      type: object
+      properties:
+        case_id: { type: string, format: uuid }
+        full_name: { type: string }
+        gender: { type: string }
+        mothers_maiden_name: { type: string }
+        date_of_birth: { type: string, format: date-time }
+        place_of_birth: { type: string }
+        country_of_origin: { type: string }
+        place_of_residence: { type: string }
+        residential_address: { type: string }
+        is_us_person: { type: boolean }
+        us_address: { type: string }
+        phone_numbers: { type: array, items: { type: string } }
+        email: { type: string }
+        tin: { type: string }
+        next_of_kin_name: { type: string }
+        next_of_kin_email: { type: string }
+        next_of_kin_phone: { type: string }
+        employer: { type: string }
+        employer_address: { type: string }
+        official_email: { type: string }
+        official_phone: { type: string }
+        is_pep: { type: boolean }
+        pep_position: { type: string }
+        pep_period: { type: string }
+        social_media: { type: object, additionalProperties: { type: string } }
+        source_of_funds: { type: string }
+        source_of_wealth: { type: string }
+        investment_purpose: { type: string }
+        investment_amount_kobo: { type: integer }
+        investment_amount_words: { type: string }
+        tenor: { type: string }
+        interest_rate_bps: { type: integer }
+        bank_name: { type: string }
+        bank_account_name: { type: string }
+        bank_account_number: { type: string }
+        bvn: { type: string }
+        sort_code: { type: string }
+        declaration_legal_capacity: { type: boolean }
+        declaration_info_correct: { type: boolean }
+        declaration_tnc_accepted: { type: boolean }
+        declaration_min_holding: { type: boolean }
+    RequirementInstance:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        case_id: { type: string, format: uuid }
+        requirement_key: { type: string }
+        label: { type: string }
+        category: { type: string }
+        obligation: { type: string }
+        status: { type: string }
+        document_id: { type: string, format: uuid }
+        satisfied_at: { type: string, format: date-time }
+    CaseDetails:
+      type: object
+      properties:
+        case: { $ref: "#/components/schemas/OnboardingCase" }
+        application: { $ref: "#/components/schemas/ApplicationData" }
+        requirements:
+          type: array
+          items: { $ref: "#/components/schemas/RequirementInstance" }
+        can_submit: { type: boolean }
+    Client:
+      type: object
+      properties:
+        ID: { type: string, format: uuid }
+        SubsidiaryID: { type: string, format: uuid }
+        ClientType: { type: string }
+        DisplayName: { type: string }
+        Status: { type: string }
+        BrokerID: { type: string, format: uuid }
+      required: [ID, SubsidiaryID, ClientType, DisplayName, Status]
+    Document:
+      type: object
+      properties:
+        ID: { type: string, format: uuid }
+        Filename: { type: string }
+        Mime: { type: string }
+        Size: { type: integer }
+        ScanStatus: { type: string }
+        CreatedAt: { type: string, format: date-time }
+    ComplianceCheck:
+      type: object
+      properties:
+        ID: { type: string, format: uuid }
+        CaseID: { type: string, format: uuid }
+        CheckType: { type: string }
+        Outcome: { type: string }
+        Notes: { type: string }
+        Source: { type: string }
+        PerformedBy: { type: string, format: uuid }
+        PerformedAt: { type: string, format: date-time }
+      required: [ID, CaseID, CheckType, Outcome]
+    ApprovalStep:
+      type: object
+      properties:
+        ID: { type: string, format: uuid }
+        RequestID: { type: string, format: uuid }
+        StepOrder: { type: integer }
+        PositionID: { type: string, format: uuid }
+        Label: { type: string }
+        Status: { type: string }
+        DecidedBy: { type: string, format: uuid }
+        Notes: { type: string }
+      required: [ID, RequestID, StepOrder, Label, Status]
+    ApprovalRequest:
+      type: object
+      properties:
+        ID: { type: string, format: uuid }
+        ResourceType: { type: string }
+        ResourceID: { type: string, format: uuid }
+        RoutingKey: { type: string }
+        Status: { type: string }
+        CreatedBy: { type: string, format: uuid }
+      required: [ID, ResourceType, ResourceID, Status]
+    ApprovalRequestDetails:
+      type: object
+      properties:
+        request: { $ref: "#/components/schemas/ApprovalRequest" }
+        steps:
+          type: array
+          items: { $ref: "#/components/schemas/ApprovalStep" }
+    ApprovalQueueItem:
+      type: object
+      properties:
+        step: { $ref: "#/components/schemas/ApprovalStep" }
+        resource_type: { type: string }
+        resource_id: { type: string, format: uuid }
+        context:
+          type: object
+          additionalProperties: true
+      required: [step, resource_type, resource_id]

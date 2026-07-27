@@ -18,15 +18,17 @@ type Deps struct {
 	DB *pgxpool.Pool
 }
 
-// NewRouter builds the root HTTP handler with base middleware and mounts
-// the health endpoints. Module routes get mounted here as they land.
-func NewRouter(logger *slog.Logger, deps Deps) http.Handler {
+// NewRouter builds the root HTTP handler with base middleware, mounts the
+// health endpoints, and lets the caller register module routes under /api/v1
+// via mountAPI (keeps module wiring in main, not in this package).
+func NewRouter(logger *slog.Logger, deps Deps, mountAPI func(chi.Router)) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(requestLogger(logger))
 	r.Use(middleware.Recoverer)
+	r.Use(CORS)
 
 	// Liveness: process is up.
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -49,7 +51,9 @@ func NewRouter(logger *slog.Logger, deps Deps) http.Handler {
 
 	// v1 API surface. Module routers mount under here.
 	r.Route("/api/v1", func(r chi.Router) {
-		// e.g. r.Mount("/onboarding", onboardinghttp.Router(...))
+		if mountAPI != nil {
+			mountAPI(r)
+		}
 	})
 
 	return r

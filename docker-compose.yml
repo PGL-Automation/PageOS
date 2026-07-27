@@ -10,7 +10,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pageos}
       POSTGRES_DB: ${POSTGRES_DB:-pageos}
     ports:
-      - "5432:5432"
+      # Host port 5433 to avoid colliding with other local Postgres instances.
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -26,8 +27,9 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-pageos}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-pageos-dev-secret}
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      # Host ports 9002/9003 to avoid colliding with other local MinIO.
+      - "9002:9000"
+      - "9003:9001"
     volumes:
       - miniodata:/data
     healthcheck:
@@ -46,9 +48,12 @@ services:
       PAGEOS_LOG_LEVEL: ${PAGEOS_LOG_LEVEL:-debug}
       PAGEOS_DATABASE_URL: postgres://${POSTGRES_USER:-pageos}:${POSTGRES_PASSWORD:-pageos}@postgres:5432/${POSTGRES_DB:-pageos}?sslmode=disable
     ports:
-      - "8080:8080"
+      # Host port 8081 to avoid colliding with other local services on 8080.
+      - "8081:8080"
     depends_on:
       postgres:
+        condition: service_healthy
+      minio:
         condition: service_healthy
 
   web:
@@ -59,7 +64,7 @@ services:
       # Server-side (in-cluster) calls to the API:
       API_URL: http://api:8080
       # Browser calls to the API:
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8081}
     ports:
       - "3000:3000"
     depends_on:

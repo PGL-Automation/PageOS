@@ -1,10 +1,14 @@
 # PageOS developer tasks. Tools (goose, sqlc) run via `go run` so no global
 # install is required — versions are pinned in go.mod.
 
+# goose is pure Go and runs via `go run` (no global install).
 GOOSE := go run github.com/pressly/goose/v3/cmd/goose@v3.22.1
-SQLC  := go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.27.0
+# sqlc must be a prebuilt binary — building from source needs cgo/pg_query_go,
+# which fails on recent macOS SDKs. Install: `brew install sqlc` (or download a
+# release). Override with `make sqlc SQLC=/path/to/sqlc`.
+SQLC  ?= sqlc
 
-DB_URL ?= postgres://pageos:pageos@localhost:5432/pageos?sslmode=disable
+DB_URL ?= postgres://pageos:pageos@localhost:5433/pageos?sslmode=disable
 
 .PHONY: help
 help: ## List available targets
@@ -20,7 +24,7 @@ build: ## Build the api binary
 
 .PHONY: run
 run: ## Run the api locally (needs Postgres; see docker-compose)
-	PAGEOS_DATABASE_URL=$(DB_URL) go run ./cmd/api
+	PAGEOS_DATABASE_URL=$(DB_URL) PAGEOS_HTTP_ADDR=:8081 PAGEOS_S3_ENDPOINT=http://localhost:9002 PAGEOS_S3_ACCESS_KEY_ID=pageos PAGEOS_S3_SECRET_ACCESS_KEY=pageos-dev-secret go run ./cmd/api
 
 .PHONY: test
 test: ## Run tests

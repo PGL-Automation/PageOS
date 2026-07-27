@@ -35,10 +35,11 @@ make migrate-up         # apply DB migrations (uses host Postgres port)
 open http://localhost:3000
 ```
 
-Service URLs:
+Service URLs (host ports chosen to coexist with other local stacks):
 - Web: http://localhost:3000
-- API: http://localhost:8080 (`/healthz`, `/readyz`)
-- MinIO console: http://localhost:9001
+- API: http://localhost:8081 (`/healthz`, `/readyz`)
+- Postgres: localhost:5433
+- MinIO console: http://localhost:9003 (API on :9002)
 
 ## Run backend without Docker
 
@@ -60,6 +61,16 @@ make sqlc          # regenerate type-safe DB code
 
 ## Status
 
-M0 skeleton: runnable backend (health/readiness), Next.js status page wired to
-the API, local Docker stack, migration + codegen tooling. Next: M1 foundation
-modules (identity, organization, audit, notification, documents).
+- **M0** — runnable backend (health/readiness), Next.js status page, local
+  Docker stack, migration + codegen tooling. ✅
+- **M1 complete** ✅ — foundation modules:
+  - `identity` — argon2id + server-side sessions, register/login/logout/me + auth middleware.
+  - `organization` — subsidiary/department/position/person, effective-dated assignments, `ResolveHolders` temporal resolver.
+  - `audit` — append-only log, written by every mutating capability.
+  - `notification` — transactional outbox + SMTP dispatcher (NoOp when SMTP not configured).
+  - `documents` — S3 `ObjectStore` interface (MinIO locally, AWS S3 in prod), multipart upload, scan lifecycle.
+  - `broker` — external introducing-broker registry, commission in integer basis points.
+  - **Reconciliation schema** — all 5 tables created (bank_account, statement, lines, internal_transaction, run, match); service layer is M3+.
+
+Verified end-to-end against Postgres: migrations, auth flow, org CRUD, the
+effective-dating resolver, and audit capture.

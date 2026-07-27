@@ -1,6 +1,6 @@
 # PageOS — First Slice Implementation Plan: Page Capital Client Onboarding
 
-Status: DRAFT for review · Date: 2026-07-21 · Owner: 'Nonso
+Status: LIVE · Updated: 2026-07-22 · Owner: 'Nonso
 Source spec: `PAGE Account Opening Form.pdf` (repo root)
 
 This plan describes the first production slice of PageOS: **Page Capital client (account-opening) onboarding**. It builds only the platform primitives this slice needs, in a way that every later module reuses. Nothing here is built "for the future" beyond what this slice genuinely exercises.
@@ -30,6 +30,8 @@ This plan describes the first production slice of PageOS: **Page Capital client 
 - MCP/agent tools server (design contracts now, expose later).
 - Rules DSL / admin config UI for requirement sets (hardcode in Go until a 3rd case differs).
 - Conversational/chat UI.
+- Broker commission *calculation* module (rate is stored now; arithmetic against investment amounts deferred until investment flows are live).
+- Reconciliation auto-matching engine / agent (interface built now; auto-matcher deferred).
 
 ---
 
@@ -294,4 +296,111 @@ infra/
 - **Observability:** ship logs/metrics from both envs; alert on prod.
 
 _All prior infra unknowns are now resolved (see §14 + this section). AWS prod specifics (EC2 vs ECS, RDS vs self-managed PG) are deferred until the actual AWS migration._
+
+---
+
+## 16. Relationship Manager management (added 2026-07-22)
+
+RMs are staff members already modeled as `organization.person` assigned to the `WEALTH_MANAGER` position. What is new is a first-class, persistent **RM→Client relationship** that survives beyond any single onboarding case.
+
+**New table: `onboarding.rm_client`**
 ```
+id              uuid PK
+client_id       uuid NOT NULL FK → onboarding.client
+rm_person_id    uuid NOT NULL FK → organization.person
+subsidiary_id   uuid NOT NULL FK → organization.subsidiary
+assigned_at     timestamptz NOT NULL DEFAULT now()
+assigned_by     uuid NOT NULL FK → identity.users
+ended_at        timestamptz  -- NULL = currently active
+```
+- A client has **0 or 1 active RM** at any time (enforced: only one row where `ended_at IS NULL` per client).
+- Assignment is **optional** — clients without an RM are fully valid.
+- **Reassignment** closes the current row (`ended_at = now()`) and opens a new one. Full history preserved.
+- When an RM's `identity.users` account is disabled or their assignment in `organization.assignment` ends, all their active RM→Client rows are **automatically ended** (`ended_at = now()`). Clients are then unassigned — must be manually reassigned. No ghost assignments.
+- **Capabilities:** `AssignClientToRM`, `ReassignClient`, `UnassignClient`, `ListRMClients(rmPersonID)`.
+- When an RM initiates an onboarding case, the client is auto-linked to that RM (as a convenience, not a constraint — the RM–client bond is independent of any case).
+- **Future:** RM dashboard showing their full client portfolio + performance.
+
+---
+
+## 17. Broker management (added 2026-07-22)
+
+Brokers are **external parties** (individuals or companies) who introduce clients. They are not staff and have no login in v1.
+
+**New table: `onboarding.broker`**
+```
+id                  uuid PK
+subsidiary_id       uuid NOT NULL FK → organization.subsidiary
+code                text NOT NULL UNIQUE (per subsidiary)
+name                text NOT NULL
+type                text NOT NULL DEFAULT 'individual'  -- individual | corporate
+email               text
+phone               text
+commission_rate_bps integer NOT NULL DEFAULT 0  -- basis points; 150 = 1.50%
+status              text NOT NULL DEFAULT 'active'
+created_at          timestamptz NOT NULL DEFAULT now()
+```
+
+- Commission stored as **integer basis points** — no floating-point error; 150 = 1.50 %.
+- `onboarding.client` gets an optional `broker_id` FK (set at onboarding, fixed thereafter — **one broker per client**, confirmed).
+- Commission *calculation* (rate × invested principal) is **deferred** until investment/liquidation flows are live; the rate is on the record now so reporting is available immediately.
+- **Capabilities:** `CreateBroker`, `UpdateBrokerCommissionRate`, `ListBrokers`, `GetBrokerClients(brokerID)`.
+- **Future reporting:** `BrokerStatement(brokerID, period)` — client list, amounts invested/redeemed, commissions earned. All fields exist now; the report is a query.
+
+---
+
+## 18. Bank reconciliation infrastructure (added 2026-07-22)
+
+Reconciliation matches the **bank's view** (statement) against **PageOS's internal ledger** (what the system recorded). It is a module with its own Postgres schema (`reconciliation`).
+
+### Components
+
+**A. Bank accounts registry** — `reconciliation.bank_account`
+The company's own accounts, one row per account per subsidiary. Reconciliation runs are scoped to a single account.
+
+**B. Bank statement import** — `reconciliation.bank_statement` + `reconciliation.bank_statement_line`
+- A statement is an uploaded file (→ `documents` module for storage) + parsed rows.
+- `bank_statement_line`: `(id, statement_id, txn_date, value_date, debit, credit, balance, narration, reference, raw)` — `raw` preserves the original text/row verbatim.
+- **Parser interface** (Go):
+  ```go
+  type StatementParser interface {
+      Parse(r io.Reader) ([]StatementLine, error)
+  }
+  ```
+  First implementation: a **configurable CSV/Excel parser** with a column-mapping config per bank (bank name → column positions/names). Because multiple banks are in scope and each has a slightly different format, the mapping is stored as JSONB on `bank_account` (e.g. `{"date_col":"Date","debit_col":"Debit","narration_col":"Remarks"}`). Adding a new bank = add a config row, no code change.
+
+**C. Internal transaction ledger** — `reconciliation.internal_transaction`
+PageOS's own record of every money movement it considers real:
+`(id, subsidiary_id, bank_account_id, type investment_receipt|liquidation_payout|fee|interest|adjustment, direction credit|debit, amount_kobo bigint, currency, reference, client_id, related_type, related_id, txn_date, recorded_at)`
+- Amounts stored as **integer kobo/minor units** (no floats).
+- Written to by financial capabilities (investment approval, liquidation approval) — these are the "what PageOS thinks should have happened."
+
+**D. Reconciliation run** — `reconciliation.reconciliation_run`
+One run per bank account per period. Status: `draft → in_progress → closed` (closed = immutable).
+
+**E. Match table** — `reconciliation.reconciliation_match`
+`(id, run_id, bank_line_id, internal_txn_id, match_type auto|manual, confidence_pct, matched_by, notes, status matched|unmatched_bank|unmatched_internal|adjustment)`
+- A bank line may be unmatched (no internal record found), and vice versa.
+- Unmatched items block closing a run.
+
+### Matching strategy (swappable interface)
+```go
+type MatchingStrategy interface {
+    Match(bankLines []StatementLine, internalTxns []InternalTransaction) []Match
+}
+```
+- **v1:** exact-match by amount + date (±1 day) + reference substring.
+- **v2:** fuzzy/AI agent match. Same interface, just a better implementation.
+
+### What to build in v1
+- All five DB tables (schema, migrations, sqlc).
+- `CreateBankAccount`, `UploadStatement` (parse + store lines), `CreateReconciliationRun`, `RecordMatch`, `ListUnmatched`, `CloseRun` capabilities.
+- The `StatementParser` interface + one generic CSV implementation with column-map config.
+- The `MatchingStrategy` interface + exact-match implementation.
+- No UI yet — API only. Reconciler UI is M5.
+
+### Key design decisions (confirmed 2026-07-22)
+- **Multiple banks:** pluggable parser + JSONB column-map per account. No hardcoded bank format.
+- **Amounts:** integer minor units (kobo) throughout. Never `float`.
+- **Immutability:** once a run is `closed`, its matches are append-only. Corrections go into a new run or adjustment entries.
+- **Agent hook:** the `MatchingStrategy` interface is where an AI agent plugs in later (fuzzy narration match, bulk transfer splitting, etc.).
