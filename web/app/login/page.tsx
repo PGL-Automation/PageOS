@@ -3,8 +3,6 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Loader2, Briefcase, Shield, Zap, Building2, Lock } from "lucide-react";
 
 const FEATURES = [
@@ -12,6 +10,46 @@ const FEATURES = [
   { icon: Shield,    text: "Multi-tier compliance, approvals, and governance built in from day one" },
   { icon: Zap,       text: "AI Copilot that understands your business, clients, and financial data" },
 ];
+
+// Standalone field — no shadcn dependency, no CSS-variable dependency.
+function Field({
+  id, label, type, placeholder, value, onChange, required, minLength,
+}: {
+  id: string; label: string; type: string; placeholder: string;
+  value: string; onChange: (v: string) => void; required?: boolean; minLength?: number;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <label htmlFor={id} style={{ fontSize: 13, fontWeight: 500, color: "#0f172a" }}>
+        {label}
+      </label>
+      <input
+        id={id}
+        type={type}
+        placeholder={placeholder}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        required={required}
+        minLength={minLength}
+        style={{
+          height: 40,
+          width: "100%",
+          padding: "0 12px",
+          borderRadius: 10,
+          border: "1px solid #e2e8f0",
+          background: "#f8fafc",
+          fontSize: 14,
+          color: "#0f172a",
+          outline: "none",
+          boxSizing: "border-box",
+          transition: "border-color 0.15s",
+        }}
+        onFocus={e => { e.currentTarget.style.borderColor = "#2563eb"; e.currentTarget.style.boxShadow = "0 0 0 3px rgba(37,99,235,0.12)"; }}
+        onBlur={e  => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.boxShadow = "none"; }}
+      />
+    </div>
+  );
+}
 
 export default function LoginPage() {
   const { login, user, isLoading } = useAuth();
@@ -21,7 +59,6 @@ export default function LoginPage() {
   const [error, setError]       = useState("");
   const [loading, setLoading]   = useState(false);
 
-  // Already authenticated → go to dashboard
   useEffect(() => {
     if (!isLoading && user) router.replace("/dashboard");
   }, [user, isLoading, router]);
@@ -40,126 +77,171 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex">
+    // h-screen + overflow-hidden guarantees full-viewport coverage regardless
+    // of body/html styles — immune to global CSS resets and theme transitions.
+    <div style={{
+      height: "100vh",
+      overflow: "hidden",
+      display: "flex",
+      fontFamily: "var(--font-sans, system-ui, sans-serif)",
+    }}>
 
-      {/* ── Brand panel ───────────────────────────────────────── */}
-      <div className="hidden lg:flex lg:w-[460px] xl:w-[520px] shrink-0 flex-col p-10 relative overflow-hidden"
-           style={{ background: "linear-gradient(160deg,#06091a 0%,#0d1427 50%,#091020 100%)" }}>
-
+      {/* ── Brand panel (desktop only) ─────────────────────── */}
+      <div className="hidden lg:flex" style={{
+        width: 460, flexShrink: 0,
+        flexDirection: "column",
+        padding: 40,
+        position: "relative",
+        overflow: "hidden",
+        background: "linear-gradient(160deg,#06091a 0%,#0d1427 50%,#091020 100%)",
+      }}>
         {/* Radial glow */}
-        <div className="absolute top-0 inset-x-0 h-72 pointer-events-none"
-             style={{ background: "radial-gradient(ellipse at 50% -5%,rgba(37,99,235,0.3) 0%,rgba(37,99,235,0.05) 40%,transparent 70%)" }} />
-        {/* Grid */}
-        <div className="absolute inset-0 pointer-events-none opacity-[0.035]"
-             style={{ backgroundImage:"linear-gradient(rgba(255,255,255,1) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,1) 1px,transparent 1px)", backgroundSize:"48px 48px" }} />
+        <div style={{
+          position: "absolute", top: 0, left: 0, right: 0, height: 288, pointerEvents: "none",
+          background: "radial-gradient(ellipse at 50% -5%,rgba(37,99,235,0.3) 0%,rgba(37,99,235,0.05) 40%,transparent 70%)",
+        }} />
+        {/* Subtle grid */}
+        <div style={{
+          position: "absolute", inset: 0, pointerEvents: "none", opacity: 0.035,
+          backgroundImage: "linear-gradient(rgba(255,255,255,1) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,1) 1px,transparent 1px)",
+          backgroundSize: "48px 48px",
+        }} />
 
         {/* Logo */}
-        <div className="relative z-10 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center"
-               style={{ background:"linear-gradient(135deg,#2563eb,#1d4ed8)", boxShadow:"0 0 20px rgba(37,99,235,0.5)" }}>
-            <Briefcase className="w-4.5 h-4.5 text-white" style={{ width:18,height:18 }} />
+        <div style={{ position: "relative", zIndex: 10, display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center",
+            background: "linear-gradient(135deg,#2563eb,#1d4ed8)", boxShadow: "0 0 20px rgba(37,99,235,0.5)",
+          }}>
+            <Briefcase style={{ width: 18, height: 18, color: "white" }} />
           </div>
-          <span className="text-white font-bold text-base tracking-tight">PageOS</span>
+          <span style={{ color: "white", fontWeight: 700, fontSize: 15, letterSpacing: "-0.02em" }}>PageOS</span>
         </div>
 
-        <div className="relative z-10 flex-1 flex flex-col justify-center py-16">
-          <h1 className="text-[2.2rem] font-bold leading-[1.15] text-white">
+        {/* Tagline */}
+        <div style={{ position: "relative", zIndex: 10, flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "64px 0" }}>
+          <h1 style={{ fontSize: "2.2rem", fontWeight: 700, lineHeight: 1.15, color: "white", margin: 0 }}>
             One system.<br />
-            <span style={{ color:"rgba(255,255,255,0.5)" }}>All of Page Group.</span>
+            <span style={{ color: "rgba(255,255,255,0.5)" }}>All of Page Group.</span>
           </h1>
-          <p className="mt-4 text-[14px] leading-relaxed max-w-[280px]"
-             style={{ color:"rgba(148,163,184,0.8)" }}>
-            PageOS is the operating backbone for Page Group — connecting subsidiaries, teams, clients, and compliance in one place.
+          <p style={{ marginTop: 16, fontSize: 14, lineHeight: 1.7, maxWidth: 280, color: "rgba(148,163,184,0.8)" }}>
+            PageOS is the operating backbone for Page Group — connecting subsidiaries,
+            teams, clients, and compliance in one place.
           </p>
-          <div className="mt-10 space-y-4">
+          <div style={{ marginTop: 40, display: "flex", flexDirection: "column", gap: 16 }}>
             {FEATURES.map(({ icon: Icon, text }) => (
-              <div key={text} className="flex items-start gap-3">
-                <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
-                     style={{ background:"rgba(37,99,235,0.15)",border:"1px solid rgba(37,99,235,0.25)" }}>
-                  <Icon className="w-3.5 h-3.5" style={{ color:"#93c5fd" }} />
+              <div key={text} style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                <div style={{
+                  width: 28, height: 28, borderRadius: 8, flexShrink: 0, marginTop: 2,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  background: "rgba(37,99,235,0.15)", border: "1px solid rgba(37,99,235,0.25)",
+                }}>
+                  <Icon style={{ width: 14, height: 14, color: "#93c5fd" }} />
                 </div>
-                <p className="text-[13px] leading-relaxed" style={{ color:"rgba(148,163,184,0.8)" }}>{text}</p>
+                <p style={{ fontSize: 13, lineHeight: 1.7, color: "rgba(148,163,184,0.8)", margin: 0 }}>{text}</p>
               </div>
             ))}
           </div>
         </div>
 
-        <p className="relative z-10 text-[11px]" style={{ color:"rgba(100,116,139,0.6)" }}>
+        <p style={{ position: "relative", zIndex: 10, fontSize: 11, color: "rgba(100,116,139,0.6)", margin: 0 }}>
           © 2026 Page Group · All rights reserved
         </p>
       </div>
 
-      {/* ── Login form ─────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col items-center justify-center p-6"
-           style={{ background:"var(--pg-bg)" }}>
-        <div className="w-full max-w-[360px]">
+      {/* ── Form panel ─────────────────────────────────────── */}
+      <div style={{
+        flex: 1,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 24,
+        background: "#f0f4f9",
+        overflowY: "auto",
+      }}>
+        <div style={{ width: "100%", maxWidth: 360 }}>
 
-          {/* Mobile logo */}
-          <div className="flex items-center gap-2.5 mb-8 lg:hidden">
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center"
-                 style={{ background:"linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
-              <Briefcase className="w-3.5 h-3.5 text-white" />
+          {/* Mobile-only logo */}
+          <div className="lg:hidden" style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 32 }}>
+            <div style={{
+              width: 28, height: 28, borderRadius: 8,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              background: "linear-gradient(135deg,#2563eb,#1d4ed8)",
+            }}>
+              <Briefcase style={{ width: 14, height: 14, color: "white" }} />
             </div>
-            <span className="font-semibold text-[13px]" style={{ color:"var(--pg-text-1)" }}>PageOS</span>
+            <span style={{ fontWeight: 600, fontSize: 13, color: "#0f172a" }}>PageOS</span>
           </div>
 
-          <div className="mb-7">
-            <h2 className="text-[22px] font-bold leading-tight" style={{ color:"var(--pg-text-1)" }}>
+          <div style={{ marginBottom: 28 }}>
+            <h2 style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.2, color: "#0f172a", margin: 0 }}>
               Sign in to PageOS
             </h2>
-            <p className="text-[13px] mt-1" style={{ color:"var(--pg-text-3)" }}>
+            <p style={{ fontSize: 13, marginTop: 4, color: "#94a3b8" }}>
               Access is managed by your HR team.
             </p>
           </div>
 
-          {/* Form card */}
-          <div className="rounded-2xl p-6"
-               style={{ background:"var(--pg-card)", border:"1px solid var(--pg-card-border)", boxShadow:"0 2px 8px var(--pg-card-shadow)" }}>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="email" className="text-[13px] font-medium" style={{ color:"var(--pg-text-1)" }}>
-                  Email
-                </Label>
-                <Input id="email" type="email"
-                       placeholder="firstname.lastname@pagegroup.ng"
-                       value={email} onChange={e => setEmail(e.target.value)}
-                       required
-                       className="h-10 text-sm" />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="password" className="text-[13px] font-medium" style={{ color:"var(--pg-text-1)" }}>
-                  Password
-                </Label>
-                <Input id="password" type="password"
-                       placeholder="••••••••"
-                       value={password} onChange={e => setPassword(e.target.value)}
-                       required minLength={8}
-                       className="h-10 text-sm" />
-              </div>
+          {/* Card */}
+          <div style={{
+            borderRadius: 16,
+            padding: 24,
+            background: "#ffffff",
+            border: "1px solid #e8edf3",
+            boxShadow: "0 2px 8px rgba(15,23,42,0.05)",
+          }}>
+            <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <Field
+                id="email" label="Email" type="email"
+                placeholder="firstname.lastname@pagegroup.ng"
+                value={email} onChange={setEmail} required
+              />
+              <Field
+                id="password" label="Password" type="password"
+                placeholder="••••••••"
+                value={password} onChange={setPassword} required minLength={8}
+              />
 
               {error && (
-                <div className="rounded-lg px-3 py-2.5 text-[13px]"
-                     style={{ background:"#fef2f2",border:"1px solid #fecaca",color:"#dc2626" }}>
+                <div style={{
+                  borderRadius: 8, padding: "10px 12px", fontSize: 13,
+                  background: "#fef2f2", border: "1px solid #fecaca", color: "#dc2626",
+                }}>
                   {error}
                 </div>
               )}
 
-              <button type="submit"
-                      disabled={loading}
-                      className="w-full h-10 rounded-xl font-semibold text-[13px] mt-1 text-white flex items-center justify-center gap-2 disabled:opacity-70 transition-opacity"
-                      style={{ background:"linear-gradient(135deg,#2563eb,#1d4ed8)", boxShadow:"0 1px 4px rgba(37,99,235,0.3)" }}>
-                {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+              <button
+                type="submit"
+                disabled={loading}
+                style={{
+                  height: 40, width: "100%", borderRadius: 10, border: "none",
+                  cursor: loading ? "not-allowed" : "pointer",
+                  fontWeight: 600, fontSize: 13, color: "white",
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                  opacity: loading ? 0.7 : 1,
+                  background: "linear-gradient(135deg,#2563eb,#1d4ed8)",
+                  boxShadow: "0 1px 4px rgba(37,99,235,0.3)",
+                  transition: "opacity 0.15s",
+                  marginTop: 4,
+                }}
+              >
+                {loading && <Loader2 style={{ width: 16, height: 16, animation: "spin 1s linear infinite" }} />}
                 Sign In
               </button>
             </form>
           </div>
 
           {/* HR note */}
-          <div className="mt-5 flex items-start gap-2.5 px-4 py-3.5 rounded-xl"
-               style={{ background:"rgba(37,99,235,0.06)",border:"1px solid rgba(37,99,235,0.12)" }}>
-            <Lock className="w-3.5 h-3.5 text-blue-500 shrink-0 mt-0.5" />
-            <p className="text-[12px] leading-relaxed" style={{ color:"var(--pg-text-2)" }}>
+          <div style={{
+            marginTop: 20,
+            display: "flex", alignItems: "flex-start", gap: 10,
+            padding: "14px 16px", borderRadius: 12,
+            background: "rgba(37,99,235,0.06)", border: "1px solid rgba(37,99,235,0.12)",
+          }}>
+            <Lock style={{ width: 14, height: 14, color: "#3b82f6", flexShrink: 0, marginTop: 2 }} />
+            <p style={{ fontSize: 12, lineHeight: 1.6, color: "#475569", margin: 0 }}>
               Don&apos;t have an account? Your HR team will provision your access.
               Contact <strong>hr@pagegroup.ng</strong> to get started.
             </p>

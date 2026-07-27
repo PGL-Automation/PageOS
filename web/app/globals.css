@@ -2,48 +2,159 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Design tokens — the single source of truth for the visual system.
-   Professional first, distinctive second. Adjust the brand hue here. */
+/* ═══════════════════════════════════════════════════════════
+   PageOS Design System — Light + Dark
+   Tailwind v3 project — no @theme inline or @utility blocks.
+   All colour tokens use oklch() directly.
+   tailwind.config.ts references them as var(--token).
+   ═══════════════════════════════════════════════════════════ */
+
 @layer base {
   :root {
-    --font-sans: "Inter", system-ui, sans-serif;
-    --radius: 0.75rem;
+    --font-sans: "Geist", system-ui, sans-serif;
+    --radius: 0.625rem;
 
-    --background: 0 0% 100%;
-    --foreground: 222 22% 11%;
-    --card: 0 0% 100%;
-    --muted: 220 14% 96%;
-    --muted-foreground: 220 9% 46%;
-    --border: 220 13% 91%;
+    /* ── Colour tokens ───────────────────────────────────── */
+    --background:              oklch(0.974 0.005 247);
+    --foreground:              oklch(0.13 0 0);
+    --card:                    oklch(1 0 0);
+    --card-foreground:         oklch(0.13 0 0);
+    --muted:                   oklch(0.967 0.004 247);
+    --muted-foreground:        oklch(0.52 0 0);
+    --border:                  oklch(0.91 0.006 247);
+    --input:                   oklch(0.91 0.006 247);
+    --ring:                    oklch(0.50 0.22 264);
+    --primary:                 oklch(0.50 0.22 264);
+    --primary-foreground:      oklch(0.985 0 0);
+    --secondary:               oklch(0.96 0.005 247);
+    --secondary-foreground:    oklch(0.2 0 0);
+    --accent:                  oklch(0.96 0.005 247);
+    --accent-foreground:       oklch(0.2 0 0);
+    --popover:                 oklch(1 0 0);
+    --popover-foreground:      oklch(0.13 0 0);
+    --destructive:             oklch(0.577 0.245 27.325);
+    /* success/danger: raw HSL triplets — hsl() added by tailwind.config */
+    --success:                 152 60% 36%;
+    --danger:                  0   72% 51%;
 
-    /* Page brand — deep indigo. Swap to the official brand color when known. */
-    --primary: 243 75% 44%;
-    --primary-foreground: 0 0% 100%;
+    /* ── Surface tokens (inline style references) ─────────── */
+    --pg-bg:            #f0f4f9;
+    --pg-card:          #ffffff;
+    --pg-card-border:   #e8edf3;
+    --pg-card-shadow:   rgba(15,23,42,0.05);
+    --pg-header:        rgba(255,255,255,0.88);
+    --pg-header-border: #e2e8f0;
+    --pg-input:         #f8fafc;
+    --pg-input-border:  #e2e8f0;
+    --pg-hover:         rgba(0,0,0,0.025);
+    --pg-row-hover:     #fafbff;
+    --pg-row-border:    #f1f5f9;
+    --pg-muted-bg:      #f1f5f9;
+    --pg-skeleton:      #f1f5f9;
 
-    --success: 152 60% 36%;
-    --danger: 0 72% 51%;
+    /* ── Text tokens ───────────────────────────────────────── */
+    --pg-text-1: #0f172a;
+    --pg-text-2: #475569;
+    --pg-text-3: #94a3b8;
+    --pg-text-4: #cbd5e1;
   }
 
   .dark {
-    --background: 222 30% 7%;
-    --foreground: 210 20% 96%;
-    --card: 222 24% 10%;
-    --muted: 220 18% 16%;
-    --muted-foreground: 220 12% 65%;
-    --border: 220 16% 20%;
-    --primary: 243 80% 66%;
-    --primary-foreground: 222 30% 7%;
-    --success: 152 55% 48%;
-    --danger: 0 72% 60%;
+    --background:              oklch(0.10 0.014 247);
+    --foreground:              oklch(0.94 0 0);
+    --card:                    oklch(0.13 0.014 247);
+    --card-foreground:         oklch(0.94 0 0);
+    --muted:                   oklch(0.17 0.012 247);
+    --muted-foreground:        oklch(0.62 0 0);
+    --border:                  oklch(1 0 0 / 9%);
+    --input:                   oklch(1 0 0 / 10%);
+    --ring:                    oklch(0.50 0.22 264);
+    --primary:                 oklch(0.60 0.20 264);
+    --primary-foreground:      oklch(0.985 0 0);
+    --secondary:               oklch(0.18 0.012 247);
+    --secondary-foreground:    oklch(0.94 0 0);
+    --accent:                  oklch(0.18 0.012 247);
+    --accent-foreground:       oklch(0.94 0 0);
+    --popover:                 oklch(0.13 0.014 247);
+    --popover-foreground:      oklch(0.94 0 0);
+    --destructive:             oklch(0.65 0.22 25);
+    --success:                 152 55% 48%;
+    --danger:                  0   72% 60%;
+
+    --pg-bg:            #07090f;
+    --pg-card:          #0f131d;
+    --pg-card-border:   rgba(255,255,255,0.07);
+    --pg-card-shadow:   rgba(0,0,0,0.3);
+    --pg-header:        rgba(9,13,24,0.92);
+    --pg-header-border: rgba(255,255,255,0.07);
+    --pg-input:         rgba(255,255,255,0.05);
+    --pg-input-border:  rgba(255,255,255,0.10);
+    --pg-hover:         rgba(255,255,255,0.03);
+    --pg-row-hover:     rgba(255,255,255,0.025);
+    --pg-row-border:    rgba(255,255,255,0.05);
+    --pg-muted-bg:      rgba(255,255,255,0.06);
+    --pg-skeleton:      rgba(255,255,255,0.07);
+
+    --pg-text-1: rgba(255,255,255,0.92);
+    --pg-text-2: rgba(148,163,184,0.85);
+    --pg-text-3: rgba(100,116,139,0.75);
+    --pg-text-4: rgba(71,85,105,0.7);
   }
 
-  * {
-    border-color: hsl(var(--border));
-  }
+  /* ── Global reset ──────────────────────────────────────── */
+  * { @apply border-border; }
+
+  html { @apply font-sans; scroll-behavior: smooth; }
+
   body {
-    background-color: hsl(var(--background));
-    color: hsl(var(--foreground));
+    background-color: var(--pg-bg);
+    color: var(--pg-text-1);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    transition: background-color 0.2s ease, color 0.2s ease;
   }
+
+  /* Thin scrollbar */
+  ::-webkit-scrollbar              { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track        { background: transparent; }
+  ::-webkit-scrollbar-thumb        { background: rgba(0,0,0,0.2); border-radius: 99px; }
+  .dark ::-webkit-scrollbar-thumb  { background: rgba(255,255,255,0.15); }
+
+  /* Accordion / sheet animations (Radix UI) */
+  @keyframes accordion-down {
+    from { height: 0; }
+    to   { height: var(--radix-accordion-content-height); }
+  }
+  @keyframes accordion-up {
+    from { height: var(--radix-accordion-content-height); }
+    to   { height: 0; }
+  }
+  @keyframes slide-in-from-right {
+    from { transform: translateX(100%); }
+    to   { transform: translateX(0); }
+  }
+  @keyframes slide-out-to-right {
+    from { transform: translateX(0); }
+    to   { transform: translateX(100%); }
+  }
+  @keyframes fade-in  { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes fade-out { from { opacity: 1; } to { opacity: 0; } }
+  @keyframes spin     { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+}
+
+@layer utilities {
+  .tabular        { font-variant-numeric: tabular-nums; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar   { -ms-overflow-style: none; scrollbar-width: none; }
+
+  /* Shadcn animation utilities used by Sheet, Dialog, etc. */
+  .animate-in          { animation-fill-mode: both; }
+  .animate-out         { animation-fill-mode: both; }
+  .fade-in             { animation-name: fade-in; }
+  .fade-out            { animation-name: fade-out; }
+  .slide-in-from-right { animation-name: slide-in-from-right; }
+  .slide-out-to-right  { animation-name: slide-out-to-right; }
+  .duration-200        { animation-duration: 200ms; }
+  .duration-300        { animation-duration: 300ms; }
 }
