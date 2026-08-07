@@ -372,9 +372,12 @@ function StepReview({
     { label: "Case State",     value: onboardingCase.State },
     { label: "Email",          value: app?.email ?? "—" },
     { label: "Phone",          value: app?.phone_numbers?.join(", ") ?? "—" },
-    { label: "Investment Amount", value: app?.investment_amount_kobo
-        ? `₦${(app.investment_amount_kobo / 100).toLocaleString()}`
-        : "—" },
+    { label: "Investment Amount", value: (() => {
+        if (!app?.investment_amount_kobo) return "—";
+        const currency = app.investment_amount_words === "USD" ? "USD" : "NGN";
+        const symbol   = currency === "USD" ? "$" : "₦";
+        return `${symbol}${(app.investment_amount_kobo / 100).toLocaleString()}`;
+      })() },
     { label: "Source of Funds", value: app?.source_of_funds ?? "—" },
     { label: "Bank",           value: app?.bank_name ? `${app.bank_name} — ${app.bank_account_number}` : "—" },
     { label: "Documents",      value: `${satisfiedReqs.length} / ${totalReqs.length} required satisfied` },

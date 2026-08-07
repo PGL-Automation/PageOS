@@ -1,46 +1,81 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
+import { usePosition } from "@/lib/position";
 import {
   Users, UserPlus, UserCheck, UserX, ArrowRight,
-  Building2, CheckSquare, Clock, Brain, FileText,
+  CheckSquare, Clock, Brain, Building2,
 } from "lucide-react";
+
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
 
 function getGreeting() {
   const h = new Date().getHours();
   return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
 }
 
+type UserRow = {
+  user_id: string; email: string; display_name: string; user_status: string;
+  assignments?: Array<{
+    position_title: string; subsidiary_name: string; subsidiary_id?: string; effective_from: string;
+  }>;
+};
+
+type Subsidiary = { id: string; code: string; name: string };
+
 export default function HRDashboard() {
-  const { user } = useAuth();
-  const router = useRouter();
+  const { user, subsidiary } = useAuth();
+  const { activePosition } = usePosition();
+  const [selectedSubId, setSelectedSubId] = useState<string>("all");
 
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
+  // Sync to the active subsidiary context:
+  // - Group-level positions (subsidiary_id is null) → show all
+  // - Subsidiary-specific positions → default to active subsidiary
+  useEffect(() => {
+    if (!activePosition) return;
+    if (!activePosition.subsidiary_id && subsidiary?.ID) {
+      // Group-level position but sidebar has an active subsidiary scoped — stay "all"
+      setSelectedSubId("all");
+    } else if (activePosition.subsidiary_id) {
+      setSelectedSubId(activePosition.subsidiary_id);
+    } else if (subsidiary?.ID) {
+      setSelectedSubId(subsidiary.ID);
+    }
+  }, [activePosition?.id, subsidiary?.ID]);
 
-  const { data: rawUsers = [] } = useQuery({
+  const { data: rawUsers = [] } = useQuery<UserRow[]>({
     queryKey: ["org-users"],
     queryFn: async () => {
-      const res = await fetch(`${baseUrl}/api/v1/org/users`, { credentials: "include" });
+      const res = await fetch(`${BASE}/api/v1/org/users`, { credentials: "include" });
       if (!res.ok) return [];
-      return res.json() as Promise<Array<{
-        user_id: string; email: string; display_name: string; user_status: string;
-        assignments?: Array<{ position_title: string; subsidiary_name: string; effective_from: string }>;
-      }>>;
+      return ((await res.json()) ?? []) as UserRow[];
     },
   });
 
-  const total      = rawUsers.length;
-  const active     = rawUsers.filter(u => u.user_status === "active").length;
-  const inactive   = rawUsers.filter(u => u.user_status === "inactive").length;
-  const noAssign   = rawUsers.filter(u => !u.assignments?.length).length;
+  const { data: subsidiaries = [] } = useQuery<Subsidiary[]>({
+    queryKey: ["subsidiaries"],
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/v1/org/subsidiaries`, { credentials: "include" });
+      if (!res.ok) return [];
+      return ((await res.json()) ?? []) as Subsidiary[];
+    },
+  });
 
-  // Recent hires — users whose earliest assignment started in the last 30 days
+  // Filter employees by selected subsidiary (or show all)
+  const employees = selectedSubId === "all"
+    ? rawUsers
+    : rawUsers.filter(u => u.assignments?.some(a => a.subsidiary_id === selectedSubId));
+
+  const total    = employees.length;
+  const active   = employees.filter(u => u.user_status === "active").length;
+  const inactive = employees.filter(u => u.user_status === "inactive").length;
+  const noAssign = employees.filter(u => !u.assignments?.length).length;
+
   const thirtyDaysAgo = new Date(Date.now() - 30 * 86400 * 1000);
-  const recent = rawUsers.filter(u => {
+  const recent = employees.filter(u => {
     const eff = u.assignments?.[0]?.effective_from;
     return eff && new Date(eff) >= thirtyDaysAgo;
   }).slice(0, 5);
@@ -61,17 +96,50 @@ export default function HRDashboard() {
     { label: "Ask AI",               icon: Brain,       href: "/ai",         color: "#0891b2", bg: "#ecfeff" },
   ];
 
+  // Per-subsidiary breakdown (shown when "All" selected)
+  const subBreakdown = selectedSubId === "all" ? subsidiaries.map(s => {
+    const inSub = rawUsers.filter(u => u.assignments?.some(a => a.subsidiary_id === s.id));
+    return { id: s.id, name: s.name, count: inSub.length, active: inSub.filter(u => u.user_status === "active").length };
+  }).filter(s => s.count > 0) : [];
+
   return (
     <div className="max-w-[1100px] mx-auto space-y-6">
 
       {/* Header */}
-      <div>
-        <h1 className="text-[20px] font-bold leading-tight" style={{ color: "var(--pg-text-1)" }}>
-          {getGreeting()}, {firstName}.
-        </h1>
-        <p className="text-[12px] mt-0.5" style={{ color: "var(--pg-text-3)" }}>
-          {new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })} · Page Group HR
-        </p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-[20px] font-bold leading-tight" style={{ color: "var(--pg-text-1)" }}>
+            {getGreeting()}, {firstName}.
+          </h1>
+          <p className="text-[12px] mt-0.5" style={{ color: "var(--pg-text-3)" }}>
+            {new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })} · Page Group HR
+          </p>
+        </div>
+
+        {/* Subsidiary switcher */}
+        {subsidiaries.length > 0 && (
+          <div className="flex items-center gap-1 flex-wrap">
+            <button
+              onClick={() => setSelectedSubId("all")}
+              className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-[11px] font-semibold transition-all"
+              style={selectedSubId === "all"
+                ? { background: "linear-gradient(135deg,#2563eb,#1d4ed8)", color: "white" }
+                : { background: "var(--pg-card)", border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}>
+              <Building2 className="w-3 h-3" /> All
+            </button>
+            {subsidiaries.map(s => (
+              <button
+                key={s.id}
+                onClick={() => setSelectedSubId(s.id)}
+                className="h-8 px-3 rounded-xl text-[11px] font-semibold transition-all"
+                style={selectedSubId === s.id
+                  ? { background: "linear-gradient(135deg,#2563eb,#1d4ed8)", color: "white" }
+                  : { background: "var(--pg-card)", border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}>
+                {s.name.replace("Page ", "")}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Stats */}
@@ -93,8 +161,26 @@ export default function HRDashboard() {
         ))}
       </div>
 
-      <div className="grid md:grid-cols-3 gap-5">
+      {/* Subsidiary breakdown — only when All selected */}
+      {subBreakdown.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {subBreakdown.map(s => (
+            <button
+              key={s.id}
+              onClick={() => setSelectedSubId(s.id)}
+              className="text-left p-3 rounded-xl transition-all"
+              style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}
+              onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--pg-row-hover)"}
+              onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "var(--pg-card)"}>
+              <p className="text-[11px] font-semibold truncate" style={{ color: "var(--pg-text-2)" }}>{s.name.replace("Page ", "")}</p>
+              <p className="text-[18px] font-bold mt-0.5" style={{ color: "var(--pg-text-1)" }}>{s.count}</p>
+              <p className="text-[10px]" style={{ color: "#059669" }}>{s.active} active</p>
+            </button>
+          ))}
+        </div>
+      )}
 
+      <div className="grid md:grid-cols-3 gap-5">
         {/* Quick actions */}
         <div className="space-y-3">
           <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: "var(--pg-text-3)" }}>Quick Actions</p>
@@ -117,7 +203,9 @@ export default function HRDashboard() {
         <div className="md:col-span-2">
           <div className="rounded-2xl overflow-hidden" style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}>
             <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid var(--pg-row-border)" }}>
-              <h2 className="text-[13px] font-semibold" style={{ color: "var(--pg-text-1)" }}>Recent Additions</h2>
+              <h2 className="text-[13px] font-semibold" style={{ color: "var(--pg-text-1)" }}>
+                Recent Additions {selectedSubId !== "all" && <span className="text-[11px] font-normal" style={{ color: "var(--pg-text-3)" }}>— filtered</span>}
+              </h2>
               <Link href="/hr/records" className="text-[11px] font-medium text-blue-600 hover:underline flex items-center gap-0.5">
                 View all <ArrowRight className="w-3 h-3" />
               </Link>
@@ -126,15 +214,16 @@ export default function HRDashboard() {
               <div className="py-12 flex flex-col items-center gap-2">
                 <Users className="w-8 h-8" style={{ color: "var(--pg-text-4)" }} />
                 <p className="text-[13px]" style={{ color: "var(--pg-text-3)" }}>No new employees added in the last 30 days.</p>
-                <Link href="/hr/admin"
-                      className="mt-1 text-[12px] font-semibold text-blue-600 hover:underline">
+                <Link href="/hr/admin" className="mt-1 text-[12px] font-semibold text-blue-600 hover:underline">
                   Onboard the first employee →
                 </Link>
               </div>
             ) : (
               <div className="divide-y" style={{ borderColor: "var(--pg-row-border)" }}>
                 {recent.map(u => {
-                  const asgn = u.assignments?.[0];
+                  const asgn = selectedSubId === "all"
+                    ? u.assignments?.[0]
+                    : u.assignments?.find(a => a.subsidiary_id === selectedSubId) ?? u.assignments?.[0];
                   return (
                     <div key={u.user_id} className="flex items-center gap-3 px-5 py-3.5">
                       <div className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0"
@@ -163,33 +252,56 @@ export default function HRDashboard() {
       {/* All employees summary */}
       <div className="rounded-2xl overflow-hidden" style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}>
         <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid var(--pg-row-border)" }}>
-          <h2 className="text-[13px] font-semibold" style={{ color: "var(--pg-text-1)" }}>All Employees</h2>
+          <h2 className="text-[13px] font-semibold" style={{ color: "var(--pg-text-1)" }}>
+            All Employees
+            {selectedSubId !== "all" && (
+              <span className="ml-2 text-[11px] font-normal px-2 py-0.5 rounded-full"
+                    style={{ background: "#eff6ff", color: "#2563eb" }}>
+                {subsidiaries.find(s => s.id === selectedSubId)?.name}
+              </span>
+            )}
+          </h2>
           <Link href="/hr/records" className="text-[11px] font-medium text-blue-600 hover:underline">View full directory →</Link>
         </div>
         <div className="divide-y" style={{ borderColor: "var(--pg-row-border)" }}>
-          {rawUsers.slice(0, 8).map(u => {
-            const asgn = u.assignments?.find(a => a.position_title) ?? u.assignments?.[0];
+          {employees.slice(0, 8).map(u => {
+            const asgn = selectedSubId === "all"
+              ? (u.assignments?.find(a => a.position_title) ?? u.assignments?.[0])
+              : (u.assignments?.find(a => a.subsidiary_id === selectedSubId) ?? u.assignments?.[0]);
+            // Show all subsidiaries when viewing "all", otherwise show just the relevant one
+            const subNames = selectedSubId === "all"
+              ? [...new Set(u.assignments?.filter(a => a.subsidiary_name).map(a => a.subsidiary_name) ?? [])]
+              : [];
             return (
               <div key={u.user_id} className="flex items-center gap-3 px-5 py-3 transition-colors"
-                   style={{}}
                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--pg-row-hover)"}
                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
                 <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
                      style={{ background: u.user_status === "active" ? "linear-gradient(135deg,#2563eb,#1d4ed8)" : "#94a3b8" }}>
                   {u.display_name.split(" ").slice(0,2).map(w => w[0]).join("").toUpperCase()}
                 </div>
-                <div className="flex-1 min-w-0 grid grid-cols-3 gap-2">
+                <div className="flex-1 min-w-0 grid grid-cols-3 gap-2 items-center">
                   <p className="text-[12.5px] font-medium truncate" style={{ color: "var(--pg-text-1)" }}>{u.display_name}</p>
                   <p className="text-[12px] truncate" style={{ color: "var(--pg-text-2)" }}>{asgn?.position_title ?? "—"}</p>
-                  <p className="text-[12px] truncate" style={{ color: "var(--pg-text-3)" }}>{asgn?.subsidiary_name ?? "No assignment"}</p>
+                  <div className="flex flex-wrap gap-1">
+                    {subNames.length > 0
+                      ? subNames.map(s => (
+                          <span key={s} className="text-[10px] font-medium px-1.5 py-0.5 rounded-full"
+                                style={{ background: "var(--pg-muted-bg)", color: "var(--pg-text-2)" }}>
+                            {s?.split(" ")[1] ?? s}
+                          </span>
+                        ))
+                      : <p className="text-[12px] truncate" style={{ color: "var(--pg-text-3)" }}>{asgn?.subsidiary_name ?? "No assignment"}</p>
+                    }
+                  </div>
                 </div>
               </div>
             );
           })}
-          {rawUsers.length > 8 && (
+          {employees.length > 8 && (
             <div className="px-5 py-3">
               <Link href="/hr/records" className="text-[12px] font-medium text-blue-600 hover:underline">
-                +{rawUsers.length - 8} more employees — view full directory
+                +{employees.length - 8} more employees — view full directory
               </Link>
             </div>
           )}

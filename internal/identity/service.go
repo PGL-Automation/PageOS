@@ -32,10 +32,10 @@ var (
 
 // User is the identity module's public representation of an account.
 type User struct {
-	ID          uuid.UUID `json:"id"`
-	Email       string    `json:"email"`
-	DisplayName string    `json:"display_name"`
-	Status      string    `json:"status"`
+	ID          uuid.UUID `json:"ID"`
+	Email       string    `json:"Email"`
+	DisplayName string    `json:"DisplayName"`
+	Status      string    `json:"Status"`
 }
 
 // Service holds the identity capabilities.

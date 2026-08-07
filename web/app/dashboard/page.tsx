@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
-import { usePosition } from "@/lib/position";
+import { usePosition, roleFamily } from "@/lib/position";
 import {
   Brain, TrendingUp, TrendingDown, RefreshCw, CheckSquare, Shield,
   AlertTriangle, ChevronRight, ArrowUpRight, Clock, Check, Zap,
@@ -96,17 +96,18 @@ export default function DashboardPage() {
   const router = useRouter();
   const [now, setNow] = useState(new Date());
 
-  // Each role has its own dedicated dashboard
+  // Route each role family to its dedicated dashboard.
+  // Uses pattern matching so any future position code is handled automatically.
   useEffect(() => {
     if (posLoading) return;
-    const redirects: Record<string, string> = {
-      WEALTH_MANAGER:    "/wm/dashboard",
-      HR_MANAGER:        "/hr/dashboard",
-      HR_OFFICER:        "/hr/dashboard",
-      COMPLIANCE_MANAGER:"/compliance",
-      FINANCE_OFFICER:   "/finance",
+    const FAMILY_DEST: Partial<Record<ReturnType<typeof roleFamily>, string>> = {
+      wm:         "/wm/dashboard",
+      hr:         "/hr/dashboard",
+      finance:    "/finance",
+      compliance: "/compliance",
+      // md and default stay on this executive dashboard
     };
-    const dest = redirects[primaryCode ?? ""];
+    const dest = FAMILY_DEST[roleFamily(primaryCode)];
     if (dest) router.replace(dest);
   }, [primaryCode, posLoading, router]);
 

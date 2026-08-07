@@ -8,30 +8,30 @@ import (
 
 // Client is the customer identity — reusable across future products.
 type Client struct {
-	ID           uuid.UUID  `json:"id"`
-	SubsidiaryID uuid.UUID  `json:"subsidiary_id"`
-	ClientType   string     `json:"client_type"`
-	DisplayName  string     `json:"display_name"`
-	Status       string     `json:"status"`
-	BrokerID     *uuid.UUID `json:"broker_id,omitempty"`
+	ID           uuid.UUID  `json:"ID"`
+	SubsidiaryID uuid.UUID  `json:"SubsidiaryID"`
+	ClientType   string     `json:"ClientType"`
+	DisplayName  string     `json:"DisplayName"`
+	Status       string     `json:"Status"`
+	BrokerID     *uuid.UUID `json:"BrokerID,omitempty"`
 }
 
 // OnboardingCase is one application process instance.
 type OnboardingCase struct {
-	ID                    uuid.UUID  `json:"id"`
-	ClientID              uuid.UUID  `json:"client_id"`
-	SubsidiaryID          uuid.UUID  `json:"subsidiary_id"`
-	ClientType            string     `json:"client_type"`
-	RequirementSetVersion int32      `json:"requirement_set_version"`
-	State                 string     `json:"state"`
-	RiskFlag              bool       `json:"risk_flag"`
-	RiskNotes             string     `json:"risk_notes,omitempty"`
-	ReturnCount           int32      `json:"return_count"`
-	ReturnNotes           string     `json:"return_notes,omitempty"`
-	InitiatedBy           uuid.UUID  `json:"initiated_by"`
-	TNCVersion            string     `json:"tnc_version,omitempty"`
-	TNCAcceptedAt         *time.Time `json:"tnc_accepted_at,omitempty"`
-	SubmittedAt           *time.Time `json:"submitted_at,omitempty"`
+	ID                    uuid.UUID  `json:"ID"`
+	ClientID              uuid.UUID  `json:"ClientID"`
+	SubsidiaryID          uuid.UUID  `json:"SubsidiaryID"`
+	ClientType            string     `json:"ClientType"`
+	RequirementSetVersion int32      `json:"RequirementSetVersion"`
+	State                 string     `json:"State"`
+	RiskFlag              bool       `json:"RiskFlag"`
+	RiskNotes             string     `json:"RiskNotes,omitempty"`
+	ReturnCount           int32      `json:"ReturnCount"`
+	ReturnNotes           string     `json:"ReturnNotes,omitempty"`
+	InitiatedBy           uuid.UUID  `json:"InitiatedBy"`
+	TNCVersion            string     `json:"TNCVersion,omitempty"`
+	TNCAcceptedAt         *time.Time `json:"TNCAcceptedAt,omitempty"`
+	SubmittedAt           *time.Time `json:"SubmittedAt,omitempty"`
 }
 
 // ApplicationData holds the structured form fields keyed to a case.
@@ -120,4 +120,21 @@ type CaseDetails struct {
 	Application  *ApplicationData      `json:"application,omitempty"`
 	Requirements []RequirementInstance `json:"requirements"`
 	CanSubmit    bool                  `json:"can_submit"`
+}
+
+// CaseNote is a follow-up or activity note logged by a WM on a case.
+type CaseNote struct {
+	ID         uuid.UUID `json:"id"`
+	CaseID     uuid.UUID `json:"case_id"`
+	AuthorID   uuid.UUID `json:"author_id"`
+	AuthorName string    `json:"author_name,omitempty"`
+	NoteType   string    `json:"note_type"` // internal | client | compliance
+	Content    string    `json:"content"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// ComplianceCheckWithName extends ComplianceCheck with the performer's display name.
+type ComplianceCheckWithName struct {
+	ComplianceCheck
+	PerformerName string `json:"performer_name,omitempty"`
 }

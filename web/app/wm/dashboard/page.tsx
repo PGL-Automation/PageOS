@@ -9,6 +9,7 @@ import {
   Users, TrendingUp, ArrowUpRight, Clock,
   Mail, AlertCircle, CheckCircle2,
   ChevronRight, Brain, Plus, Star, Loader2, FileText,
+  Shield, Eye,
 } from "lucide-react";
 import { components } from "@/lib/api/types";
 
@@ -166,8 +167,9 @@ export default function WMDashboard() {
               <div className="divide-y" style={{ borderColor: "var(--pg-row-border)" }}>
                 {clients.map(c => {
                   const pill = CASE_PILL[c.state] ?? { label: c.state, bg: "#f1f5f9", color: "#475569" };
+                  const showComplianceTag = c.state === "compliance_review";
                   return (
-                    <Link key={c.id} href="/wm/clients"
+                    <Link key={c.id} href={`/wm/clients/${c.id}`}
                           className="flex items-center gap-3 px-5 py-3.5 transition-colors group"
                           onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--pg-row-hover)"}
                           onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
@@ -180,18 +182,22 @@ export default function WMDashboard() {
                           <p className="text-[13px] font-medium truncate" style={{ color: "var(--pg-text-1)" }}>{c.name}</p>
                           {c.riskFlag && (
                             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: "#fee2e2", color: "#dc2626" }}>
-                              High Risk
+                              Risk
                             </span>
                           )}
                         </div>
                         <p className="text-[11px] capitalize mt-0.5" style={{ color: "var(--pg-text-3)" }}>
                           {c.type}
+                          {showComplianceTag && <span className="ml-1.5 text-violet-600 font-medium">· Compliance checking</span>}
                         </p>
                       </div>
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0"
-                            style={{ background: pill.bg, color: pill.color }}>
-                        {pill.label}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                              style={{ background: pill.bg, color: pill.color }}>
+                          {pill.label}
+                        </span>
+                        <ChevronRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: "var(--pg-text-3)" }} />
+                      </div>
                     </Link>
                   );
                 })}
@@ -215,7 +221,10 @@ export default function WMDashboard() {
                   <p className="text-[12px]" style={{ color: "var(--pg-text-2)" }}>All clients are up to date.</p>
                 </div>
               ) : needsAttention.map(c => (
-                <div key={c.id} className="flex items-start gap-3 px-5 py-3">
+                <Link key={c.id} href={`/wm/clients/${c.id}`}
+                      className="flex items-start gap-3 px-5 py-3 transition-colors"
+                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--pg-row-hover)"}
+                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
                   <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" style={{ color: c.riskFlag ? "#dc2626" : "#f59e0b" }} />
                   <div className="flex-1 min-w-0">
                     <p className="text-[12.5px] font-medium" style={{ color: "var(--pg-text-1)" }}>{c.name}</p>
@@ -223,7 +232,8 @@ export default function WMDashboard() {
                       {c.riskFlag ? "High risk flag — MD review needed" : "Application returned for correction"}
                     </p>
                   </div>
-                </div>
+                  <ChevronRight className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--pg-text-4)" }} />
+                </Link>
               ))}
             </div>
           </div>

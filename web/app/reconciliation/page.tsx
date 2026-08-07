@@ -65,12 +65,15 @@ export default function ReconciliationPage() {
     },
   });
 
+  // Active account: user's explicit selection, or first account when none chosen yet
+  const activeAccountId = selectedAccountId || accounts[0]?.id || "";
+
   const { data: runs = [] } = useQuery({
-    queryKey: ["recon-runs", selectedAccountId],
-    enabled: Boolean(selectedAccountId),
+    queryKey: ["recon-runs", activeAccountId],
+    enabled: Boolean(activeAccountId),
     queryFn: async () => {
       const { data } = await api.GET("/reconciliation/runs", {
-        params: { query: { bank_account_id: selectedAccountId } },
+        params: { query: { bank_account_id: activeAccountId } },
       });
       return data ?? [];
     },
@@ -164,7 +167,7 @@ export default function ReconciliationPage() {
   const createRunMutation = useMutation({
     mutationFn: async () => {
       const { data, error } = await api.POST("/reconciliation/runs", {
-        body: { bank_account_id: selectedAccountId, period_start: periodStart, period_end: periodEnd },
+        body: { bank_account_id: activeAccountId, period_start: periodStart, period_end: periodEnd },
       });
       if (error || !data) throw new Error("Failed to create run");
       return data;
@@ -222,14 +225,21 @@ export default function ReconciliationPage() {
                 <TableBody>
                   {accounts.length === 0
                     ? <TableRow><TableCell colSpan={6} className="text-center py-10 text-slate-400">No bank accounts yet. Add one to start reconciling.</TableCell></TableRow>
-                    : accounts.map(a => (
-                      <TableRow key={a.id}>
+                    : accounts.map(a => {
+                      const isActive = a.id === activeAccountId;
+                      return (
+                      <TableRow
+                        key={a.id}
+                        className="cursor-pointer"
+                        style={isActive ? { background: "rgba(37,99,235,0.06)", borderLeft: "3px solid #2563eb" } : undefined}
+                        onClick={() => setSelectedAccountId(a.id)}
+                      >
                         <TableCell className="font-medium">{a.bank_name}</TableCell>
                         <TableCell className="font-mono text-sm">{a.account_number}</TableCell>
                         <TableCell>{a.account_name}</TableCell>
                         <TableCell>{a.currency}</TableCell>
                         <TableCell><Badge variant="outline" className="text-xs">{a.status}</Badge></TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-right" onClick={e => e.stopPropagation()}>
                           <div className="flex items-center justify-end gap-1">
                             <Button variant="ghost" size="sm" title="Upload GL ledger"
                               disabled={uploadLedgerMutation.isPending && uploadingLedgerFor === a.id}
@@ -244,26 +254,23 @@ export default function ReconciliationPage() {
                               <Upload className="w-3.5 h-3.5" />
                               <span className="ml-1 hidden lg:inline">Statement</span>
                             </Button>
-                            <Button variant="ghost" size="sm" onClick={() => setSelectedAccountId(a.id)}>
-                              <ExternalLink className="w-3.5 h-3.5" />
-                              <span className="ml-1 hidden lg:inline">Runs</span>
-                            </Button>
                           </div>
                         </TableCell>
                       </TableRow>
-                    ))}
+                      );
+                    })}
                 </TableBody>
               </Table>
             )}
         </CardContent>
       </Card>
 
-      {/* Runs for selected account */}
-      {selectedAccountId && (
+      {/* Runs for active account */}
+      {activeAccountId && (
         <Card>
           <CardHeader>
             <CardTitle>
-              Reconciliation Runs — {accounts.find(a => a.id === selectedAccountId)?.bank_name}
+              Reconciliation Runs — {accounts.find(a => a.id === activeAccountId)?.bank_name}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -357,7 +364,7 @@ export default function ReconciliationPage() {
           <form className="mt-6 space-y-4" onSubmit={e => { e.preventDefault(); createRunMutation.mutate(); }}>
             <div className="space-y-2">
               <Label>Bank Account</Label>
-              <Select value={selectedAccountId} onValueChange={v => setSelectedAccountId(v ?? "")}>
+              <Select value={selectedAccountId || activeAccountId} onValueChange={v => setSelectedAccountId(v ?? "")}>
                 <SelectTrigger><SelectValue placeholder="Select account…" /></SelectTrigger>
                 <SelectContent>
                   {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.bank_name} — {a.account_number}</SelectItem>)}
@@ -366,7 +373,7 @@ export default function ReconciliationPage() {
             </div>
             <div className="space-y-2"><Label>Period Start</Label><Input type="date" value={periodStart} onChange={e => setPeriodStart(e.target.value)} required /></div>
             <div className="space-y-2"><Label>Period End</Label><Input type="date" value={periodEnd} onChange={e => setPeriodEnd(e.target.value)} required /></div>
-            <Button type="submit" className="w-full" disabled={createRunMutation.isPending || !selectedAccountId}>
+            <Button type="submit" className="w-full" disabled={createRunMutation.isPending || !activeAccountId}>
               {createRunMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Create Run &amp; Auto-Match
             </Button>

@@ -16,26 +16,100 @@ export interface UserPosition {
 }
 
 // Canonical role codes — must match position codes in the database.
+// Add new codes here as new positions are created; the nav/routing system
+// uses family-pattern matching so unknown codes still work without changes.
 export const ROLE = {
-  WEALTH_MANAGER:     "WEALTH_MANAGER",
-  MANAGING_DIRECTOR:  "MANAGING_DIRECTOR",
-  COMPLIANCE_MANAGER: "COMPLIANCE_MANAGER",
-  FINANCE_OFFICER:    "FINANCE_OFFICER",
-  HR_MANAGER:         "HR_MANAGER",
+  // Group-level
+  GROUP_ADMIN:                   "GROUP_ADMIN",
+  HR_MANAGER:                    "HR_MANAGER",
+  HR_OFFICER:                    "HR_OFFICER",
+  IT_ADMIN:                      "IT_ADMIN",
+  COMPLIANCE_MANAGER:            "COMPLIANCE_MANAGER",
+  // Page Asset Management
+  MANAGING_DIRECTOR:             "MANAGING_DIRECTOR",
+  HEAD_OF_OPERATIONS:            "HEAD_OF_OPERATIONS",
+  TREASURY_OPS_FINANCE_MGR:      "TREASURY_OPS_FINANCE_MGR",
+  FUND_TREASURY_OPERATIONS:      "FUND_TREASURY_OPERATIONS",
+  TL_FINANCIAL_REPORTING:        "TL_FINANCIAL_REPORTING",
+  FINANCE_OPS_ASSOCIATE:         "FINANCE_OPS_ASSOCIATE",
+  FINANCE_OPS_INTERN:            "FINANCE_OPS_INTERN",
+  DATA_ANALYST_INTERN:           "DATA_ANALYST_INTERN",
+  OPERATIONS_EXECUTIVE:          "OPERATIONS_EXECUTIVE",
+  OPERATIONS_ASSOCIATE:          "OPERATIONS_ASSOCIATE",
+  GROUP_HEAD_WEALTH_MGMT:        "GROUP_HEAD_WEALTH_MGMT",
+  PORTFOLIO_MANAGER:             "PORTFOLIO_MANAGER",
+  EQUITY_TRADER:                 "EQUITY_TRADER",
+  PORTFOLIO_MGMT_ASSISTANT:      "PORTFOLIO_MGMT_ASSISTANT",
+  WEALTH_MANAGER:                "WEALTH_MANAGER",
+  HEAD_CORPORATE_COMPLIANCE:     "HEAD_CORPORATE_COMPLIANCE",
+  INTERNAL_CONTROL_OFFICER:      "INTERNAL_CONTROL_OFFICER",
+  ADMIN_OFFICER:                 "ADMIN_OFFICER",
+  BRAND_STRATEGY_MANAGER:        "BRAND_STRATEGY_MANAGER",
+  IT_SUPPORT:                    "IT_SUPPORT",
+  HEAD_HUMAN_CAPITAL:            "HEAD_HUMAN_CAPITAL",
+  HR_OPS_MANAGER:                "HR_OPS_MANAGER",
+  HR_ADMIN:                      "HR_ADMIN",
+  // Page Capital
+  HEAD_OF_INVESTMENT:            "HEAD_OF_INVESTMENT",
+  HEAD_INVESTMENT_MGMT:          "HEAD_INVESTMENT_MGMT",
+  GROUP_HEAD_BUSINESS_DEV:       "GROUP_HEAD_BUSINESS_DEV",
+  HEAD_RISK_TRADE_MGMT:          "HEAD_RISK_TRADE_MGMT",
+  TL_RESEARCH_RISK_MGMT:         "TL_RESEARCH_RISK_MGMT",
+  TRADING_RESEARCH_ANALYST:      "TRADING_RESEARCH_ANALYST",
+  QUANT_MARKET_ANALYST:          "QUANT_MARKET_ANALYST",
+  INVESTMENT_RESEARCH_TRAINEE:   "INVESTMENT_RESEARCH_TRAINEE",
+  LEAD_SOFTWARE_ENGINEER:        "LEAD_SOFTWARE_ENGINEER",
+  // Cross-subsidiary
+  RECONCILIATION_OFFICER:        "RECONCILIATION_OFFICER",
+  TREASURY_ANALYST:              "TREASURY_ANALYST",
+  FINOPS_MANAGER:                "FINOPS_MANAGER",
+  FINANCE_OFFICER:               "FINANCE_OFFICER",
+  RELATIONSHIP_MANAGER:          "RELATIONSHIP_MANAGER",
 } as const;
 
 export type RoleCode = (typeof ROLE)[keyof typeof ROLE];
 
+// Maps a position code to a role family for nav/routing/badge decisions.
+// Patterns are evaluated in priority order; more specific checks come first.
+export function roleFamily(code: string | null | undefined): "wm" | "md" | "hr" | "finance" | "compliance" | "default" {
+  if (!code) return "default";
+  const c = code.toUpperCase();
+  // HR family — any HR role, human capital, payroll, recruitment
+  if (c.startsWith("HR_") || c.endsWith("_HR") || c.includes("HUMAN_CAPITAL") ||
+      c.includes("PAYROLL") || c.includes("RECRUITMENT") || c.includes("TALENT")) return "hr";
+  // MD/Senior leadership — directors, group admins, heads of investment/business
+  if (c === "MANAGING_DIRECTOR" || c === "GROUP_ADMIN" ||
+      c.includes("DIRECTOR") || c.startsWith("CEO") || c.startsWith("CXO") ||
+      c === "HEAD_OF_INVESTMENT" || c === "HEAD_INVESTMENT_MGMT" ||
+      c === "GROUP_HEAD_BUSINESS_DEV") return "md";
+  // WM family — wealth, portfolio, trading roles
+  if (c.includes("WEALTH") || c.includes("PORTFOLIO") || c.includes("EQUITY_TRADER") ||
+      c.includes("RELATIONSHIP_MANAGER") || c.startsWith("RM_")) return "wm";
+  // Finance/Ops family — operations, treasury, finance reporting, reconciliation
+  if (c.includes("FINANCE") || c.includes("FINANCIAL") || c.includes("FINOPS") ||
+      c.includes("TREASURY") || c.includes("ACCOUNT") || c.includes("RECONCILI") ||
+      c.includes("LEDGER") || c.includes("AUDIT") || c.includes("OPERATIONS") ||
+      c.includes("FUND_TREASURY") || c.includes("DATA_ANALYST")) return "finance";
+  // Compliance/Risk family — compliance, risk, control, AML, KYC
+  if (c.includes("COMPLIANCE") || c.includes("RISK") || c.includes("AML") ||
+      c.includes("KYC") || c.includes("REGULATORY") || c.includes("CONTROL") ||
+      c.includes("INTERNAL_CONTROL") || c.includes("RESEARCH_RISK") ||
+      c.includes("TRADE_MGMT")) return "compliance";
+  return "default";
+}
+
 // Demo positions — shown when the user has no real org assignments yet.
-// These let developers preview each role view without fully wiring org assignments.
-// In production, all users are onboarded by HR and have real assignments.
+// Covers one role per family so every nav section can be previewed.
 export const DEMO_POSITIONS: UserPosition[] = [
-  { id:"demo-admin",      code:"GROUP_ADMIN",        title:"Group Administrator", is_primary:true,  isDemo:true },
-  { id:"demo-hr",         code:"HR_MANAGER",         title:"HR Manager",          is_primary:false, isDemo:true },
-  { id:"demo-wm",         code:"WEALTH_MANAGER",     title:"Wealth Manager",      is_primary:false, isDemo:true },
-  { id:"demo-md",         code:"MANAGING_DIRECTOR",  title:"Managing Director",   is_primary:false, isDemo:true },
-  { id:"demo-compliance", code:"COMPLIANCE_MANAGER", title:"Compliance Manager",  is_primary:false, isDemo:true },
-  { id:"demo-finance",    code:"FINANCE_OFFICER",    title:"Finance Officer",     is_primary:false, isDemo:true },
+  { id:"demo-admin",      code:"GROUP_ADMIN",               title:"Group Administrator",              is_primary:true,  isDemo:true },
+  { id:"demo-hr",         code:"HR_MANAGER",                title:"HR Manager",                       is_primary:false, isDemo:true },
+  { id:"demo-md",         code:"MANAGING_DIRECTOR",         title:"Managing Director",                is_primary:false, isDemo:true },
+  { id:"demo-wm",         code:"WEALTH_MANAGER",            title:"Wealth Manager",                   is_primary:false, isDemo:true },
+  { id:"demo-pm",         code:"PORTFOLIO_MANAGER",         title:"Portfolio Manager",                is_primary:false, isDemo:true },
+  { id:"demo-ops",        code:"HEAD_OF_OPERATIONS",        title:"Head of Operations",               is_primary:false, isDemo:true },
+  { id:"demo-compliance", code:"HEAD_CORPORATE_COMPLIANCE", title:"Head, Corporate Services & Compliance", is_primary:false, isDemo:true },
+  { id:"demo-recon",      code:"RECONCILIATION_OFFICER",    title:"Reconciliation Officer",           is_primary:false, isDemo:true },
+  { id:"demo-investment", code:"HEAD_OF_INVESTMENT",        title:"Head of Investment",               is_primary:false, isDemo:true },
 ];
 
 interface PositionCtx {

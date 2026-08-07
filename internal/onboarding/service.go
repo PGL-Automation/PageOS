@@ -187,14 +187,19 @@ func (s *Service) GetCaseDetails(ctx context.Context, caseID uuid.UUID) (domain.
 }
 
 // ListCases returns all cases for a subsidiary, optionally filtered by state.
-func (s *Service) ListCases(ctx context.Context, subsidiaryID uuid.UUID, state string) ([]domain.OnboardingCase, error) {
+func (s *Service) ListCases(ctx context.Context, subsidiaryID *uuid.UUID, state string) ([]domain.OnboardingCase, error) {
+	// When subsidiaryID is nil (group-level compliance view), use a raw query
+	// so we can return cases across all subsidiaries.
+	if subsidiaryID == nil {
+		return s.listAllCases(ctx, state)
+	}
 	var rows []onboardingdb.OnboardingOnboardingCase
 	var err error
 	if state == "" {
-		rows, err = s.store.ListAllCasesBySubsidiary(ctx, subsidiaryID)
+		rows, err = s.store.ListAllCasesBySubsidiary(ctx, *subsidiaryID)
 	} else {
 		rows, err = s.store.ListCasesBySubsidiary(ctx, onboardingdb.ListCasesBySubsidiaryParams{
-			SubsidiaryID: subsidiaryID,
+			SubsidiaryID: *subsidiaryID,
 			State:        state,
 		})
 	}
@@ -206,6 +211,44 @@ func (s *Service) ListCases(ctx context.Context, subsidiaryID uuid.UUID, state s
 		out = append(out, toCase(r))
 	}
 	return out, nil
+}
+
+// listAllCases returns cases across all subsidiaries, optionally filtered by state.
+// Used by group-level compliance officers who span the entire organisation.
+func (s *Service) listAllCases(ctx context.Context, state string) ([]domain.OnboardingCase, error) {
+	var q string
+	var args []interface{}
+	if state == "" {
+		q = `SELECT id, client_id, subsidiary_id, client_type, requirement_set_version,
+		            state, risk_flag, risk_notes, return_count, return_notes,
+		            initiated_by, tnc_version, tnc_accepted_at, submitted_at, created_at, updated_at
+		     FROM onboarding.onboarding_case ORDER BY created_at DESC`
+	} else {
+		q = `SELECT id, client_id, subsidiary_id, client_type, requirement_set_version,
+		            state, risk_flag, risk_notes, return_count, return_notes,
+		            initiated_by, tnc_version, tnc_accepted_at, submitted_at, created_at, updated_at
+		     FROM onboarding.onboarding_case WHERE state = $1 ORDER BY risk_flag DESC, created_at ASC`
+		args = []interface{}{state}
+	}
+	pool := s.store.Pool()
+	rows, err := pool.Query(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("onboarding: list all cases: %w", err)
+	}
+	defer rows.Close()
+	var out []domain.OnboardingCase
+	for rows.Next() {
+		var r onboardingdb.OnboardingOnboardingCase
+		if err := rows.Scan(
+			&r.ID, &r.ClientID, &r.SubsidiaryID, &r.ClientType, &r.RequirementSetVersion,
+			&r.State, &r.RiskFlag, &r.RiskNotes, &r.ReturnCount, &r.ReturnNotes,
+			&r.InitiatedBy, &r.TncVersion, &r.TncAcceptedAt, &r.SubmittedAt, &r.CreatedAt, &r.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("onboarding: scan case: %w", err)
+		}
+		out = append(out, toCase(r))
+	}
+	return out, rows.Err()
 }
 
 // SaveApplicationData upserts the application form fields for a case, then
@@ -617,6 +660,28 @@ func (s *Service) ListComplianceChecks(ctx context.Context, caseID uuid.UUID) ([
 		out = append(out, toComplianceCheck(r))
 	}
 	return out, nil
+}
+
+// ListComplianceChecksWithNames returns compliance checks enriched with performer display names.
+func (s *Service) ListComplianceChecksWithNames(ctx context.Context, caseID uuid.UUID) ([]domain.ComplianceCheckWithName, error) {
+	return s.store.ListComplianceChecksWithNames(ctx, caseID)
+}
+
+// AddCaseNote logs a follow-up note (client or compliance interaction) for a case.
+func (s *Service) AddCaseNote(ctx context.Context, caseID, authorID uuid.UUID, noteType, content string) (domain.CaseNote, error) {
+	if content == "" {
+		return domain.CaseNote{}, fmt.Errorf("onboarding: note content is required")
+	}
+	validTypes := map[string]bool{"internal": true, "client": true, "compliance": true}
+	if !validTypes[noteType] {
+		noteType = "internal"
+	}
+	return s.store.AddCaseNote(ctx, caseID, authorID, noteType, content)
+}
+
+// ListCaseNotes returns all notes for a case, newest first.
+func (s *Service) ListCaseNotes(ctx context.Context, caseID uuid.UUID) ([]domain.CaseNote, error) {
+	return s.store.ListCaseNotes(ctx, caseID)
 }
 
 // ── RM–Client assignments ─────────────────────────────────────────────────────

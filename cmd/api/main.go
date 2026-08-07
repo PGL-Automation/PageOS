@@ -22,6 +22,8 @@ import (
 
 	migrations "github.com/pagegroup/pageos/db/migrations"
 	"github.com/pagegroup/pageos/internal/audit"
+	"github.com/pagegroup/pageos/internal/appraisal"
+	appraisalhttp "github.com/pagegroup/pageos/internal/appraisal/http"
 	"github.com/pagegroup/pageos/internal/broker"
 	brokerhttp "github.com/pagegroup/pageos/internal/broker/http"
 	"github.com/pagegroup/pageos/internal/documents"
@@ -138,6 +140,9 @@ func run() error {
 	reconSvc := reconciliation.NewService(pool, auditWriter)
 	reconH := reconhttp.New(reconSvc)
 
+	appraisalSvc := appraisal.NewService(pool)
+	appraisalH   := appraisalhttp.New(appraisalSvc)
+
 	// --- Bootstrap: create super-admin and initial HR user if they don't exist ---
 	if err := seedBootstrap(ctx, pool, identitySvc, orgSvc, logger); err != nil {
 		logger.Warn("bootstrap seed failed (non-fatal)", "err", err)
@@ -156,6 +161,7 @@ func run() error {
 		api.Mount("/onboarding", onboardingH.Routes(identityH.Authenticator))
 		api.Mount("/approval", approvalH.Routes(identityH.Authenticator))
 		api.Mount("/reconciliation", reconH.Routes(identityH.Authenticator))
+		api.Mount("/appraisal", appraisalH.Routes(identityH.Authenticator))
 		// Admin endpoints: user lifecycle management (HR / GROUP_ADMIN).
 		api.With(identityH.Authenticator).Post("/admin/provision-user",
 			provisionUserHandler(identitySvc, orgSvc))
@@ -280,7 +286,7 @@ func seedBootstrap(ctx context.Context, pool *pgxpool.Pool, identitySvc *identit
 			if exists > 0 {
 				continue
 			}
-			if _, err := orgSvc.AssignPosition(ctx, personID, posID, subID, nil, time.Now(), i == 0); err != nil {
+			if _, err := orgSvc.AssignPosition(ctx, personID, posID, subID, nil, time.Now(), i == 0, nil); err != nil {
 				log.Warn("bootstrap: assignment failed", "email", s.email, "subsidiary", subID, "err", err)
 			} else {
 				assigned++
@@ -304,22 +310,55 @@ func splitName(displayName string) (first, last string) {
 	return parts[0], strings.Join(parts[1:], " ")
 }
 
+// ── Access control helpers ─────────────────────────────────────────────────────
+
+// isHROrAdmin returns true if the calling user holds an HR or group-admin position.
+func isHROrAdmin(ctx context.Context, pool *pgxpool.Pool, callerID uuid.UUID) bool {
+	const q = `
+		SELECT EXISTS (
+			SELECT 1
+			FROM organization.assignment a
+			JOIN organization.position pos ON pos.id = a.position_id
+			JOIN organization.person per ON per.id = a.person_id
+			WHERE per.user_id = $1
+			  AND pos.code = ANY(ARRAY['HR_MANAGER','HR_OFFICER','GROUP_ADMIN','IT_ADMIN'])
+			  AND a.effective_from <= CURRENT_DATE
+			  AND (a.effective_to IS NULL OR a.effective_to >= CURRENT_DATE)
+		)
+	`
+	var exists bool
+	_ = pool.QueryRow(ctx, q, callerID).Scan(&exists)
+	return exists
+}
+
 // ── Provision user (HR / admin) ────────────────────────────────────────────────
 
 type provisionInput struct {
-	FirstName     string   `json:"first_name"`
-	LastName      string   `json:"last_name"`
-	Email         string   `json:"email"`
-	Password      string   `json:"password"`
-	PositionCode  string   `json:"position_code"`
-	SubsidiaryIDs []string `json:"subsidiary_ids"` // empty = group-level position
-	EffectiveFrom string   `json:"effective_from"` // YYYY-MM-DD; empty = today
+	FirstName               string     `json:"first_name"`
+	LastName                string     `json:"last_name"`
+	Email                   string     `json:"email"`
+	Password                string     `json:"password"`
+	PositionCode            string     `json:"position_code"`
+	SubsidiaryIDs           []string   `json:"subsidiary_ids"` // empty = group-level position
+	EffectiveFrom           string     `json:"effective_from"` // YYYY-MM-DD; empty = today
+	ManagerOverridePersonID *uuid.UUID `json:"manager_override_person_id"`
 }
 
 // provisionUserHandler atomically creates a user, person record, and assignment(s).
 // Called by HR when onboarding a new employee into PageOS.
 func provisionUserHandler(identitySvc *identity.Service, orgSvc *organization.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		caller, ok := identityhttp.UserFrom(r.Context())
+		if !ok {
+			httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+			return
+		}
+		hasAccess, _ := orgSvc.HasRole(r.Context(), caller.ID, "HR_MANAGER", "HR_OFFICER", "GROUP_ADMIN")
+		if !hasAccess {
+			httpx.Error(w, http.StatusForbidden, "forbidden", "HR or admin access required")
+			return
+		}
+
 		var in provisionInput
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 			httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid JSON")
@@ -372,7 +411,7 @@ func provisionUserHandler(identitySvc *identity.Service, orgSvc *organization.Se
 				return
 			}
 			for i, sub := range subs {
-				a, err := orgSvc.AssignPosition(r.Context(), person.ID, pos.ID, sub.ID, nil, from, i == 0)
+				a, err := orgSvc.AssignPosition(r.Context(), person.ID, pos.ID, sub.ID, nil, from, i == 0, in.ManagerOverridePersonID)
 				if err == nil {
 					assignments = append(assignments, a)
 				}
@@ -394,7 +433,7 @@ func provisionUserHandler(identitySvc *identity.Service, orgSvc *organization.Se
 						return
 					}
 				}
-				a, err := orgSvc.AssignPosition(r.Context(), person.ID, pos.ID, sid, nil, from, i == 0)
+				a, err := orgSvc.AssignPosition(r.Context(), person.ID, pos.ID, sid, nil, from, i == 0, in.ManagerOverridePersonID)
 				if err == nil {
 					assignments = append(assignments, a)
 				}
@@ -431,6 +470,11 @@ func generateTempPassword() string {
 // The new password is returned in the response for HR to communicate to the employee.
 func resetPasswordHandler(pool *pgxpool.Pool, auditWriter *audit.Writer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		caller, ok := identityhttp.UserFrom(r.Context())
+		if !ok || !isHROrAdmin(r.Context(), pool, caller.ID) {
+			httpx.Error(w, http.StatusForbidden, "forbidden", "HR or admin access required")
+			return
+		}
 		userID, err := uuid.Parse(chi.URLParam(r, "userId"))
 		if err != nil {
 			httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid user id")
@@ -448,7 +492,6 @@ func resetPasswordHandler(pool *pgxpool.Pool, auditWriter *audit.Writer) http.Ha
 			httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
 			return
 		}
-		caller, _ := identityhttp.UserFrom(r.Context())
 		_ = auditWriter.Write(r.Context(), audit.Entry{
 			Actor:        audit.Actor{Type: "user", ID: caller.ID.String()},
 			Action:       "identity.user.password_reset",
@@ -461,6 +504,11 @@ func resetPasswordHandler(pool *pgxpool.Pool, auditWriter *audit.Writer) http.Ha
 // deactivateUserHandler sets a user's status to "inactive".
 func deactivateUserHandler(pool *pgxpool.Pool, auditWriter *audit.Writer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		caller, ok := identityhttp.UserFrom(r.Context())
+		if !ok || !isHROrAdmin(r.Context(), pool, caller.ID) {
+			httpx.Error(w, http.StatusForbidden, "forbidden", "HR or admin access required")
+			return
+		}
 		userID, err := uuid.Parse(chi.URLParam(r, "userId"))
 		if err != nil {
 			httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid user id")
@@ -472,7 +520,6 @@ func deactivateUserHandler(pool *pgxpool.Pool, auditWriter *audit.Writer) http.H
 			httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
 			return
 		}
-		caller, _ := identityhttp.UserFrom(r.Context())
 		_ = auditWriter.Write(r.Context(), audit.Entry{
 			Actor:        audit.Actor{Type: "user", ID: caller.ID.String()},
 			Action:       "identity.user.deactivated",
@@ -485,6 +532,11 @@ func deactivateUserHandler(pool *pgxpool.Pool, auditWriter *audit.Writer) http.H
 // reactivateUserHandler sets a user's status back to "active".
 func reactivateUserHandler(pool *pgxpool.Pool, auditWriter *audit.Writer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		caller, ok := identityhttp.UserFrom(r.Context())
+		if !ok || !isHROrAdmin(r.Context(), pool, caller.ID) {
+			httpx.Error(w, http.StatusForbidden, "forbidden", "HR or admin access required")
+			return
+		}
 		userID, err := uuid.Parse(chi.URLParam(r, "userId"))
 		if err != nil {
 			httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid user id")
@@ -530,17 +582,23 @@ func getUserDetailHandler(pool *pgxpool.Pool, orgSvc *organization.Service) http
 
 // transferInput describes a staff transfer request.
 type transferInput struct {
-	PersonID        uuid.UUID `json:"person_id"`
-	NewPositionCode string    `json:"new_position_code"`
-	NewSubsidiaryIDs []string `json:"new_subsidiary_ids"` // one or more, not necessarily group-wide
-	EffectiveFrom   string    `json:"effective_from"`      // YYYY-MM-DD
-	EndCurrent      bool      `json:"end_current"`         // close all active assignments
+	PersonID                uuid.UUID  `json:"person_id"`
+	NewPositionCode         string     `json:"new_position_code"`
+	NewSubsidiaryIDs        []string   `json:"new_subsidiary_ids"` // one or more, not necessarily group-wide
+	EffectiveFrom           string     `json:"effective_from"`      // YYYY-MM-DD
+	EndCurrent              bool       `json:"end_current"`         // close all active assignments
+	ManagerOverridePersonID *uuid.UUID `json:"manager_override_person_id"`
 }
 
 // transferEmployeeHandler ends the employee's current assignments and opens new ones.
 // The new role can span one or more specific subsidiaries (not necessarily group-wide).
 func transferEmployeeHandler(pool *pgxpool.Pool, orgSvc *organization.Service, auditWriter *audit.Writer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		caller, ok := identityhttp.UserFrom(r.Context())
+		if !ok || !isHROrAdmin(r.Context(), pool, caller.ID) {
+			httpx.Error(w, http.StatusForbidden, "forbidden", "HR or admin access required")
+			return
+		}
 		targetUserID, err := uuid.Parse(chi.URLParam(r, "userId"))
 		if err != nil {
 			httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid user id")
@@ -600,7 +658,7 @@ func transferEmployeeHandler(pool *pgxpool.Pool, orgSvc *organization.Service, a
 					continue
 				}
 			}
-			a, err := orgSvc.AssignPosition(r.Context(), personID, pos.ID, sid, nil, from, i == 0)
+			a, err := orgSvc.AssignPosition(r.Context(), personID, pos.ID, sid, nil, from, i == 0, in.ManagerOverridePersonID)
 			if err == nil {
 				newAssignments = append(newAssignments, a)
 			}
@@ -612,7 +670,6 @@ func transferEmployeeHandler(pool *pgxpool.Pool, orgSvc *organization.Service, a
 			return
 		}
 
-		caller, _ := identityhttp.UserFrom(r.Context())
 		_ = auditWriter.Write(r.Context(), audit.Entry{
 			Actor:        audit.Actor{Type: "user", ID: caller.ID.String()},
 			Action:       "organization.employee.transferred",

@@ -17,15 +17,18 @@ import (
 
 // Document is the public representation of a stored file.
 type Document struct {
-	ID         uuid.UUID `json:"id"`
-	UploadedBy uuid.UUID `json:"uploaded_by"`
-	StorageKey string    `json:"storage_key"`
-	Filename   string    `json:"filename"`
-	MimeType   string    `json:"mime_type"`
-	SizeBytes  int64     `json:"size_bytes"`
-	Checksum   string    `json:"checksum"`
-	ScanStatus string    `json:"scan_status"`
+	ID         uuid.UUID      `json:"id"`
+	UploadedBy uuid.UUID      `json:"uploaded_by"`
+	StorageKey string         `json:"storage_key"`
+	Filename   string         `json:"filename"`
+	MimeType   string         `json:"mime_type"`
+	SizeBytes  int64          `json:"size_bytes"`
+	Checksum   string         `json:"checksum"`
+	ScanStatus string         `json:"scan_status"`
+	VaultType  string         `json:"vault_type"`
+	Category   string         `json:"category,omitempty"`
 	Context    map[string]any `json:"context,omitempty"`
+	CreatedAt  time.Time      `json:"created_at"`
 }
 
 // Service manages document uploads, retrievals, and scan lifecycle.
@@ -45,12 +48,15 @@ func NewService(db *pgxpool.Pool, objects ObjectStore, scanner ScanProvider) *Se
 
 // UploadInput carries everything needed to store a document.
 type UploadInput struct {
-	UploaderID  uuid.UUID      // identity.users.id of the uploader
-	Filename    string
-	ContentType string
-	Size        int64
-	Body        io.Reader
-	Context     map[string]any // e.g. {"case_id": "...", "requirement_key": "passport_photo"}
+	UploaderID    uuid.UUID      // identity.users.id of the uploader
+	Filename      string
+	ContentType   string
+	Size          int64
+	Body          io.Reader
+	VaultType     string         // onboarding | hr_employee | personal
+	Category      string         // medical | education | employment | referral | compliance | other | ""
+	SubjectUserID *uuid.UUID     // for hr_employee uploads: the employee's user ID
+	Context       map[string]any // e.g. {"case_id": "...", "requirement_key": "passport_photo"}
 }
 
 // Upload stores the file, writes metadata, and triggers a scan.
@@ -59,8 +65,7 @@ func (s *Service) Upload(ctx context.Context, in UploadInput) (Document, error) 
 		return Document{}, fmt.Errorf("documents: filename and body are required")
 	}
 
-	// Buffer the body so we can compute the checksum and know the exact size.
-	data, err := io.ReadAll(io.LimitReader(in.Body, 50<<20)) // 50 MB hard cap
+	data, err := io.ReadAll(io.LimitReader(in.Body, 50<<20))
 	if err != nil {
 		return Document{}, fmt.Errorf("documents: read body: %w", err)
 	}
@@ -73,26 +78,32 @@ func (s *Service) Upload(ctx context.Context, in UploadInput) (Document, error) 
 		return Document{}, fmt.Errorf("documents: store object: %w", err)
 	}
 
+	vaultType := in.VaultType
+	if vaultType == "" {
+		vaultType = "onboarding"
+	}
+
 	ctxJSON, _ := json.Marshal(in.Context)
 
-	row, err := s.store.InsertDocument(ctx, documentsdb.InsertDocumentParams{
-		UploadedBy: in.UploaderID,
-		StorageKey: key,
-		Filename:   in.Filename,
-		MimeType:   in.ContentType,
-		SizeBytes:  int64(len(data)),
-		Checksum:   checksum,
-		ScanStatus: "pending",
-		Context:    ctxJSON,
+	row, err := s.store.InsertDocumentFull(ctx, insertFullParams{
+		UploadedBy:    in.UploaderID,
+		StorageKey:    key,
+		Filename:      in.Filename,
+		MimeType:      in.ContentType,
+		SizeBytes:     int64(len(data)),
+		Checksum:      checksum,
+		ScanStatus:    "pending",
+		Context:       ctxJSON,
+		VaultType:     vaultType,
+		Category:      in.Category,
+		SubjectUserID: in.SubjectUserID,
 	})
 	if err != nil {
 		return Document{}, fmt.Errorf("documents: insert metadata: %w", err)
 	}
 
-	doc := toDocument(row)
+	doc := fromFullDoc(row)
 
-	// Run scan synchronously in v1 (stub is instant). A real AV scan moves
-	// to a background job, same interface.
 	status, scanErr := s.scanner.Scan(key)
 	if scanErr != nil {
 		status = "error"
@@ -126,6 +137,52 @@ func (s *Service) GetDocument(ctx context.Context, id uuid.UUID) (Document, erro
 	return toDocument(row), nil
 }
 
+// ListDocumentsByEmployee returns all HR vault documents for a specific employee.
+func (s *Service) ListDocumentsByEmployee(ctx context.Context, employeeUserID uuid.UUID) ([]Document, error) {
+	rows, err := s.store.ListByEmployee(ctx, employeeUserID)
+	if err != nil {
+		return nil, fmt.Errorf("documents: list by employee: %w", err)
+	}
+	out := make([]Document, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, fromFullDoc(r))
+	}
+	return out, nil
+}
+
+// ListPersonalDocuments returns documents from the caller's private vault.
+func (s *Service) ListPersonalDocuments(ctx context.Context, userID uuid.UUID) ([]Document, error) {
+	rows, err := s.store.ListPersonal(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("documents: list personal: %w", err)
+	}
+	out := make([]Document, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, fromFullDoc(r))
+	}
+	return out, nil
+}
+
+func fromFullDoc(fd fullDoc) Document {
+	d := Document{
+		ID:         fd.ID,
+		UploadedBy: fd.UploadedBy,
+		StorageKey: fd.StorageKey,
+		Filename:   fd.Filename,
+		MimeType:   fd.MimeType,
+		SizeBytes:  fd.SizeBytes,
+		Checksum:   fd.Checksum,
+		ScanStatus: fd.ScanStatus,
+		VaultType:  fd.VaultType,
+		Category:   fd.Category,
+		CreatedAt:  fd.CreatedAt.Time,
+	}
+	if len(fd.Context) > 0 {
+		_ = json.Unmarshal(fd.Context, &d.Context)
+	}
+	return d
+}
+
 func toDocument(row documentsdb.DocumentsDocument) Document {
 	d := Document{
 		ID:         row.ID,
@@ -136,6 +193,8 @@ func toDocument(row documentsdb.DocumentsDocument) Document {
 		SizeBytes:  row.SizeBytes,
 		Checksum:   row.Checksum,
 		ScanStatus: row.ScanStatus,
+		VaultType:  "onboarding",
+		CreatedAt:  row.CreatedAt.Time,
 	}
 	if len(row.Context) > 0 {
 		_ = json.Unmarshal(row.Context, &d.Context)
@@ -143,11 +202,17 @@ func toDocument(row documentsdb.DocumentsDocument) Document {
 	return d
 }
 
-// bytesReader wraps a byte slice as an io.Reader.
-type bytesReaderImpl struct{ data []byte; pos int }
+// bytesReaderImpl wraps a byte slice as an io.Reader.
+type bytesReaderImpl struct {
+	data []byte
+	pos  int
+}
+
 func bytesReader(b []byte) io.Reader { return &bytesReaderImpl{data: b} }
 func (r *bytesReaderImpl) Read(p []byte) (int, error) {
-	if r.pos >= len(r.data) { return 0, io.EOF }
+	if r.pos >= len(r.data) {
+		return 0, io.EOF
+	}
 	n := copy(p, r.data[r.pos:])
 	r.pos += n
 	return n, nil

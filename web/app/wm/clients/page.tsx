@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search, Mail, Phone, AlertCircle, ChevronRight, Plus, Loader2, Users } from "lucide-react";
+import { Search, Mail, Phone, AlertCircle, ChevronRight, Plus, Loader2, Users, Eye } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
@@ -177,7 +177,7 @@ export default function WMClientsPage() {
             </div>
           </div>
 
-          {/* Client detail panel */}
+          {/* Client detail panel — quick preview with deep link */}
           {activeClient && (
             <div className="rounded-2xl overflow-hidden" style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}>
               <div className="px-5 py-4" style={{ borderBottom: "1px solid var(--pg-row-border)" }}>
@@ -186,7 +186,7 @@ export default function WMClientsPage() {
                        style={{ background: activeClient.riskFlag ? "linear-gradient(135deg,#dc2626,#b91c1c)" : "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
                     {activeClient.name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase()}
                   </div>
-                  <div>
+                  <div className="flex-1 min-w-0">
                     <p className="text-[15px] font-bold" style={{ color: "var(--pg-text-1)" }}>{activeClient.name}</p>
                     <p className="text-[11px] capitalize" style={{ color: "var(--pg-text-3)" }}>
                       {activeClient.type} · {STATUS_CFG[activeClient.state]?.label ?? activeClient.state}
@@ -194,7 +194,7 @@ export default function WMClientsPage() {
                   </div>
                 </div>
               </div>
-              <div className="p-5 space-y-5">
+              <div className="p-5 space-y-4">
                 {/* Contact */}
                 <div className="space-y-2">
                   <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--pg-text-3)" }}>Contact</p>
@@ -208,22 +208,19 @@ export default function WMClientsPage() {
                   </div>
                 </div>
 
-                {/* Case info */}
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: "var(--pg-text-3)" }}>Case Details</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="rounded-xl p-3" style={{ background: "var(--pg-muted-bg)" }}>
-                      <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "#2563eb" }}>Status</p>
-                      <p className="text-[14px] font-bold mt-1" style={{ color: "var(--pg-text-1)" }}>
-                        {STATUS_CFG[activeClient.state]?.label ?? activeClient.state}
-                      </p>
-                    </div>
-                    <div className="rounded-xl p-3" style={{ background: "var(--pg-muted-bg)" }}>
-                      <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "#059669" }}>Risk</p>
-                      <p className="text-[14px] font-bold mt-1" style={{ color: activeClient.riskFlag ? "#dc2626" : "var(--pg-text-1)" }}>
-                        {activeClient.riskFlag ? "High Risk" : "Normal"}
-                      </p>
-                    </div>
+                {/* Status grid */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-xl p-3" style={{ background: "var(--pg-muted-bg)" }}>
+                    <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "#2563eb" }}>Status</p>
+                    <p className="text-[13px] font-bold mt-1" style={{ color: "var(--pg-text-1)" }}>
+                      {STATUS_CFG[activeClient.state]?.label ?? activeClient.state}
+                    </p>
+                  </div>
+                  <div className="rounded-xl p-3" style={{ background: "var(--pg-muted-bg)" }}>
+                    <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "#059669" }}>Risk</p>
+                    <p className="text-[13px] font-bold mt-1" style={{ color: activeClient.riskFlag ? "#dc2626" : "var(--pg-text-1)" }}>
+                      {activeClient.riskFlag ? "High Risk" : "Normal"}
+                    </p>
                   </div>
                 </div>
 
@@ -237,17 +234,12 @@ export default function WMClientsPage() {
                   </div>
                 )}
 
-                {/* Actions */}
-                <div className="grid grid-cols-2 gap-2 pt-2" style={{ borderTop: "1px solid var(--pg-row-border)" }}>
-                  <button className="flex items-center justify-center gap-1.5 h-9 rounded-xl text-[12px] font-semibold text-white"
-                          style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
-                    <Mail className="w-3.5 h-3.5" /> Send Email
-                  </button>
-                  <button className="flex items-center justify-center gap-1.5 h-9 rounded-xl text-[12px] font-semibold transition-colors"
-                          style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-1)", background: "var(--pg-muted-bg)" }}>
-                    <Phone className="w-3.5 h-3.5" /> Log Call
-                  </button>
-                </div>
+                {/* Deep link to full detail */}
+                <Link href={`/wm/clients/${activeClient.id}`}
+                      className="flex items-center justify-center gap-2 h-9 rounded-xl text-[13px] font-semibold text-white w-full"
+                      style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                  <Eye className="w-3.5 h-3.5" /> View Compliance & Notes
+                </Link>
               </div>
             </div>
           )}

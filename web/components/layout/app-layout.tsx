@@ -11,12 +11,12 @@ import {
   Bell, Command, ChevronDown, Check, Building2, LogOut, Loader2,
   PanelLeft, ChevronRight, Inbox, Sun, Moon, X, Clock,
   CheckCircle2, AlertCircle, Info, FileBarChart,
-  Star, User,
+  Star, User, ClipboardList, Lock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/components/theme-provider";
-import { usePosition, ROLE } from "@/lib/position";
+import { usePosition, roleFamily } from "@/lib/position";
 
 // ── Nav tree per role ──────────────────────────────────────────────────────────
 
@@ -30,13 +30,15 @@ const WM_NAV: NavGroup[] = [
   ]},
   { id: "clients", label: "My Clients", items: [
     { href: "/wm/clients",            label: "Client List",    icon: Users },
-    { href: "/dashboard",             label: "RM Pipeline",    icon: LineChart },
+    { href: "/wm/pipeline",           label: "Pipeline",       icon: LineChart },
     { href: "/investments/onboarding",label: "New Onboarding", icon: UserPlus },
   ]},
   { id: "business", label: "My Business", items: [
     { href: "/wm/commission",         label: "My Commission",  icon: DollarSign },
     { href: "/approval",              label: "Approvals",      icon: CheckSquare },
+    { href: "/appraisal",             label: "My Appraisal",   icon: ClipboardList },
     { href: "/documents",             label: "Documents",      icon: FolderOpen },
+    { href: "/vault",                 label: "My Vault",       icon: Lock },
   ]},
 ];
 
@@ -57,6 +59,7 @@ const MD_NAV: NavGroup[] = [
     { href: "/investments/onboarding",label: "Onboarding",     icon: UserPlus },
     { href: "/approval",              label: "Approvals",      icon: CheckSquare },
     { href: "/reports",               label: "Reports",        icon: FileBarChart },
+    { href: "/vault",                 label: "My Vault",       icon: Lock },
   ]},
   { id: "finance", label: "Finance", items: [
     { href: "/finance",               label: "Finance",        icon: TrendingUp },
@@ -77,6 +80,7 @@ const COMPLIANCE_NAV: NavGroup[] = [
   { id: "actions", label: "Actions", items: [
     { href: "/approval",              label: "Approvals",      icon: CheckSquare },
     { href: "/documents",             label: "Documents",      icon: FolderOpen },
+    { href: "/vault",                 label: "My Vault",       icon: Lock },
   ]},
 ];
 
@@ -96,6 +100,7 @@ const FINANCE_NAV: NavGroup[] = [
   { id: "reporting", label: "Reporting", items: [
     { href: "/reports",               label: "Reports",        icon: FileBarChart },
     { href: "/approval",              label: "Approvals",      icon: CheckSquare },
+    { href: "/vault",                 label: "My Vault",       icon: Lock },
   ]},
 ];
 
@@ -110,12 +115,17 @@ const HR_NAV: NavGroup[] = [
     { href: "/hr/admin",          label: "User Management",    icon: UserSearch },
     { href: "/recruitment",       label: "Recruitment",        icon: UserPlus },
   ]},
+  { id: "appraisals", label: "Appraisals", items: [
+    { href: "/appraisal/dashboard", label: "Manage Appraisals", icon: ClipboardList },
+    { href: "/appraisal",           label: "My Assessment",     icon: Star },
+  ]},
   { id: "payroll", label: "Payroll & Benefits", items: [
     { href: "/payroll",           label: "Payroll",         icon: DollarSign },
   ]},
   { id: "actions", label: "Actions", items: [
     { href: "/approval",          label: "Approvals",       icon: CheckSquare },
     { href: "/documents",         label: "Documents",       icon: FolderOpen },
+    { href: "/vault",             label: "My Vault",        icon: Lock },
   ]},
 ];
 
@@ -138,6 +148,7 @@ const ADMIN_NAV: NavGroup[] = [
     { href: "/approval",               label: "Approvals",        icon: CheckSquare },
     { href: "/compliance",             label: "Compliance",       icon: Shield },
     { href: "/risk",                   label: "Risk",             icon: AlertTriangle },
+    { href: "/vault",                  label: "My Vault",         icon: Lock },
   ]},
   { id: "ops", label: "Operations", items: [
     { href: "/investments/onboarding", label: "Onboarding",       icon: UserPlus },
@@ -155,6 +166,11 @@ const DEFAULT_NAV: NavGroup[] = [
     { href: "/dashboard",             label: "Dashboard",      icon: LayoutDashboard },
     { href: "/ai",                    label: "AI Copilot",     icon: Brain, badge: "AI" },
   ]},
+  { id: "personal", label: "My Work", items: [
+    { href: "/appraisal",             label: "My Appraisal",   icon: ClipboardList },
+    { href: "/approval",              label: "Approvals",      icon: CheckSquare },
+    { href: "/vault",                 label: "My Vault",       icon: Lock },
+  ]},
   { id: "finance", label: "Finance", items: [
     { href: "/finance",               label: "Overview",       icon: TrendingUp },
     { href: "/finance/reconciliation",label: "Reconciliation", icon: RefreshCw },
@@ -162,7 +178,6 @@ const DEFAULT_NAV: NavGroup[] = [
     { href: "/finance/journals",      label: "Journals",       icon: FileText },
   ]},
   { id: "governance", label: "Governance", items: [
-    { href: "/approval",              label: "Approvals",      icon: CheckSquare },
     { href: "/compliance",            label: "Compliance",     icon: Shield },
     { href: "/risk",                  label: "Risk",           icon: AlertTriangle },
   ]},
@@ -178,16 +193,16 @@ const DEFAULT_NAV: NavGroup[] = [
   ]},
 ];
 
+// navForRole uses family-pattern matching so any new position code — even ones
+// not yet defined in the ROLE constant — gets sensible navigation automatically.
 function navForRole(code: string | null): NavGroup[] {
-  switch (code) {
-    case ROLE.WEALTH_MANAGER:    return WM_NAV;
-    case ROLE.MANAGING_DIRECTOR: return MD_NAV;
-    case ROLE.COMPLIANCE_MANAGER:return COMPLIANCE_NAV;
-    case ROLE.FINANCE_OFFICER:   return FINANCE_NAV;
-    case ROLE.HR_MANAGER:
-    case "HR_OFFICER":           return HR_NAV;
-    case "GROUP_ADMIN":          return ADMIN_NAV;
-    default:                     return DEFAULT_NAV;
+  switch (roleFamily(code)) {
+    case "wm":         return WM_NAV;
+    case "md":         return ADMIN_NAV;
+    case "hr":         return HR_NAV;
+    case "finance":    return FINANCE_NAV;
+    case "compliance": return COMPLIANCE_NAV;
+    default:           return DEFAULT_NAV;
   }
 }
 
@@ -344,12 +359,10 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
   const [collapsed, setCollapsed]   = useState(false);
   const [subOpen, setSubOpen]       = useState(false);
-  const [posOpen, setPosOpen]       = useState(false);
   const [cmdOpen, setCmdOpen]       = useState(false);
   const [notifOpen, setNotifOpen]   = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const subRef  = useRef<HTMLDivElement>(null);
-  const posRef  = useRef<HTMLDivElement>(null);
   const userRef = useRef<HTMLDivElement>(null);
 
   const unread = NOTIFS.filter(n => !n.read).length;
@@ -366,7 +379,6 @@ export function AppLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     function outside(e: MouseEvent) {
       if (subRef.current  && !subRef.current.contains(e.target as Node))  setSubOpen(false);
-      if (posRef.current  && !posRef.current.contains(e.target as Node))  setPosOpen(false);
       if (userRef.current && !userRef.current.contains(e.target as Node)) setUserMenuOpen(false);
     }
     document.addEventListener("mousedown", outside);
@@ -394,21 +406,22 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
   const initials     = user?.DisplayName?.split(" ").slice(0, 2).map(w => w[0]).join("").toUpperCase() ?? "?";
   const canSwitch    = subsidiaries.length > 1;
-  const canSwitchPos = positions.length > 1;
   const navGroups    = navForRole(primaryCode);
   const allNavItems  = navGroups.flatMap(g => g.items);
   const activeItem   = allNavItems.find(i => pathname === i.href || pathname.startsWith(i.href + "/"));
   const activeGrp    = navGroups.find(g => g.items.some(i => pathname === i.href || pathname.startsWith(i.href + "/")));
   const W = collapsed ? 60 : 260;
 
-  // Role badge colour
-  const roleBadge: Record<string, { bg: string; text: string }> = {
-    WEALTH_MANAGER:    { bg: "#eff6ff", text: "#2563eb" },
-    MANAGING_DIRECTOR: { bg: "#f5f3ff", text: "#7c3aed" },
-    COMPLIANCE_MANAGER:{ bg: "#ecfdf5", text: "#059669" },
-    FINANCE_OFFICER:   { bg: "#fffbeb", text: "#d97706" },
+  // Role badge colour — derived from family so any new position code works automatically
+  const FAMILY_BADGE: Record<string, { bg: string; text: string }> = {
+    wm:         { bg: "#eff6ff", text: "#2563eb" },
+    md:         { bg: "#f5f3ff", text: "#7c3aed" },
+    hr:         { bg: "#ecfeff", text: "#0891b2" },
+    finance:    { bg: "#fffbeb", text: "#d97706" },
+    compliance: { bg: "#ecfdf5", text: "#059669" },
+    default:    { bg: "#f1f5f9", text: "#475569" },
   };
-  const rb = roleBadge[primaryCode ?? ""] ?? { bg: "#f1f5f9", text: "#475569" };
+  const rb = FAMILY_BADGE[roleFamily(primaryCode)] ?? FAMILY_BADGE.default;
 
   return (
     <div className="flex min-h-screen w-full" style={{ background: "var(--pg-bg)" }}>
@@ -484,38 +497,13 @@ export function AppLayout({ children }: { children: ReactNode }) {
           </div>
         )}
 
-        {/* Role switcher — demo banner when no real org assignment */}
+        {/* Role label — static display, no dropdown */}
         {!collapsed && activePosition && (
-          <div className="relative z-20 px-3 pb-3" ref={posRef}>
-            {isDemoMode && (
-              <div className="mb-2 px-2 py-1 rounded-md flex items-center gap-1.5"
-                   style={{ background: "rgba(245,158,11,0.15)", border: "1px solid rgba(245,158,11,0.25)" }}>
-                <span className="text-[8px] font-bold uppercase tracking-widest" style={{ color: "#fbbf24" }}>Demo Mode</span>
-                <span className="text-[9px]" style={{ color: "rgba(251,191,36,0.7)" }}>— no org assignment</span>
-              </div>
-            )}
-            <button onClick={() => canSwitchPos && setPosOpen(o => !o)}
-                    className={cn("w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left transition-all",
-                                  canSwitchPos ? "cursor-pointer hover:bg-white/[0.06]" : "cursor-default")}
-                    style={{ background: isDemoMode ? "rgba(245,158,11,0.1)" : "rgba(255,255,255,0.04)", border: `1px solid ${isDemoMode ? "rgba(245,158,11,0.2)" : "rgba(255,255,255,0.06)"}` }}>
+          <div className="px-3 pb-3">
+            <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg"
+                 style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
               <span className="flex-1 text-[12px] font-semibold text-white truncate">{activePosition.title}</span>
-              {canSwitchPos && <ChevronDown className={cn("w-3.5 h-3.5 shrink-0 transition-transform", posOpen && "rotate-180")} style={{ color: "rgba(148,163,184,0.4)" }} />}
-            </button>
-            {posOpen && canSwitchPos && (
-              <div className="absolute top-full left-3 right-3 mt-0.5 rounded-xl overflow-hidden" style={{ background: "#07091a", border: "1px solid rgba(255,255,255,0.1)", boxShadow: "0 8px 24px rgba(0,0,0,0.6)", zIndex: 100 }}>
-                <p className="px-3 py-2 text-[9px] font-bold uppercase tracking-widest"
-                   style={{ color: "rgba(148,163,184,0.35)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                  {isDemoMode ? "Preview Role (Demo)" : "Switch Role"}
-                </p>
-                {positions.map(p => (
-                  <button key={p.id} onClick={() => { setActive(p); setPosOpen(false); }}
-                          className="w-full flex items-center justify-between gap-2 px-3 py-2.5 hover:bg-white/[0.05] transition-colors">
-                    <span className={cn("text-[13px] font-medium", p.id === activePosition.id ? "text-white" : "text-slate-400")}>{p.title}</span>
-                    {p.id === activePosition.id && <Check className="w-3.5 h-3.5 text-blue-400" />}
-                  </button>
-                ))}
-              </div>
-            )}
+            </div>
           </div>
         )}
 

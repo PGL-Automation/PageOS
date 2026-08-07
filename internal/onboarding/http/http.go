@@ -49,6 +49,8 @@ func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	r.Post("/cases/{id}/submit", h.submitCase)
 	r.Post("/cases/{id}/compliance", h.recordComplianceCheck)
 	r.Get("/cases/{id}/compliance", h.listComplianceChecks)
+	r.Get("/cases/{id}/notes", h.listCaseNotes)
+	r.Post("/cases/{id}/notes", h.addCaseNote)
 	r.Post("/cases/{id}/approve", h.approveCase)
 	r.Post("/cases/{id}/reject", h.rejectCase)
 	r.Post("/cases/{id}/return", h.returnCase)
@@ -163,10 +165,14 @@ func (h *Handler) createCase(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) listCases(w http.ResponseWriter, r *http.Request) {
-	sid, err := uuid.Parse(r.URL.Query().Get("subsidiary_id"))
-	if err != nil {
-		httpx.Error(w, http.StatusBadRequest, "bad_request", "subsidiary_id required")
-		return
+	var sid *uuid.UUID
+	if s := r.URL.Query().Get("subsidiary_id"); s != "" {
+		id, err := uuid.Parse(s)
+		if err != nil {
+			httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid subsidiary_id")
+			return
+		}
+		sid = &id
 	}
 	state := r.URL.Query().Get("state")
 	cases, err := h.svc.ListCases(r.Context(), sid, state)
@@ -337,12 +343,54 @@ func (h *Handler) listComplianceChecks(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid case id")
 		return
 	}
-	checks, err := h.svc.ListComplianceChecks(r.Context(), caseID)
+	checks, err := h.svc.ListComplianceChecksWithNames(r.Context(), caseID)
 	if err != nil {
 		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
 		return
 	}
+	if checks == nil {
+		checks = []domain.ComplianceCheckWithName{}
+	}
 	httpx.JSON(w, http.StatusOK, checks)
+}
+
+func (h *Handler) listCaseNotes(w http.ResponseWriter, r *http.Request) {
+	caseID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid case id")
+		return
+	}
+	notes, err := h.svc.ListCaseNotes(r.Context(), caseID)
+	if err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		return
+	}
+	if notes == nil {
+		notes = []domain.CaseNote{}
+	}
+	httpx.JSON(w, http.StatusOK, notes)
+}
+
+func (h *Handler) addCaseNote(w http.ResponseWriter, r *http.Request) {
+	caseID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid case id")
+		return
+	}
+	var in struct {
+		NoteType string `json:"note_type"`
+		Content  string `json:"content"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	user, _ := identityhttp.UserFrom(r.Context())
+	note, err := h.svc.AddCaseNote(r.Context(), caseID, user.ID, in.NoteType, in.Content)
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "add_note_failed", err.Error())
+		return
+	}
+	httpx.JSON(w, http.StatusCreated, note)
 }
 
 func (h *Handler) approveCase(w http.ResponseWriter, r *http.Request) {

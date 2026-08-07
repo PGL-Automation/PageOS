@@ -3,6 +3,7 @@ package reconhttp
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -54,6 +55,8 @@ func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	r.Post("/runs/{id}/close", h.closeRun)
 	// Un-match a previously matched pair, returning both sides to unmatched state.
 	r.Post("/runs/{id}/matches/{matchId}/unmatch", h.unmatchRecord)
+	// Export a full reconciliation result as an Excel workbook.
+	r.Get("/runs/{id}/export", h.exportRun)
 	return r
 }
 
@@ -444,6 +447,25 @@ func (h *Handler) unmatchRecord(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.JSON(w, http.StatusOK, map[string]string{"status": "unmatched"})
+}
+
+func (h *Handler) exportRun(w http.ResponseWriter, r *http.Request) {
+	runID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid run id")
+		return
+	}
+	f, filename, err := h.svc.ExportRunExcel(r.Context(), runID)
+	if err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		return
+	}
+	defer f.Close()
+	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	if err := f.Write(w); err != nil {
+		return
+	}
 }
 
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {

@@ -33,7 +33,9 @@ func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	r.Post("/subsidiaries", h.createSubsidiary)
 	r.Get("/subsidiaries", h.listSubsidiaries)
 	r.Post("/departments", h.createDepartment)
+	r.Get("/departments", h.listDepartments)
 	r.Post("/positions", h.createPosition)
+	r.Patch("/positions/{id}", h.updatePosition)
 	r.Post("/persons", h.createPerson)
 	r.Post("/assignments", h.createAssignment)
 	r.Get("/positions/{id}/holders", h.resolveHolders)
@@ -78,6 +80,27 @@ func (h *Handler) listSubsidiaries(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, subs)
 }
 
+func (h *Handler) listDepartments(w http.ResponseWriter, r *http.Request) {
+	var sid *uuid.UUID
+	if s := r.URL.Query().Get("subsidiary_id"); s != "" {
+		id, err := uuid.Parse(s)
+		if err != nil {
+			httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid subsidiary_id")
+			return
+		}
+		sid = &id
+	}
+	deps, err := h.svc.ListDepartments(r.Context(), sid)
+	if err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		return
+	}
+	if deps == nil {
+		deps = []organization.Department{}
+	}
+	httpx.JSON(w, http.StatusOK, deps)
+}
+
 func (h *Handler) createDepartment(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		SubsidiaryID uuid.UUID `json:"subsidiary_id"`
@@ -101,16 +124,41 @@ func (h *Handler) createPosition(w http.ResponseWriter, r *http.Request) {
 		DepartmentID *uuid.UUID `json:"department_id"`
 		Code         string     `json:"code"`
 		Title        string     `json:"title"`
+		ReportsToID  *uuid.UUID `json:"reports_to_position_id"`
 	}
 	if !decode(w, r, &in) {
 		return
 	}
-	pos, err := h.svc.CreatePosition(r.Context(), in.SubsidiaryID, in.DepartmentID, in.Code, in.Title)
+	if in.Code == "" || in.Title == "" {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "code and title are required")
+		return
+	}
+	pos, err := h.svc.CreatePosition(r.Context(), in.SubsidiaryID, in.DepartmentID, in.Code, in.Title, in.ReportsToID)
 	if err != nil {
 		httpx.Error(w, http.StatusBadRequest, "create_failed", err.Error())
 		return
 	}
 	httpx.JSON(w, http.StatusCreated, pos)
+}
+
+func (h *Handler) updatePosition(w http.ResponseWriter, r *http.Request) {
+	posID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid position id")
+		return
+	}
+	var in struct {
+		Title       string     `json:"title"`
+		ReportsToID *uuid.UUID `json:"reports_to_position_id"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if err := h.svc.UpdatePosition(r.Context(), posID, in.Title, in.ReportsToID); err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "update_failed", err.Error())
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]string{"status": "updated"})
 }
 
 func (h *Handler) createPerson(w http.ResponseWriter, r *http.Request) {
@@ -133,12 +181,13 @@ func (h *Handler) createPerson(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) createAssignment(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		PersonID      uuid.UUID  `json:"person_id"`
-		PositionID    uuid.UUID  `json:"position_id"`
-		SubsidiaryID  uuid.UUID  `json:"subsidiary_id"`
-		DepartmentID  *uuid.UUID `json:"department_id"`
-		EffectiveFrom string     `json:"effective_from"` // YYYY-MM-DD
-		IsPrimary     bool       `json:"is_primary"`
+		PersonID               uuid.UUID  `json:"person_id"`
+		PositionID             uuid.UUID  `json:"position_id"`
+		SubsidiaryID           uuid.UUID  `json:"subsidiary_id"`
+		DepartmentID           *uuid.UUID `json:"department_id"`
+		EffectiveFrom          string     `json:"effective_from"` // YYYY-MM-DD
+		IsPrimary              bool       `json:"is_primary"`
+		ManagerOverridePersonID *uuid.UUID `json:"manager_override_person_id"`
 	}
 	if !decode(w, r, &in) {
 		return
@@ -148,7 +197,7 @@ func (h *Handler) createAssignment(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "effective_from must be YYYY-MM-DD")
 		return
 	}
-	a, err := h.svc.AssignPosition(r.Context(), in.PersonID, in.PositionID, in.SubsidiaryID, in.DepartmentID, from, in.IsPrimary)
+	a, err := h.svc.AssignPosition(r.Context(), in.PersonID, in.PositionID, in.SubsidiaryID, in.DepartmentID, from, in.IsPrimary, in.ManagerOverridePersonID)
 	if err != nil {
 		httpx.Error(w, http.StatusBadRequest, "create_failed", err.Error())
 		return
@@ -276,8 +325,18 @@ func (h *Handler) mySubsidiaries(w http.ResponseWriter, r *http.Request) {
 }
 
 // listUsers returns all identity users with their current org assignments.
-// Intended for the HR user-management screen.
+// Restricted to HR managers, HR officers, and group admins.
 func (h *Handler) listUsers(w http.ResponseWriter, r *http.Request) {
+	caller, ok := identityhttp.UserFrom(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated")
+		return
+	}
+	hasAccess, err := h.svc.HasRole(r.Context(), caller.ID, "HR_MANAGER", "HR_OFFICER", "GROUP_ADMIN")
+	if err != nil || !hasAccess {
+		httpx.Error(w, http.StatusForbidden, "forbidden", "HR or admin access required")
+		return
+	}
 	users, err := h.svc.ListUsersWithAssignments(r.Context())
 	if err != nil {
 		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())

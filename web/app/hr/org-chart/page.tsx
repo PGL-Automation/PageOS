@@ -64,8 +64,8 @@ function OrgTreeNode({ node, depth = 0 }: { node: TreeNode; depth?: number }) {
         <p className="text-[9px] font-mono mt-0.5 opacity-60" style={{ color: c.text }}>{node.code}</p>
         {node.holder_names.length > 0 ? (
           <div className="mt-2 space-y-0.5">
-            {node.holder_names.map(name => (
-              <div key={name} className="flex items-center justify-center gap-1">
+            {[...new Set(node.holder_names)].map((name, i) => (
+              <div key={`${name}-${i}`} className="flex items-center justify-center gap-1">
                 <div className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white"
                      style={{ background: c.text }}>
                   {name.split(" ").slice(0,2).map(w => w[0]).join("").toUpperCase()}
@@ -118,7 +118,7 @@ export default function OrgChartPage() {
     queryFn: async () => {
       const res = await fetch(`${BASE}/api/v1/org/subsidiaries`, { credentials: "include" });
       if (!res.ok) return [];
-      return res.json() as Promise<SubsidiaryOption[]>;
+      return ((await res.json()) ?? []) as SubsidiaryOption[];
     },
   });
 
@@ -128,7 +128,7 @@ export default function OrgChartPage() {
       const params = selectedSub ? `?subsidiary_id=${selectedSub}` : "";
       const res = await fetch(`${BASE}/api/v1/org/org-chart${params}`, { credentials: "include" });
       if (!res.ok) return [];
-      return res.json() as Promise<OrgNode[]>;
+      return ((await res.json()) ?? []) as OrgNode[];
     },
   });
 

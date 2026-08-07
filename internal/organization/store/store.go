@@ -198,11 +198,13 @@ func (s *Store) ListUsersWithAssignments(ctx context.Context) ([]UserWithAssignm
 
 // PositionRow is the view returned by GetPositionsBySubsidiary.
 type PositionRow struct {
-	ID           uuid.UUID  `json:"id"`
-	Code         string     `json:"code"`
-	Title        string     `json:"title"`
-	SubsidiaryID *uuid.UUID `json:"subsidiary_id,omitempty"`
-	IsGroupLevel bool       `json:"is_group_level"`
+	ID                  uuid.UUID  `json:"id"`
+	Code                string     `json:"code"`
+	Title               string     `json:"title"`
+	SubsidiaryID        *uuid.UUID `json:"subsidiary_id,omitempty"`
+	IsGroupLevel        bool       `json:"is_group_level"`
+	ReportsToTitle      string     `json:"reports_to_title,omitempty"`
+	ReportsToPositionID *uuid.UUID `json:"reports_to_position_id,omitempty"`
 }
 
 // OrgChartNode is a flat position row with its holders for the org chart view.
@@ -224,7 +226,7 @@ func (s *Store) GetOrgChart(ctx context.Context, subsidiaryID *uuid.UUID) ([]Org
 			SELECT
 				p.id, p.code, p.title, p.reports_to_position_id,
 				COALESCE(
-					array_agg(u.display_name ORDER BY u.display_name)
+					array_agg(DISTINCT u.display_name)
 					FILTER (WHERE u.display_name IS NOT NULL),
 					'{}'::text[]
 				) AS holder_names
@@ -245,7 +247,7 @@ func (s *Store) GetOrgChart(ctx context.Context, subsidiaryID *uuid.UUID) ([]Org
 			SELECT
 				p.id, p.code, p.title, p.reports_to_position_id,
 				COALESCE(
-					array_agg(u.display_name ORDER BY u.display_name)
+					array_agg(DISTINCT u.display_name)
 					FILTER (WHERE u.display_name IS NOT NULL),
 					'{}'::text[]
 				) AS holder_names
@@ -291,19 +293,25 @@ func (s *Store) GetPositionsBySubsidiary(ctx context.Context, subsidiaryID *uuid
 	var err error
 	if subsidiaryID != nil {
 		const q = `
-			SELECT id, code, title, subsidiary_id,
-			       (subsidiary_id IS NULL) AS is_group_level
-			FROM organization.position
-			WHERE subsidiary_id = $1 OR subsidiary_id IS NULL
-			ORDER BY subsidiary_id NULLS LAST, title
+			SELECT p.id, p.code, p.title, p.subsidiary_id,
+			       (p.subsidiary_id IS NULL) AS is_group_level,
+			       COALESCE(parent.title, '') AS reports_to_title,
+			       p.reports_to_position_id
+			FROM organization.position p
+			LEFT JOIN organization.position parent ON parent.id = p.reports_to_position_id
+			WHERE p.subsidiary_id = $1 OR p.subsidiary_id IS NULL
+			ORDER BY p.subsidiary_id NULLS LAST, p.title
 		`
 		rows, err = s.pool.Query(ctx, q, *subsidiaryID)
 	} else {
 		const q = `
-			SELECT id, code, title, subsidiary_id,
-			       (subsidiary_id IS NULL) AS is_group_level
-			FROM organization.position
-			ORDER BY subsidiary_id NULLS LAST, title
+			SELECT p.id, p.code, p.title, p.subsidiary_id,
+			       (p.subsidiary_id IS NULL) AS is_group_level,
+			       COALESCE(parent.title, '') AS reports_to_title,
+			       p.reports_to_position_id
+			FROM organization.position p
+			LEFT JOIN organization.position parent ON parent.id = p.reports_to_position_id
+			ORDER BY p.subsidiary_id NULLS LAST, p.title
 		`
 		rows, err = s.pool.Query(ctx, q)
 	}
@@ -314,7 +322,7 @@ func (s *Store) GetPositionsBySubsidiary(ctx context.Context, subsidiaryID *uuid
 	var out []PositionRow
 	for rows.Next() {
 		var p PositionRow
-		if err := rows.Scan(&p.ID, &p.Code, &p.Title, &p.SubsidiaryID, &p.IsGroupLevel); err != nil {
+		if err := rows.Scan(&p.ID, &p.Code, &p.Title, &p.SubsidiaryID, &p.IsGroupLevel, &p.ReportsToTitle, &p.ReportsToPositionID); err != nil {
 			return nil, err
 		}
 		out = append(out, p)
@@ -322,20 +330,114 @@ func (s *Store) GetPositionsBySubsidiary(ctx context.Context, subsidiaryID *uuid
 	return out, rows.Err()
 }
 
+// CreatePositionFull inserts a new position and optionally sets its reporting parent.
+func (s *Store) CreatePositionFull(ctx context.Context, subsidiaryID, departmentID *uuid.UUID, code, title string, reportsTo *uuid.UUID) (PositionRow, error) {
+	var p PositionRow
+	const insertQ = `
+		INSERT INTO organization.position (subsidiary_id, department_id, code, title)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id, code, title, subsidiary_id, (subsidiary_id IS NULL), '', NULL
+	`
+	if err := s.pool.QueryRow(ctx, insertQ, subsidiaryID, departmentID, code, title).
+		Scan(&p.ID, &p.Code, &p.Title, &p.SubsidiaryID, &p.IsGroupLevel, &p.ReportsToTitle, &p.ReportsToPositionID); err != nil {
+		return PositionRow{}, err
+	}
+	if reportsTo != nil {
+		if err := s.UpdatePosition(ctx, p.ID, "", reportsTo); err != nil {
+			return p, err
+		}
+		p.ReportsToPositionID = reportsTo
+	}
+	return p, nil
+}
+
+// UpdatePosition updates a position's title (if non-empty) and reporting parent.
+// Pass nil reportsTo to clear the reporting line (top of hierarchy).
+func (s *Store) UpdatePosition(ctx context.Context, positionID uuid.UUID, title string, reportsTo *uuid.UUID) error {
+	const q = `
+		UPDATE organization.position
+		SET    title                  = CASE WHEN $1 != '' THEN $1 ELSE title END,
+		       reports_to_position_id = $2
+		WHERE  id = $3
+	`
+	_, err := s.pool.Exec(ctx, q, title, reportsTo, positionID)
+	return err
+}
+
+// SetAssignmentManagerOverride sets (or clears) the direct manager override on an assignment.
+func (s *Store) SetAssignmentManagerOverride(ctx context.Context, assignmentID uuid.UUID, managerPersonID *uuid.UUID) error {
+	const q = `UPDATE organization.assignment SET manager_override_person_id = $1 WHERE id = $2`
+	_, err := s.pool.Exec(ctx, q, managerPersonID, assignmentID)
+	return err
+}
+
+// HasRole returns true if the user currently holds any position with one of the given codes.
+func (s *Store) HasRole(ctx context.Context, userID uuid.UUID, codes []string) (bool, error) {
+	const q = `
+		SELECT EXISTS (
+			SELECT 1
+			FROM organization.assignment a
+			JOIN organization.position pos ON pos.id = a.position_id
+			JOIN organization.person per ON per.id = a.person_id
+			WHERE per.user_id = $1
+			  AND pos.code = ANY($2::text[])
+			  AND a.effective_from <= CURRENT_DATE
+			  AND (a.effective_to IS NULL OR a.effective_to >= CURRENT_DATE)
+		)
+	`
+	var exists bool
+	err := s.pool.QueryRow(ctx, q, userID, codes).Scan(&exists)
+	return exists, err
+}
+
+// DepartmentRow is returned by ListDepartments.
+type DepartmentRow struct {
+	ID           uuid.UUID `json:"id"`
+	SubsidiaryID uuid.UUID `json:"subsidiary_id"`
+	Code         string    `json:"code"`
+	Name         string    `json:"name"`
+}
+
+// ListDepartments returns all departments, optionally filtered by subsidiary.
+func (s *Store) ListDepartments(ctx context.Context, subsidiaryID *uuid.UUID) ([]DepartmentRow, error) {
+	const q = `SELECT id, subsidiary_id, code, name FROM organization.department WHERE ($1::uuid IS NULL OR subsidiary_id = $1) ORDER BY name`
+	rows, err := s.pool.Query(ctx, q, subsidiaryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []DepartmentRow
+	for rows.Next() {
+		var d DepartmentRow
+		if err := rows.Scan(&d.ID, &d.SubsidiaryID, &d.Code, &d.Name); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
 // GetUserPositionsInSubsidiary returns all positions currently held by the
 // specified user within the specified subsidiary (effective today).
-// Primary assignments are returned first.
+// Group-level positions (position.subsidiary_id IS NULL) are always included
+// regardless of which subsidiary is queried — they span the whole organisation.
+// Primary assignments are returned first; DISTINCT ON avoids duplicates when a
+// group-level position is assigned across multiple subsidiaries.
 func (s *Store) GetUserPositionsInSubsidiary(ctx context.Context, userID, subsidiaryID uuid.UUID) ([]PositionInSubsidiary, error) {
 	const q = `
-		SELECT p.id, p.code, p.title, p.subsidiary_id, p.department_id, a.is_primary
+		SELECT DISTINCT ON (p.id)
+		       p.id, p.code, p.title, p.subsidiary_id, p.department_id, a.is_primary
 		FROM organization.assignment a
 		JOIN organization.position   p   ON p.id   = a.position_id
 		JOIN organization.person     per ON per.id  = a.person_id
 		WHERE per.user_id      = $1
-		  AND a.subsidiary_id  = $2
+		  AND (
+		      a.subsidiary_id  = $2
+		      OR p.subsidiary_id IS NULL
+		  )
 		  AND a.effective_from <= CURRENT_DATE
 		  AND (a.effective_to IS NULL OR a.effective_to >= CURRENT_DATE)
-		ORDER BY a.is_primary DESC
+		ORDER BY p.id, a.is_primary DESC
 	`
 	rows, err := s.pool.Query(ctx, q, userID, subsidiaryID)
 	if err != nil {

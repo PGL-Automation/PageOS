@@ -5,19 +5,26 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Separator } from "@/components/ui/separator";
 import {
-  Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
 } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Save } from "lucide-react";
+import {
+  Loader2, Save, User, Shield, Users, Briefcase,
+  Share2, TrendingUp, Building, FileCheck,
+} from "lucide-react";
 
 const schema = z.object({
-  // Personal
   full_name: z.string().min(2, "Full name is required"),
   gender: z.string().min(1, "Gender is required"),
   mothers_maiden_name: z.string().optional(),
@@ -30,49 +37,41 @@ const schema = z.object({
   email: z.string().email("Invalid email address"),
   tin: z.string().optional(),
 
-  // Conditional
   is_us_person: z.boolean(),
   us_address: z.string().optional(),
 
-  // Next of kin
   next_of_kin_name: z.string().optional(),
   next_of_kin_email: z.string().optional(),
   next_of_kin_phone: z.string().optional(),
 
-  // Employment
   employer: z.string().optional(),
   employer_address: z.string().optional(),
   official_email: z.string().optional(),
   official_phone: z.string().optional(),
 
-  // PEP
   is_pep: z.boolean(),
   pep_position: z.string().optional(),
   pep_period: z.string().optional(),
 
-  // Social media
   social_facebook: z.string().optional(),
   social_instagram: z.string().optional(),
   social_twitter: z.string().optional(),
   social_linkedin: z.string().optional(),
 
-  // Investment
   source_of_funds: z.string().min(1, "Source of funds is required"),
   source_of_wealth: z.string().min(1, "Source of wealth is required"),
   investment_purpose: z.string().min(1, "Investment purpose is required"),
-  investment_amount_kobo: z.number().min(0, "Amount must be positive"),
-  investment_amount_words: z.string().optional(),
+  investment_currency: z.enum(["NGN", "USD"]),
+  investment_amount: z.number().min(0, "Amount must be positive"),
   tenor: z.string().optional(),
   interest_rate_bps: z.number().min(0),
 
-  // Banking
   bank_name: z.string().min(1, "Bank name is required"),
   bank_account_name: z.string().min(1, "Account name is required"),
   bank_account_number: z.string().min(10, "Account number must be at least 10 digits"),
   bvn: z.string().min(11, "BVN must be 11 digits").max(11, "BVN must be 11 digits"),
   sort_code: z.string().optional(),
 
-  // Declarations
   declaration_legal_capacity: z.boolean(),
   declaration_info_correct: z.boolean(),
   declaration_tnc_accepted: z.boolean().refine(v => v === true, "Must accept T&Cs"),
@@ -87,9 +86,47 @@ interface ApplicationFormProps {
   readOnly?: boolean;
 }
 
+/* ─── Section header ─────────────────────────────────────────────── */
+function SectionHeader({
+  icon: Icon,
+  title,
+  description,
+}: {
+  icon: React.ElementType;
+  title: string;
+  description?: string;
+}) {
+  return (
+    <div className="flex items-start gap-3 mb-5">
+      <div
+        className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
+        style={{ background: "linear-gradient(135deg,#eff6ff,#dbeafe)", border: "1px solid #bfdbfe" }}
+      >
+        <Icon className="w-4 h-4" style={{ color: "#2563eb" }} />
+      </div>
+      <div>
+        <h3 className="text-[13px] font-bold" style={{ color: "var(--pg-text-1)" }}>{title}</h3>
+        {description && (
+          <p className="text-[11px] mt-0.5" style={{ color: "var(--pg-text-3)" }}>{description}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Divider ────────────────────────────────────────────────────── */
+function SectionDivider() {
+  return <div className="my-6" style={{ height: 1, background: "var(--pg-row-border)" }} />;
+}
+
 export function ApplicationForm({ caseId, initialData, readOnly }: ApplicationFormProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Detect existing currency from stored kobo amount & a stored currency hint
+  const storedCurrency = (initialData?.investment_currency as string) ?? "NGN";
+  const storedKobo = Number(initialData?.investment_amount_kobo ?? 0);
+  const storedAmount = storedKobo > 0 ? storedKobo / 100 : 0;
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -124,8 +161,8 @@ export function ApplicationForm({ caseId, initialData, readOnly }: ApplicationFo
       source_of_funds: (initialData?.source_of_funds as string) ?? "",
       source_of_wealth: (initialData?.source_of_wealth as string) ?? "",
       investment_purpose: (initialData?.investment_purpose as string) ?? "",
-      investment_amount_kobo: Number(initialData?.investment_amount_kobo ?? 0),
-      investment_amount_words: (initialData?.investment_amount_words as string) ?? "",
+      investment_currency: storedCurrency as "NGN" | "USD",
+      investment_amount: storedAmount,
       tenor: (initialData?.tenor as string) ?? "",
       interest_rate_bps: Number(initialData?.interest_rate_bps ?? 0),
       bank_name: (initialData?.bank_name as string) ?? "",
@@ -142,9 +179,11 @@ export function ApplicationForm({ caseId, initialData, readOnly }: ApplicationFo
 
   const isPEP = form.watch("is_pep");
   const isUSPerson = form.watch("is_us_person");
+  const currency = form.watch("investment_currency");
 
   const saveMutation = useMutation({
     mutationFn: async (values: FormValues) => {
+      const amountKobo = Math.round(values.investment_amount * 100);
       const { data, error } = await api.PUT("/onboarding/cases/{id}/application", {
         params: { path: { id: caseId } },
         body: {
@@ -181,8 +220,8 @@ export function ApplicationForm({ caseId, initialData, readOnly }: ApplicationFo
           source_of_funds: values.source_of_funds,
           source_of_wealth: values.source_of_wealth,
           investment_purpose: values.investment_purpose,
-          investment_amount_kobo: values.investment_amount_kobo,
-          investment_amount_words: values.investment_amount_words ?? "",
+          investment_amount_kobo: amountKobo,
+          investment_amount_words: values.investment_currency,
           tenor: values.tenor ?? "",
           interest_rate_bps: values.interest_rate_bps,
           bank_name: values.bank_name,
@@ -212,194 +251,411 @@ export function ApplicationForm({ caseId, initialData, readOnly }: ApplicationFo
     saveMutation.mutate(values);
   }
 
-  const F = ({ name, label, placeholder, type = "text", description }: {
-    name: keyof FormValues; label: string; placeholder?: string; type?: string; description?: string;
+  /* ── Reusable field components ─────────────────────────────────── */
+  const F = ({
+    name,
+    label,
+    placeholder,
+    type = "text",
+  }: {
+    name: keyof FormValues;
+    label: string;
+    placeholder?: string;
+    type?: string;
   }) => (
-    <FormField control={form.control} name={name} render={({ field }) => (
-      <FormItem>
-        <FormLabel>{label}</FormLabel>
-        <FormControl>
-          <Input
-            type={type}
-            placeholder={placeholder}
-            disabled={readOnly}
-            {...field}
-            value={typeof field.value === "boolean" ? undefined : String(field.value ?? "")}
-            onChange={type === "number" ? (e) => field.onChange(e.target.valueAsNumber || 0) : field.onChange}
-          />
-        </FormControl>
-        {description && <FormDescription>{description}</FormDescription>}
-        <FormMessage />
-      </FormItem>
-    )} />
+    <FormField
+      control={form.control}
+      name={name}
+      render={({ field }) => (
+        <FormItem>
+          <FormLabel className="text-[12px] font-medium" style={{ color: "var(--pg-text-2)" }}>
+            {label}
+          </FormLabel>
+          <FormControl>
+            <Input
+              type={type}
+              placeholder={placeholder}
+              disabled={readOnly}
+              {...field}
+              value={typeof field.value === "boolean" ? undefined : String(field.value ?? "")}
+              onChange={
+                type === "number"
+                  ? (e) => field.onChange(e.target.valueAsNumber || 0)
+                  : field.onChange
+              }
+              className="h-9 text-[13px] rounded-lg"
+            />
+          </FormControl>
+          <FormMessage className="text-[11px]" />
+        </FormItem>
+      )}
+    />
   );
 
-  const C = ({ name, label, description }: { name: keyof FormValues; label: string; description?: string }) => (
-    <FormField control={form.control} name={name} render={({ field }) => (
-      <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
-        <FormControl>
-          <Checkbox checked={Boolean(field.value)} onCheckedChange={field.onChange} disabled={readOnly} />
-        </FormControl>
-        <div className="space-y-1 leading-none">
-          <FormLabel>{label}</FormLabel>
-          {description && <FormDescription>{description}</FormDescription>}
-        </div>
-      </FormItem>
-    )} />
+  const C = ({
+    name,
+    label,
+    description,
+  }: {
+    name: keyof FormValues;
+    label: string;
+    description?: string;
+  }) => (
+    <FormField
+      control={form.control}
+      name={name}
+      render={({ field }) => (
+        <FormItem
+          className="flex flex-row items-start gap-3 p-3.5 rounded-xl"
+          style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-row-border)" }}
+        >
+          <FormControl>
+            <Checkbox
+              checked={Boolean(field.value)}
+              onCheckedChange={field.onChange}
+              disabled={readOnly}
+              className="mt-0.5"
+            />
+          </FormControl>
+          <div className="space-y-0.5 leading-none">
+            <FormLabel className="text-[12px] font-semibold cursor-pointer" style={{ color: "var(--pg-text-1)" }}>
+              {label}
+            </FormLabel>
+            {description && (
+              <p className="text-[11px]" style={{ color: "var(--pg-text-3)" }}>{description}</p>
+            )}
+          </div>
+        </FormItem>
+      )}
+    />
   );
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-0">
 
-        {/* ── Personal Information ────────────────────────────── */}
-        <Card>
-          <CardHeader><CardTitle>Personal Information</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <F name="full_name" label="Full Name (Surname First)" placeholder="Doe, John Adebayo" />
-              <F name="gender" label="Gender" placeholder="Male / Female / Other" />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <F name="mothers_maiden_name" label="Mother's Maiden Name" placeholder="Okafor" />
-              <F name="date_of_birth" label="Date of Birth" type="date" />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <F name="place_of_birth" label="Place of Birth" placeholder="Lagos, Nigeria" />
-              <F name="country_of_origin" label="Country of Origin" placeholder="Nigeria" />
-            </div>
-            <F name="place_of_residence" label="Place of Residence" placeholder="Lagos" />
-            <F name="residential_address" label="Residential Address" placeholder="12 Victoria Island, Lagos" />
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <F name="phone_numbers" label="Phone Number(s)" placeholder="+234801..." description="Separate multiple numbers with commas" />
-              <F name="email" label="Email Address" type="email" placeholder="john@example.com" />
-            </div>
-            <F name="tin" label="TIN (Tax Identification Number)" placeholder="12345678-0001" />
-          </CardContent>
-        </Card>
+        {/* ── 1. Personal Information ──────────────────────────── */}
+        <SectionHeader
+          icon={User}
+          title="Personal Information"
+          description="Legal name, date of birth, and contact details"
+        />
 
-        {/* ── US Person / Conditional ─────────────────────────── */}
-        <Card>
-          <CardHeader><CardTitle>FATCA / US Person Declaration</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <C name="is_us_person" label="I am a US Person / FATCA Subject" description="Check if you have US citizenship, residency, or tax obligations." />
-            {isUSPerson && (
-              <F name="us_address" label="US Correspondence Address" placeholder="123 Main St, New York, NY 10001" />
-            )}
-          </CardContent>
-        </Card>
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <F name="full_name" label="Full Name (Surname First)" placeholder="Okonkwo, Chidera James" />
 
-        {/* ── Next of Kin ─────────────────────────────────────── */}
-        <Card>
-          <CardHeader><CardTitle>Next of Kin</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <F name="next_of_kin_name" label="Full Name" placeholder="Jane Doe" />
-              <F name="next_of_kin_email" label="Email" type="email" placeholder="jane@example.com" />
-              <F name="next_of_kin_phone" label="Phone" placeholder="+234..." />
-            </div>
-          </CardContent>
-        </Card>
+            {/* Gender select */}
+            <FormField
+              control={form.control}
+              name="gender"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-[12px] font-medium" style={{ color: "var(--pg-text-2)" }}>
+                    Gender
+                  </FormLabel>
+                  <Select
+                    disabled={readOnly}
+                    onValueChange={field.onChange}
+                    value={field.value as string}
+                  >
+                    <FormControl>
+                      <SelectTrigger className="h-9 text-[13px] rounded-lg">
+                        <SelectValue placeholder="Select gender" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="male">Male</SelectItem>
+                      <SelectItem value="female">Female</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                      <SelectItem value="prefer_not_to_say">Prefer not to say</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage className="text-[11px]" />
+                </FormItem>
+              )}
+            />
+          </div>
 
-        {/* ── Employment ──────────────────────────────────────── */}
-        <Card>
-          <CardHeader><CardTitle>Employment Details</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <F name="mothers_maiden_name" label="Mother's Maiden Name" placeholder="Okafor" />
+            <F name="date_of_birth" label="Date of Birth" type="date" />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <F name="place_of_birth" label="Place of Birth" placeholder="Lagos, Nigeria" />
+            <F name="country_of_origin" label="Country of Origin" placeholder="Nigeria" />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <F name="place_of_residence" label="City of Residence" placeholder="Lagos" />
+            <F name="tin" label="TIN" placeholder="12345678-0001" />
+          </div>
+
+          <F name="residential_address" label="Residential Address" placeholder="12 Victoria Island, Lagos" />
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <F name="phone_numbers" label="Phone Number(s)" placeholder="+234 801 234 5678" />
+            <F name="email" label="Email Address" type="email" placeholder="john@example.com" />
+          </div>
+        </div>
+
+        <SectionDivider />
+
+        {/* ── 2. FATCA ─────────────────────────────────────────── */}
+        <SectionHeader
+          icon={Shield}
+          title="FATCA / US Person"
+          description="Required for US citizens, residents, or tax obligees"
+        />
+        <div className="space-y-3">
+          <C
+            name="is_us_person"
+            label="I am a US Person / FATCA Subject"
+            description="Check if you have US citizenship, residency, or tax obligations."
+          />
+          {isUSPerson && (
+            <F name="us_address" label="US Correspondence Address" placeholder="123 Main St, New York, NY 10001" />
+          )}
+        </div>
+
+        <SectionDivider />
+
+        {/* ── 3. Next of Kin ───────────────────────────────────── */}
+        <SectionHeader icon={Users} title="Next of Kin" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <F name="next_of_kin_name" label="Full Name" placeholder="Jane Doe" />
+          <F name="next_of_kin_email" label="Email" type="email" placeholder="jane@example.com" />
+          <F name="next_of_kin_phone" label="Phone" placeholder="+234..." />
+        </div>
+
+        <SectionDivider />
+
+        {/* ── 4. Employment ────────────────────────────────────── */}
+        <SectionHeader icon={Briefcase} title="Employment" />
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <F name="employer" label="Current Employer" placeholder="ABC Company Ltd" />
+            <F name="employer_address" label="Employer Address" placeholder="5 Broad Street, Lagos" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <F name="official_email" label="Official Email" type="email" placeholder="john@abccompany.com" />
+            <F name="official_phone" label="Official Phone" placeholder="+234..." />
+          </div>
+        </div>
+
+        <SectionDivider />
+
+        {/* ── 5. PEP ───────────────────────────────────────────── */}
+        <SectionHeader
+          icon={Shield}
+          title="Political Exposure (PEP)"
+          description="Declare if you hold or have held a prominent public function"
+        />
+        <div className="space-y-3">
+          <C
+            name="is_pep"
+            label="I am or have been a Politically Exposed Person"
+            description="A PEP holds or has held a prominent public function."
+          />
+          {isPEP && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <F name="employer" label="Current Employer" placeholder="ABC Company Ltd" />
-              <F name="employer_address" label="Employer Address" placeholder="5 Broad Street, Lagos" />
+              <F name="pep_position" label="Position / Office Held" placeholder="Minister of Finance" />
+              <F name="pep_period" label="Period of Office" placeholder="2018–2022" />
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <F name="official_email" label="Official Email" type="email" placeholder="john@abccompany.com" />
-              <F name="official_phone" label="Official Phone" placeholder="+234..." />
-            </div>
-          </CardContent>
-        </Card>
+          )}
+        </div>
 
-        {/* ── Political Questionnaire (PEP) ───────────────────── */}
-        <Card>
-          <CardHeader><CardTitle>Political Questionnaire (PEP)</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <C name="is_pep" label="I am or have been a Politically Exposed Person (PEP)" description="A PEP holds or has held a prominent public function." />
-            {isPEP && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <F name="pep_position" label="Position/Office Held" placeholder="Minister of Finance" />
-                <F name="pep_period" label="Period of Office" placeholder="2018–2022" />
+        <SectionDivider />
+
+        {/* ── 6. Social Media ──────────────────────────────────── */}
+        <SectionHeader
+          icon={Share2}
+          title="Social Media"
+          description="Optional — helps with identity verification"
+        />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <F name="social_facebook" label="Facebook" placeholder="@username" />
+          <F name="social_instagram" label="Instagram" placeholder="@username" />
+          <F name="social_twitter" label="Twitter / X" placeholder="@username" />
+          <F name="social_linkedin" label="LinkedIn" placeholder="linkedin.com/in/..." />
+        </div>
+
+        <SectionDivider />
+
+        {/* ── 7. Investment ────────────────────────────────────── */}
+        <SectionHeader
+          icon={TrendingUp}
+          title="Investment Details"
+          description="Source of funds and investment preferences"
+        />
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <F name="source_of_funds" label="Source of Funds" placeholder="Salary / Business Income" />
+            <F name="source_of_wealth" label="Source of Wealth" placeholder="Employment / Investments" />
+          </div>
+          <F name="investment_purpose" label="Investment Purpose" placeholder="Wealth Generation / Retirement / Education" />
+
+          {/* Amount with currency selector */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FormItem>
+              <FormLabel className="text-[12px] font-medium" style={{ color: "var(--pg-text-2)" }}>
+                Investment Amount
+              </FormLabel>
+              <div className="flex gap-2">
+                {/* Currency picker */}
+                <FormField
+                  control={form.control}
+                  name="investment_currency"
+                  render={({ field }) => (
+                    <Select
+                      disabled={readOnly}
+                      onValueChange={field.onChange}
+                      value={field.value as string}
+                    >
+                      <SelectTrigger
+                        className="w-[90px] shrink-0 h-9 text-[13px] rounded-lg font-semibold"
+                        style={{ color: "var(--pg-text-1)" }}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="NGN">₦ NGN</SelectItem>
+                        <SelectItem value="USD">$ USD</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+                {/* Amount input */}
+                <FormField
+                  control={form.control}
+                  name="investment_amount"
+                  render={({ field }) => (
+                    <>
+                      <FormControl>
+                        <div className="relative flex-1">
+                          <span
+                            className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] font-medium select-none"
+                            style={{ color: "var(--pg-text-3)" }}
+                          >
+                            {currency === "USD" ? "$" : "₦"}
+                          </span>
+                          <Input
+                            type="number"
+                            placeholder="0.00"
+                            disabled={readOnly}
+                            {...field}
+                            value={field.value === 0 ? "" : String(field.value)}
+                            onChange={(e) => field.onChange(e.target.valueAsNumber || 0)}
+                            className="h-9 text-[13px] rounded-lg pl-7"
+                          />
+                        </div>
+                      </FormControl>
+                      <FormMessage className="text-[11px]" />
+                    </>
+                  )}
+                />
               </div>
-            )}
-          </CardContent>
-        </Card>
+            </FormItem>
 
-        {/* ── Social Media ────────────────────────────────────── */}
-        <Card>
-          <CardHeader><CardTitle>Social Media (Optional)</CardTitle></CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <F name="social_facebook" label="Facebook" placeholder="@username" />
-              <F name="social_instagram" label="Instagram" placeholder="@username" />
-              <F name="social_twitter" label="Twitter / X" placeholder="@username" />
-              <F name="social_linkedin" label="LinkedIn" placeholder="linkedin.com/in/..." />
-            </div>
-          </CardContent>
-        </Card>
+            <F name="tenor" label="Investment Tenor" placeholder="12 Months / 24 Months" />
+          </div>
 
-        {/* ── Investment Details ───────────────────────────────── */}
-        <Card>
-          <CardHeader><CardTitle>Investment Details</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <F name="source_of_funds" label="Source of Funds" placeholder="Salary / Business Income / Inheritance" />
-              <F name="source_of_wealth" label="Source of Wealth" placeholder="Employment / Investments / Property" />
-            </div>
-            <F name="investment_purpose" label="Investment Purpose" placeholder="Wealth Generation / Retirement / Education" />
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <F name="investment_amount_kobo" label="Investment Amount (Kobo)" type="number" placeholder="10000000" description="Enter amount in kobo (₦100 = 10000 kobo)" />
-              <F name="investment_amount_words" label="Amount in Words" placeholder="One Hundred Thousand Naira" />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <F name="tenor" label="Investment Tenor" placeholder="12 Months / 24 Months" />
-              <F name="interest_rate_bps" label="Interest Rate (bps)" type="number" placeholder="1000" description="1000 bps = 10.00%" />
-            </div>
-          </CardContent>
-        </Card>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FormField
+              control={form.control}
+              name="interest_rate_bps"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-[12px] font-medium" style={{ color: "var(--pg-text-2)" }}>
+                    Interest Rate (bps)
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      placeholder="1000"
+                      disabled={readOnly}
+                      {...field}
+                      value={field.value === 0 ? "" : String(field.value)}
+                      onChange={(e) => field.onChange(e.target.valueAsNumber || 0)}
+                      className="h-9 text-[13px] rounded-lg"
+                    />
+                  </FormControl>
+                  <FormMessage className="text-[11px]" />
+                </FormItem>
+              )}
+            />
+          </div>
+        </div>
 
-        {/* ── Banking / Payout ────────────────────────────────── */}
-        <Card>
-          <CardHeader><CardTitle>Bank Account (Payout)</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <F name="bank_name" label="Bank Name" placeholder="GTBank" />
-              <F name="bank_account_name" label="Account Name" placeholder="John Adebayo Doe" />
-              <F name="bank_account_number" label="Account Number" placeholder="0123456789" />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <F name="bvn" label="BVN" placeholder="22345678901" description="11-digit Bank Verification Number" />
-              <F name="sort_code" label="Sort Code" placeholder="058" />
-            </div>
-          </CardContent>
-        </Card>
+        <SectionDivider />
 
-        {/* ── Declarations ────────────────────────────────────── */}
-        <Card>
-          <CardHeader><CardTitle>Declarations & Consent</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <C name="declaration_legal_capacity" label="Legal Capacity & Age" description="I confirm I have the legal capacity to enter into this agreement and I am of legal age." />
-            <C name="declaration_info_correct" label="Information Correctness" description="I confirm that all information provided is true, accurate, and complete." />
-            <C name="declaration_tnc_accepted" label="Terms and Conditions" description="I have read, understood, and accepted the Page Capital Terms and Conditions." />
-            <C name="declaration_min_holding" label="Minimum Holding Period" description="I understand and agree to the minimum holding period terms." />
-          </CardContent>
-        </Card>
+        {/* ── 8. Bank Account ──────────────────────────────────── */}
+        <SectionHeader
+          icon={Building}
+          title="Bank Account (Payout)"
+          description="Account where returns will be remitted"
+        />
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <F name="bank_name" label="Bank Name" placeholder="GTBank" />
+            <F name="bank_account_name" label="Account Name" placeholder="John Adebayo Doe" />
+            <F name="bank_account_number" label="Account Number" placeholder="0123456789" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <F name="bvn" label="BVN" placeholder="22345678901" />
+            <F name="sort_code" label="Sort Code" placeholder="058" />
+          </div>
+        </div>
+
+        <SectionDivider />
+
+        {/* ── 9. Declarations ──────────────────────────────────── */}
+        <SectionHeader
+          icon={FileCheck}
+          title="Declarations & Consent"
+          description="Please read and confirm each declaration before proceeding"
+        />
+        <div className="space-y-3">
+          <C
+            name="declaration_legal_capacity"
+            label="Legal Capacity & Age"
+            description="I confirm I have the legal capacity to enter into this agreement and I am of legal age."
+          />
+          <C
+            name="declaration_info_correct"
+            label="Information Correctness"
+            description="I confirm that all information provided is true, accurate, and complete."
+          />
+          <C
+            name="declaration_tnc_accepted"
+            label="Terms and Conditions"
+            description="I have read, understood, and accepted the Page Capital Terms and Conditions."
+          />
+          <C
+            name="declaration_min_holding"
+            label="Minimum Holding Period"
+            description="I understand and agree to the minimum holding period terms."
+          />
+        </div>
 
         {!readOnly && (
-          <div className="flex justify-end">
-            <Button type="submit" disabled={saveMutation.isPending}>
-              {saveMutation.isPending
-                ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                : <Save className="mr-2 h-4 w-4" />}
-              Save Draft
+          <div className="flex justify-end pt-6">
+            <Button
+              type="submit"
+              disabled={saveMutation.isPending}
+              className="h-9 px-5 text-[13px] rounded-xl font-semibold"
+              style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}
+            >
+              {saveMutation.isPending ? (
+                <><Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> Saving…</>
+              ) : (
+                <><Save className="mr-2 h-3.5 w-3.5" /> Save Draft</>
+              )}
             </Button>
           </div>
         )}
+
       </form>
     </Form>
   );

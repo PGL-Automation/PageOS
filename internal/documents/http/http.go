@@ -13,9 +13,8 @@ import (
 	"github.com/pagegroup/pageos/internal/platform/httpx"
 )
 
-const maxUploadSize = 20 << 20 // 20 MB per file
+const maxUploadSize = 20 << 20 // 20 MB
 
-// Handler wires HTTP to the documents service.
 type Handler struct {
 	svc *documents.Service
 }
@@ -24,11 +23,11 @@ func New(svc *documents.Service) *Handler {
 	return &Handler{svc: svc}
 }
 
-// Routes returns the documents router protected by authMW.
 func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	r := chi.NewRouter()
 	r.Use(authMW)
 	r.Post("/", h.upload)
+	r.Get("/", h.list)
 	r.Get("/{id}/download", h.download)
 	r.Get("/{id}", h.get)
 	return r
@@ -53,22 +52,49 @@ func (h *Handler) upload(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	// Optional context fields (e.g. case_id, requirement_key) from form values.
-	ctx := map[string]any{}
-	if v := r.FormValue("case_id"); v != "" {
-		ctx["case_id"] = v
+	vaultType := r.FormValue("vault_type")
+	if vaultType == "" {
+		vaultType = "onboarding"
 	}
-	if v := r.FormValue("requirement_key"); v != "" {
-		ctx["requirement_key"] = v
+	category := r.FormValue("category")
+
+	ctx := map[string]any{}
+	var subjectUserID *uuid.UUID
+
+	switch vaultType {
+	case "hr_employee":
+		empIDStr := r.FormValue("for_employee_id")
+		if empIDStr != "" {
+			ctx["for_employee_id"] = empIDStr
+			if parsed, err := uuid.Parse(empIDStr); err == nil {
+				subjectUserID = &parsed
+			}
+		}
+	case "onboarding":
+		if v := r.FormValue("case_id"); v != "" {
+			ctx["case_id"] = v
+		}
+		if v := r.FormValue("requirement_key"); v != "" {
+			ctx["requirement_key"] = v
+		}
+		if v := r.FormValue("for_employee_id"); v != "" {
+			ctx["for_employee_id"] = v
+			if parsed, err := uuid.Parse(v); err == nil {
+				subjectUserID = &parsed
+			}
+		}
 	}
 
 	doc, err := h.svc.Upload(r.Context(), documents.UploadInput{
-		UploaderID:  user.ID,
-		Filename:    header.Filename,
-		ContentType: header.Header.Get("Content-Type"),
-		Size:        header.Size,
-		Body:        file,
-		Context:     ctx,
+		UploaderID:    user.ID,
+		Filename:      header.Filename,
+		ContentType:   header.Header.Get("Content-Type"),
+		Size:          header.Size,
+		Body:          file,
+		VaultType:     vaultType,
+		Category:      category,
+		SubjectUserID: subjectUserID,
+		Context:       ctx,
 	})
 	if err != nil {
 		httpx.Error(w, http.StatusInternalServerError, "upload_failed", err.Error())
@@ -103,4 +129,49 @@ func (h *Handler) download(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, url, http.StatusFound)
+}
+
+// list handles two modes:
+//   - ?vault_type=personal  → caller's own private vault
+//   - ?for_employee_id=UUID → HR vault for a specific employee (any authenticated user)
+func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
+	user, ok := identityhttp.UserFrom(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+		return
+	}
+
+	vaultType := r.URL.Query().Get("vault_type")
+	if vaultType == "personal" {
+		docs, err := h.svc.ListPersonalDocuments(r.Context(), user.ID)
+		if err != nil {
+			httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+			return
+		}
+		if docs == nil {
+			docs = []documents.Document{}
+		}
+		httpx.JSON(w, http.StatusOK, docs)
+		return
+	}
+
+	empIDStr := r.URL.Query().Get("for_employee_id")
+	if empIDStr == "" {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "vault_type=personal or for_employee_id required")
+		return
+	}
+	employeeID, err := uuid.Parse(empIDStr)
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid for_employee_id")
+		return
+	}
+	docs, err := h.svc.ListDocumentsByEmployee(r.Context(), employeeID)
+	if err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		return
+	}
+	if docs == nil {
+		docs = []documents.Document{}
+	}
+	httpx.JSON(w, http.StatusOK, docs)
 }

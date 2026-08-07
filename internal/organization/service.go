@@ -33,11 +33,12 @@ type Department struct {
 }
 
 type Position struct {
-	ID           uuid.UUID  `json:"id"`
-	SubsidiaryID *uuid.UUID `json:"subsidiary_id,omitempty"`
-	DepartmentID *uuid.UUID `json:"department_id,omitempty"`
-	Code         string     `json:"code"`
-	Title        string     `json:"title"`
+	ID                  uuid.UUID  `json:"id"`
+	SubsidiaryID        *uuid.UUID `json:"subsidiary_id,omitempty"`
+	DepartmentID        *uuid.UUID `json:"department_id,omitempty"`
+	Code                string     `json:"code"`
+	Title               string     `json:"title"`
+	ReportsToPositionID *uuid.UUID `json:"reports_to_position_id,omitempty"`
 }
 
 type Person struct {
@@ -93,6 +94,18 @@ func (s *Service) ListSubsidiaries(ctx context.Context) ([]Subsidiary, error) {
 	return out, nil
 }
 
+func (s *Service) ListDepartments(ctx context.Context, subsidiaryID *uuid.UUID) ([]Department, error) {
+	rows, err := s.store.ListDepartments(ctx, subsidiaryID)
+	if err != nil {
+		return nil, fmt.Errorf("organization: list departments: %w", err)
+	}
+	out := make([]Department, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, Department{ID: r.ID, SubsidiaryID: r.SubsidiaryID, Code: r.Code, Name: r.Name})
+	}
+	return out, nil
+}
+
 func (s *Service) CreateDepartment(ctx context.Context, subsidiaryID uuid.UUID, code, name string) (Department, error) {
 	row, err := s.store.CreateDepartment(ctx, orgdb.CreateDepartmentParams{
 		SubsidiaryID: subsidiaryID, Code: code, Name: name,
@@ -103,17 +116,21 @@ func (s *Service) CreateDepartment(ctx context.Context, subsidiaryID uuid.UUID, 
 	return Department{ID: row.ID, SubsidiaryID: row.SubsidiaryID, Code: row.Code, Name: row.Name}, nil
 }
 
-func (s *Service) CreatePosition(ctx context.Context, subsidiaryID, departmentID *uuid.UUID, code, title string) (Position, error) {
-	row, err := s.store.CreatePosition(ctx, orgdb.CreatePositionParams{
-		SubsidiaryID: subsidiaryID, DepartmentID: departmentID, Code: code, Title: title,
-	})
+func (s *Service) CreatePosition(ctx context.Context, subsidiaryID, departmentID *uuid.UUID, code, title string, reportsTo *uuid.UUID) (Position, error) {
+	row, err := s.store.CreatePositionFull(ctx, subsidiaryID, departmentID, code, title, reportsTo)
 	if err != nil {
 		return Position{}, err
 	}
 	return Position{
-		ID: row.ID, SubsidiaryID: row.SubsidiaryID, DepartmentID: row.DepartmentID,
-		Code: row.Code, Title: row.Title,
+		ID: row.ID, SubsidiaryID: row.SubsidiaryID,
+		Code: row.Code, Title: row.Title, ReportsToPositionID: row.ReportsToPositionID,
 	}, nil
+}
+
+// UpdatePosition edits a position's title and/or reporting parent.
+// Pass empty title to keep the existing value; pass nil reportsTo to clear the reporting line.
+func (s *Service) UpdatePosition(ctx context.Context, positionID uuid.UUID, title string, reportsTo *uuid.UUID) error {
+	return s.store.UpdatePosition(ctx, positionID, title, reportsTo)
 }
 
 func (s *Service) CreatePerson(ctx context.Context, userID *uuid.UUID, first, last, email string) (Person, error) {
@@ -131,7 +148,8 @@ func (s *Service) CreatePerson(ctx context.Context, userID *uuid.UUID, first, la
 
 // AssignPosition opens a new (open-ended) assignment. A promotion or transfer
 // is modelled as EndAssignment on the current row + a new AssignPosition.
-func (s *Service) AssignPosition(ctx context.Context, personID, positionID, subsidiaryID uuid.UUID, departmentID *uuid.UUID, effectiveFrom time.Time, isPrimary bool) (Assignment, error) {
+// managerOverride optionally sets a direct line manager, bypassing the default position hierarchy.
+func (s *Service) AssignPosition(ctx context.Context, personID, positionID, subsidiaryID uuid.UUID, departmentID *uuid.UUID, effectiveFrom time.Time, isPrimary bool, managerOverride *uuid.UUID) (Assignment, error) {
 	row, err := s.store.CreateAssignment(ctx, orgdb.CreateAssignmentParams{
 		PersonID:      personID,
 		PositionID:    positionID,
@@ -144,11 +162,17 @@ func (s *Service) AssignPosition(ctx context.Context, personID, positionID, subs
 	if err != nil {
 		return Assignment{}, err
 	}
+	if managerOverride != nil {
+		_ = s.store.SetAssignmentManagerOverride(ctx, row.ID, managerOverride)
+	}
 	a := toAssignment(row)
 	_ = s.audit.Write(ctx, audit.Entry{
 		Actor: audit.Actor{Type: "system"}, Action: "organization.assignment.created",
 		ResourceType: "assignment", ResourceID: a.ID.String(),
-		Context: map[string]any{"person_id": personID.String(), "position_id": positionID.String()},
+		Context: map[string]any{
+			"person_id": personID.String(), "position_id": positionID.String(),
+			"manager_override": managerOverride,
+		},
 	})
 	return a, nil
 }
@@ -210,11 +234,13 @@ func (s *Service) ListUsersWithAssignments(ctx context.Context) ([]UserWithAssig
 
 // PositionWithMeta is the public view returned by GetPositionsBySubsidiary.
 type PositionWithMeta struct {
-	ID           uuid.UUID  `json:"id"`
-	Code         string     `json:"code"`
-	Title        string     `json:"title"`
-	SubsidiaryID *uuid.UUID `json:"subsidiary_id,omitempty"`
-	IsGroupLevel bool       `json:"is_group_level"`
+	ID                  uuid.UUID  `json:"id"`
+	Code                string     `json:"code"`
+	Title               string     `json:"title"`
+	SubsidiaryID        *uuid.UUID `json:"subsidiary_id,omitempty"`
+	IsGroupLevel        bool       `json:"is_group_level"`
+	ReportsToTitle      string     `json:"reports_to_title,omitempty"`
+	ReportsToPositionID *uuid.UUID `json:"reports_to_position_id,omitempty"`
 }
 
 // OrgChartNode is the view returned by GetOrgChart.
@@ -242,9 +268,16 @@ func (s *Service) GetPositionsBySubsidiary(ctx context.Context, subsidiaryID *uu
 		out = append(out, PositionWithMeta{
 			ID: r.ID, Code: r.Code, Title: r.Title,
 			SubsidiaryID: r.SubsidiaryID, IsGroupLevel: r.IsGroupLevel,
+			ReportsToTitle: r.ReportsToTitle, ReportsToPositionID: r.ReportsToPositionID,
 		})
 	}
 	return out, nil
+}
+
+// HasRole returns true if the user currently holds any position with one of the given codes.
+// Used for access control on HR and admin endpoints.
+func (s *Service) HasRole(ctx context.Context, userID uuid.UUID, codes ...string) (bool, error) {
+	return s.store.HasRole(ctx, userID, codes)
 }
 
 // GetGroupPosition looks up a group-level position (subsidiary_id IS NULL) by code.

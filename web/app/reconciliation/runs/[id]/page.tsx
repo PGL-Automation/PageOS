@@ -9,10 +9,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, ArrowLeft, CheckCircle2, Link2, XCircle, Lock } from "lucide-react";
+import { Loader2, ArrowLeft, CheckCircle2, Link2, XCircle, Lock, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
 
 function koboToNaira(k: number) {
   return new Intl.NumberFormat("en-NG", {
@@ -21,10 +23,36 @@ function koboToNaira(k: number) {
   }).format(k / 100);
 }
 
-function fmt(dateStr: string | undefined) {
+function fmt(dateStr: string | undefined | null) {
   if (!dateStr) return "—";
   return dateStr.slice(0, 10);
 }
+
+type FullMatchRow = {
+  match_id: string;
+  status: string;
+  match_type: string;
+  confidence_pct?: number | null;
+  notes: string;
+  bank_line_id?: string | null;
+  bank_date?: string | null;
+  bank_narration?: string;
+  bank_debit_kobo?: number;
+  bank_credit_kobo?: number;
+  bank_reference?: string;
+  ledger_txn_id?: string | null;
+  ledger_date?: string | null;
+  ledger_type?: string;
+  ledger_direction?: string;
+  ledger_amount_kobo?: number;
+  ledger_reference?: string;
+};
+
+const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+  matched: "default",
+  unmatched_bank: "secondary",
+  unmatched_internal: "destructive",
+};
 
 export default function RunPage() {
   const params = useParams();
@@ -35,6 +63,7 @@ export default function RunPage() {
   const [selectedBankLine, setSelectedBankLine] = useState<string | null>(null);
   const [selectedInternalTxn, setSelectedInternalTxn] = useState<string | null>(null);
   const [matchNotes, setMatchNotes] = useState("");
+  const [exporting, setExporting] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ["recon-run", runId],
@@ -57,8 +86,44 @@ export default function RunPage() {
     },
   });
 
+  const { data: fullRows = [] } = useQuery<FullMatchRow[]>({
+    queryKey: ["recon-run-full", runId],
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/v1/reconciliation/runs/${runId}/full`, {
+        credentials: "include",
+      });
+      if (!res.ok) return [];
+      return ((await res.json()) ?? []) as FullMatchRow[];
+    },
+  });
+
   const isClosed = data?.run?.status === "closed";
   const canClose = (data?.summary?.unmatched_bank ?? 0) + (data?.summary?.unmatched_internal ?? 0) === 0;
+
+  async function downloadExport() {
+    setExporting(true);
+    try {
+      const res = await fetch(`${BASE}/api/v1/reconciliation/runs/${runId}/export`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Export failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const cd = res.headers.get("Content-Disposition") ?? "";
+      const match = cd.match(/filename="([^"]+)"/);
+      a.download = match?.[1] ?? `recon_${runId}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      toast({ title: "Export Failed", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setExporting(false);
+    }
+  }
 
   const manualMatchMutation = useMutation({
     mutationFn: async () => {
@@ -72,6 +137,7 @@ export default function RunPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["recon-run", runId] });
       queryClient.invalidateQueries({ queryKey: ["recon-unmatched", runId] });
+      queryClient.invalidateQueries({ queryKey: ["recon-run-full", runId] });
       setSelectedBankLine(null); setSelectedInternalTxn(null); setMatchNotes("");
       toast({ title: "Matched", description: "Pair recorded successfully." });
     },
@@ -89,6 +155,7 @@ export default function RunPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["recon-run", runId] });
       queryClient.invalidateQueries({ queryKey: ["recon-unmatched", runId] });
+      queryClient.invalidateQueries({ queryKey: ["recon-run-full", runId] });
       toast({ title: "Marked Unmatched" });
     },
   });
@@ -104,6 +171,7 @@ export default function RunPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["recon-run", runId] });
       queryClient.invalidateQueries({ queryKey: ["recon-unmatched", runId] });
+      queryClient.invalidateQueries({ queryKey: ["recon-run-full", runId] });
       toast({ title: "Marked Unmatched" });
     },
   });
@@ -117,6 +185,7 @@ export default function RunPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["recon-run", runId] });
+      queryClient.invalidateQueries({ queryKey: ["recon-run-full", runId] });
       toast({ title: "Run Closed", description: "This reconciliation run is now sealed." });
     },
     onError: (e) => toast({ title: "Close Failed", description: (e as Error).message, variant: "destructive" }),
@@ -129,9 +198,13 @@ export default function RunPage() {
   );
 
   const sum = data?.summary;
-  const matches = data?.matches ?? [];
   const bankLines = unmatched?.bank_lines ?? [];
   const internalTxns = unmatched?.internal_txns ?? [];
+
+  // Separate the full rows into tabs for display
+  const matchedRows = fullRows.filter(r => r.status === "matched");
+  const unmatchedBankRows = fullRows.filter(r => r.status === "unmatched_bank");
+  const unmatchedInternalRows = fullRows.filter(r => r.status === "unmatched_internal");
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -147,6 +220,10 @@ export default function RunPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <Button variant="outline" size="sm" onClick={downloadExport} disabled={exporting}>
+            {exporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+            Export Excel
+          </Button>
           <Badge variant={isClosed ? "default" : "secondary"} className="uppercase text-xs px-3">
             {data?.run?.status}
           </Badge>
@@ -181,7 +258,7 @@ export default function RunPage() {
         ))}
       </div>
 
-      {/* Unmatched workspace */}
+      {/* Unmatched workspace — only when run is open */}
       {!isClosed && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Unmatched bank lines */}
@@ -214,11 +291,9 @@ export default function RunPage() {
                         <TableCell className="text-right text-xs text-red-600">{line.debit_kobo > 0 ? koboToNaira(line.debit_kobo) : ""}</TableCell>
                         <TableCell className="text-right text-xs text-green-600">{line.credit_kobo > 0 ? koboToNaira(line.credit_kobo) : ""}</TableCell>
                         <TableCell>
-                          <Button
-                            variant="ghost" size="sm"
+                          <Button variant="ghost" size="sm"
                             onClick={e => { e.stopPropagation(); markBankMutation.mutate(line.id); }}
-                            disabled={markBankMutation.isPending}
-                          >
+                            disabled={markBankMutation.isPending}>
                             <XCircle className="w-3.5 h-3.5" />
                           </Button>
                         </TableCell>
@@ -263,11 +338,9 @@ export default function RunPage() {
                         </TableCell>
                         <TableCell className="text-right text-xs">{koboToNaira(txn.amount_kobo)}</TableCell>
                         <TableCell>
-                          <Button
-                            variant="ghost" size="sm"
+                          <Button variant="ghost" size="sm"
                             onClick={e => { e.stopPropagation(); markInternalMutation.mutate(txn.id); }}
-                            disabled={markInternalMutation.isPending}
-                          >
+                            disabled={markInternalMutation.isPending}>
                             <XCircle className="w-3.5 h-3.5" />
                           </Button>
                         </TableCell>
@@ -295,18 +368,12 @@ export default function RunPage() {
             </div>
             <div className="w-48">
               <Label className="text-xs text-blue-700">Notes (optional)</Label>
-              <Input
-                value={matchNotes}
-                onChange={e => setMatchNotes(e.target.value)}
-                placeholder="Reason…"
-                className="mt-1 h-8 text-sm"
-              />
+              <Input value={matchNotes} onChange={e => setMatchNotes(e.target.value)}
+                placeholder="Reason…" className="mt-1 h-8 text-sm" />
             </div>
-            <Button
-              onClick={() => manualMatchMutation.mutate()}
+            <Button onClick={() => manualMatchMutation.mutate()}
               disabled={!selectedBankLine || !selectedInternalTxn || manualMatchMutation.isPending}
-              className="shrink-0"
-            >
+              className="shrink-0">
               {manualMatchMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
               Match Selected
             </Button>
@@ -314,41 +381,116 @@ export default function RunPage() {
         </Card>
       )}
 
-      {/* All matches */}
-      <Card>
-        <CardHeader><CardTitle className="text-base">All Matches</CardTitle></CardHeader>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Status</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Confidence</TableHead>
-                <TableHead>Notes</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {matches.length === 0
-                ? <TableRow><TableCell colSpan={4} className="text-center py-8 text-slate-400 text-sm">No matches yet — run auto-match or match manually</TableCell></TableRow>
-                : (matches as Array<{ id: string; status: string; match_type: string; confidence_pct: number | null; notes: string }>).map(m => (
-                  <TableRow key={m.id}>
-                    <TableCell>
-                      <Badge
-                        variant={m.status === "matched" ? "default" : m.status === "unmatched_bank" ? "secondary" : "destructive"}
-                        className="text-xs"
-                      >
-                        {m.status?.replace("_", " ")}
-                      </Badge>
+      {/* Full results — three sections */}
+      {matchedRows.length > 0 && (
+        <Card>
+          <CardHeader><CardTitle className="text-base text-green-700">Matched ({matchedRows.length})</CardTitle></CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Bank Date</TableHead>
+                  <TableHead>Narration</TableHead>
+                  <TableHead className="text-right">Bank Amount</TableHead>
+                  <TableHead>Ledger Date</TableHead>
+                  <TableHead>Ledger Ref</TableHead>
+                  <TableHead className="text-right">Ledger Amount</TableHead>
+                  <TableHead>Type</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {matchedRows.map(m => (
+                  <TableRow key={m.match_id}>
+                    <TableCell className="text-xs text-slate-500">{fmt(m.bank_date)}</TableCell>
+                    <TableCell className="text-sm max-w-[200px] truncate">{m.bank_narration || "—"}</TableCell>
+                    <TableCell className="text-right text-xs">
+                      {(m.bank_credit_kobo ?? 0) > 0
+                        ? <span className="text-green-600">{koboToNaira(m.bank_credit_kobo!)}</span>
+                        : <span className="text-red-600">{koboToNaira(m.bank_debit_kobo ?? 0)}</span>}
                     </TableCell>
-                    <TableCell className="text-xs capitalize">{m.match_type}</TableCell>
-                    <TableCell className="text-xs">{m.confidence_pct != null ? `${m.confidence_pct}%` : "—"}</TableCell>
-                    <TableCell className="text-xs text-slate-500">{m.notes || "—"}</TableCell>
+                    <TableCell className="text-xs text-slate-500">{fmt(m.ledger_date)}</TableCell>
+                    <TableCell className="text-xs font-mono truncate max-w-[140px]">{m.ledger_reference || "—"}</TableCell>
+                    <TableCell className="text-right text-xs">{koboToNaira(m.ledger_amount_kobo ?? 0)}</TableCell>
+                    <TableCell className="text-xs capitalize text-slate-500">{m.match_type}</TableCell>
                   </TableRow>
                 ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {unmatchedBankRows.length > 0 && (
+        <Card>
+          <CardHeader><CardTitle className="text-base text-amber-700">In Bank, Not in Ledger ({unmatchedBankRows.length})</CardTitle></CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Reference</TableHead>
+                  <TableHead>Narration</TableHead>
+                  <TableHead className="text-right">Debit</TableHead>
+                  <TableHead className="text-right">Credit</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {unmatchedBankRows.map(m => (
+                  <TableRow key={m.match_id}>
+                    <TableCell className="text-xs text-slate-500">{fmt(m.bank_date)}</TableCell>
+                    <TableCell className="text-xs font-mono">{m.bank_reference || "—"}</TableCell>
+                    <TableCell className="text-sm max-w-[240px] truncate">{m.bank_narration || "—"}</TableCell>
+                    <TableCell className="text-right text-xs text-red-600">{(m.bank_debit_kobo ?? 0) > 0 ? koboToNaira(m.bank_debit_kobo!) : "—"}</TableCell>
+                    <TableCell className="text-right text-xs text-green-600">{(m.bank_credit_kobo ?? 0) > 0 ? koboToNaira(m.bank_credit_kobo!) : "—"}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {unmatchedInternalRows.length > 0 && (
+        <Card>
+          <CardHeader><CardTitle className="text-base text-red-700">In Ledger, Not in Bank ({unmatchedInternalRows.length})</CardTitle></CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Reference</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Direction</TableHead>
+                  <TableHead className="text-right">Amount</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {unmatchedInternalRows.map(m => (
+                  <TableRow key={m.match_id}>
+                    <TableCell className="text-xs text-slate-500">{fmt(m.ledger_date)}</TableCell>
+                    <TableCell className="text-xs font-mono">{m.ledger_reference || "—"}</TableCell>
+                    <TableCell className="text-xs capitalize">{m.ledger_type?.replace("_", " ") || "—"}</TableCell>
+                    <TableCell>
+                      <Badge variant={m.ledger_direction === "credit" ? "default" : "secondary"} className="text-xs">
+                        {m.ledger_direction}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right text-xs">{koboToNaira(m.ledger_amount_kobo ?? 0)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {fullRows.length === 0 && (
+        <Card>
+          <CardContent className="py-12 text-center text-slate-400 text-sm">
+            No match data yet — run auto-match or match manually above.
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
