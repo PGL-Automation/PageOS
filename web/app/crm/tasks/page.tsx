@@ -369,16 +369,18 @@ function UserSearch({
 function NewTaskModal({
   onClose,
   onCreated,
+  defaultAssignee,
 }: {
   onClose: () => void;
   onCreated: () => void;
+  defaultAssignee?: { id: string; name: string } | null;
 }) {
   const { toast } = useToast();
   const [title, setTitle] = useState("");
   const [taskType, setTaskType] = useState("follow_up");
   const [priority, setPriority] = useState("medium");
   const [contact, setContact] = useState<{ id: string; name: string } | null>(null);
-  const [assignee, setAssignee] = useState<{ id: string; name: string } | null>(null);
+  const [assignee, setAssignee] = useState<{ id: string; name: string } | null>(defaultAssignee ?? null);
   const [dueDate, setDueDate] = useState("");
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
@@ -1671,6 +1673,7 @@ export default function CRMTasksPage() {
         <NewTaskModal
           onClose={() => setShowNewTask(false)}
           onCreated={() => queryClient.invalidateQueries({ queryKey: ["crm-tasks"] })}
+          defaultAssignee={user ? { id: user.ID, name: user.DisplayName } : null}
         />
       )}
       {completeTarget && (
