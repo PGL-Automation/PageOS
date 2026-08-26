@@ -39,9 +39,9 @@ func Send(ctx context.Context, db interface {
 	}
 	err := db.QueryRow(ctx, `
 		INSERT INTO notification.in_app
-			(user_id, type, title, body, link, priority, entity_type, entity_id)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-		ON CONFLICT (user_id, type, entity_id, (created_at::date))
+			(user_id, type, title, body, link, priority, entity_type, entity_id, created_date)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8, CURRENT_DATE)
+		ON CONFLICT (user_id, type, entity_id, created_date)
 		    DO NOTHING
 		RETURNING id`,
 		userID, n.Type, n.Title, n.Body,

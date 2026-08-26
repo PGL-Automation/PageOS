@@ -3,18 +3,20 @@
 -- In-app notification inbox per user.
 -- Each row is one notification for one user; the frontend polls the REST API.
 CREATE TABLE notification.in_app (
-    id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id     uuid        NOT NULL REFERENCES identity.users(id) ON DELETE CASCADE,
-    type        text        NOT NULL,       -- e.g. 'onboarding_approved'
-    title       text        NOT NULL,
-    body        text        NOT NULL,
-    link        text,                       -- optional: frontend route to navigate to
-    priority    text        NOT NULL DEFAULT 'medium', -- low|medium|high|urgent
-    is_read     boolean     NOT NULL DEFAULT false,
-    created_at  timestamptz NOT NULL DEFAULT now(),
-    read_at     timestamptz,
-    entity_type text,                       -- 'case'|'journal'|'contact'|'leave' etc.
-    entity_id   uuid
+    id           uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id      uuid        NOT NULL REFERENCES identity.users(id) ON DELETE CASCADE,
+    type         text        NOT NULL,       -- e.g. 'onboarding_approved'
+    title        text        NOT NULL,
+    body         text        NOT NULL,
+    link         text,                       -- optional: frontend route to navigate to
+    priority     text        NOT NULL DEFAULT 'medium', -- low|medium|high|urgent
+    is_read      boolean     NOT NULL DEFAULT false,
+    created_at   timestamptz NOT NULL DEFAULT now(),
+    read_at      timestamptz,
+    entity_type  text,                       -- 'case'|'journal'|'contact'|'leave' etc.
+    entity_id    uuid,
+    -- Immutable date column for de-dup index (avoids STABLE cast on timestamptz).
+    created_date date        NOT NULL DEFAULT CURRENT_DATE
 );
 
 -- Fast path: fetch unread for a user sorted newest-first.
@@ -29,7 +31,7 @@ CREATE INDEX idx_in_app_user_all
 -- De-dup guard: prevent the scheduler from inserting duplicate daily reminders
 -- for the same user+type+entity on the same calendar day.
 CREATE UNIQUE INDEX idx_in_app_daily_dedup
-    ON notification.in_app (user_id, type, entity_id, (created_at::date))
+    ON notification.in_app (user_id, type, entity_id, created_date)
     WHERE entity_id IS NOT NULL;
 
 -- Birthday field on CRM contacts (needed for birthday reminders).
