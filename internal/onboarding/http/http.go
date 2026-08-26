@@ -83,12 +83,23 @@ func (h *Handler) createClient(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) listClients(w http.ResponseWriter, r *http.Request) {
-	sid, err := uuid.Parse(r.URL.Query().Get("subsidiary_id"))
-	if err != nil {
-		httpx.Error(w, http.StatusBadRequest, "bad_request", "subsidiary_id required")
-		return
+	q := r.URL.Query()
+	status := q.Get("status")
+
+	// subsidiary_id is optional: when absent, return clients across all subsidiaries.
+	var clients interface{}
+	var err error
+	if s := q.Get("subsidiary_id"); s != "" {
+		sid, parseErr := uuid.Parse(s)
+		if parseErr != nil {
+			httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid subsidiary_id")
+			return
+		}
+		clients, err = h.svc.ListClients(r.Context(), sid)
+	} else {
+		// No subsidiary filter — return all clients (optionally filtered by status).
+		clients, err = h.svc.ListAllClients(r.Context(), status)
 	}
-	clients, err := h.svc.ListClients(r.Context(), sid)
 	if err != nil {
 		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
 		return

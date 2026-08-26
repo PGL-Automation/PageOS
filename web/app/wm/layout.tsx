@@ -1,4 +1,10 @@
 import { AppLayout } from "@/components/layout/app-layout";
+import { RoleGuard } from "@/components/role-guard";
+
 export default function Layout({ children }: { children: React.ReactNode }) {
-  return <AppLayout>{children}</AppLayout>;
+  return (
+    <AppLayout>
+      <RoleGuard allow={["wm", "md", "finance", "compliance", "default"]}>{children}</RoleGuard>
+    </AppLayout>
+  );
 }

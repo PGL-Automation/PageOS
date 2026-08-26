@@ -42,8 +42,12 @@ interface ClientRow {
 export default function WMDashboard() {
   const { user, subsidiary } = useAuth();
   const subsidId = subsidiary?.ID ?? "";
-  const [now, setNow] = useState(new Date());
-  useEffect(() => { const t = setInterval(() => setNow(new Date()), 60000); return () => clearInterval(t); }, []);
+  const [now, setNow] = useState<Date | null>(null);
+  useEffect(() => {
+    setNow(new Date());
+    const t = setInterval(() => setNow(new Date()), 60000);
+    return () => clearInterval(t);
+  }, []);
 
   // Fetch all cases for subsidiary, then fetch details for each to get names
   const { data: clients = [], isLoading } = useQuery({
@@ -55,9 +59,11 @@ export default function WMDashboard() {
       });
       if (error || !cases) return [] as ClientRow[];
 
-      // Filter to cases this WM initiated
+      // Filter to cases this WM initiated — strict match only.
+      // The `!c.InitiatedBy` arm was removed because it caused all un-attributed
+      // cases to appear in every RM's "My Clients" count, inflating the number.
       const mine = (cases as OnboardingCase[]).filter(
-        c => !c.InitiatedBy || c.InitiatedBy === user!.ID
+        c => c.InitiatedBy === user!.ID
       );
 
       // Fetch details in parallel to get names
@@ -85,7 +91,9 @@ export default function WMDashboard() {
   const needsAttention = clients.filter(c => c.riskFlag || c.state === "returned");
 
   const firstName = user?.DisplayName?.split(" ")[0] ?? "there";
-  const dateStr   = now.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
+  const dateStr   = now
+    ? now.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })
+    : "";
 
   return (
     <div className="max-w-[1200px] mx-auto space-y-6">
@@ -94,7 +102,7 @@ export default function WMDashboard() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-[20px] font-bold leading-tight" style={{ color: "var(--pg-text-1)" }}>
-            {getGreeting()}, {firstName}.
+            {now ? getGreeting() : "Welcome"}, {firstName}.
           </h1>
           <p className="text-[12px] mt-0.5" style={{ color: "var(--pg-text-3)" }}>
             {dateStr} · {subsidiary?.Name} · Wealth Manager

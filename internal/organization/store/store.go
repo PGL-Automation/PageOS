@@ -40,6 +40,23 @@ type SubsidiaryRow struct {
 	Name string    `json:"name"`
 }
 
+// GetGroupPositionByCode looks up a group-level position (subsidiary_id IS NULL)
+// by code. The generated GetPositionByCode uses "= $1" which never matches NULL
+// in PostgreSQL; this raw query uses IS NULL instead.
+func (s *Store) GetGroupPositionByCode(ctx context.Context, code string) (orgdb.OrganizationPosition, error) {
+	const q = `
+		SELECT id, subsidiary_id, department_id, code, title, created_at
+		FROM organization.position
+		WHERE subsidiary_id IS NULL AND code = $1
+		LIMIT 1
+	`
+	var p orgdb.OrganizationPosition
+	err := s.pool.QueryRow(ctx, q, code).Scan(
+		&p.ID, &p.SubsidiaryID, &p.DepartmentID, &p.Code, &p.Title, &p.CreatedAt,
+	)
+	return p, err
+}
+
 // GetUserSubsidiaries returns every subsidiary the user is currently assigned to.
 // If the user holds any group-level position (position.subsidiary_id IS NULL) they
 // are considered a group-wide user and all subsidiaries are returned.
@@ -104,43 +121,74 @@ func (s *Store) GetUserSubsidiaries(ctx context.Context, userID uuid.UUID) ([]Su
 
 // UserWithAssignments is the combined view returned by ListUsersWithAssignments.
 type UserWithAssignments struct {
-	UserID      uuid.UUID  `json:"user_id"`
-	Email       string     `json:"email"`
-	DisplayName string     `json:"display_name"`
-	UserStatus  string     `json:"user_status"`
-	PersonID    *uuid.UUID `json:"person_id,omitempty"`
-	Assignments []struct {
-		PositionCode  string    `json:"position_code"`
-		PositionTitle string    `json:"position_title"`
-		SubsidiaryID  *uuid.UUID `json:"subsidiary_id,omitempty"`
-		SubsidiaryName string   `json:"subsidiary_name,omitempty"`
-		IsPrimary     bool      `json:"is_primary"`
-		EffectiveFrom string    `json:"effective_from"`
+	UserID           uuid.UUID  `json:"user_id"`
+	Email            string     `json:"email"`
+	DisplayName      string     `json:"display_name"`
+	UserStatus       string     `json:"user_status"`
+	PersonID         *uuid.UUID `json:"person_id,omitempty"`
+	HomeOrganization string     `json:"home_organization,omitempty"`
+	Assignments      []struct {
+		PositionCode       string     `json:"position_code"`
+		PositionTitle      string     `json:"position_title"`
+		SubsidiaryID       *uuid.UUID `json:"subsidiary_id,omitempty"`
+		SubsidiaryName     string     `json:"subsidiary_name,omitempty"`
+		IsPrimary          bool       `json:"is_primary"`
+		EffectiveFrom      string     `json:"effective_from"`
+		EmploymentType     string     `json:"employment_type"`
+		GradeLevelCode     string     `json:"grade_level_code,omitempty"`
+		GradeLevelName     string     `json:"grade_level_name,omitempty"`
+		PendingGradeReview bool       `json:"pending_grade_review"`
 	} `json:"assignments"`
 }
 
-// ListUsersWithAssignments returns all identity users alongside their current
-// org assignments. Used by the HR user-management screen.
+// PendingGradeRow is returned by ListPendingGradeReview.
+type PendingGradeRow struct {
+	AssignmentID   uuid.UUID `json:"assignment_id"`
+	PersonID       uuid.UUID `json:"person_id"`
+	DisplayName    string    `json:"display_name"`
+	Email          string    `json:"email"`
+	SubsidiaryName string    `json:"subsidiary_name"`
+	PositionTitle  string    `json:"position_title"`
+	GradeLevelCode string    `json:"grade_level_code"`
+	GradeLevelName string    `json:"grade_level_name"`
+}
+
+// ListUsersWithAssignments returns every person who has an active assignment,
+// regardless of whether they have a login account yet.
+// Persons without a login account get user_id = uuid.Nil and user_status = "no_account".
 func (s *Store) ListUsersWithAssignments(ctx context.Context) ([]UserWithAssignments, error) {
 	const q = `
 		SELECT
-			u.id, u.email, u.display_name, u.status,
-			p.id                                                         AS person_id,
-			COALESCE(pos.code,  '')                                      AS position_code,
-			COALESCE(pos.title, '')                                      AS position_title,
+			-- user account (may be absent for staff seeded without a login)
+			COALESCE(u.id,           '00000000-0000-0000-0000-000000000000'::uuid) AS user_id,
+			COALESCE(u.email,        p.email)                                      AS email,
+			COALESCE(u.display_name, p.first_name || ' ' || p.last_name)          AS display_name,
+			COALESCE(u.status,       'no_account')                                 AS user_status,
+			-- person
+			p.id                                                                   AS person_id,
+			COALESCE(p.home_organization, '')                                      AS home_organization,
+			-- assignment + position
+			COALESCE(pos.code,  '')                                                AS position_code,
+			COALESCE(pos.title, '')                                                AS position_title,
 			a.subsidiary_id,
-			COALESCE(s.name,    '')                                      AS subsidiary_name,
-			COALESCE(a.is_primary, false)                               AS is_primary,
-			COALESCE(a.effective_from::text, '')                        AS effective_from
-		FROM identity.users u
-		LEFT JOIN organization.person p ON p.user_id = u.id
-		LEFT JOIN organization.assignment a
+			COALESCE(s.name,    '')                                                AS subsidiary_name,
+			COALESCE(a.is_primary, false)                                          AS is_primary,
+			COALESCE(a.effective_from::text, '')                                   AS effective_from,
+			COALESCE(a.employment_type, 'permanent')                               AS employment_type,
+			COALESCE(a.grade_level_code, '')                                       AS grade_level_code,
+			COALESCE(gl.display_name, '')                                          AS grade_level_name,
+			COALESCE(a.pending_grade_review, false)                                AS pending_grade_review
+		FROM organization.person p
+		LEFT JOIN identity.users u ON u.id = p.user_id
+		JOIN organization.assignment a
 			ON  a.person_id      = p.id
 			AND a.effective_from <= CURRENT_DATE
 			AND (a.effective_to IS NULL OR a.effective_to >= CURRENT_DATE)
-		LEFT JOIN organization.position pos ON pos.id = a.position_id
-		LEFT JOIN organization.subsidiary s   ON s.id   = a.subsidiary_id
-		ORDER BY u.display_name, a.is_primary DESC NULLS LAST
+		LEFT JOIN organization.position   pos ON pos.id  = a.position_id
+		LEFT JOIN organization.subsidiary s   ON s.id    = a.subsidiary_id
+		LEFT JOIN organization.grade_level gl ON gl.code = a.grade_level_code
+		ORDER BY COALESCE(u.display_name, p.first_name || ' ' || p.last_name),
+		         a.is_primary DESC NULLS LAST
 	`
 	rows, err := s.pool.Query(ctx, q)
 	if err != nil {
@@ -148,42 +196,52 @@ func (s *Store) ListUsersWithAssignments(ctx context.Context) ([]UserWithAssignm
 	}
 	defer rows.Close()
 
-	// Aggregate by user ID so each user appears once with all their assignments.
-	byID := map[uuid.UUID]*UserWithAssignments{}
+	// Key by person_id — user_id is not guaranteed unique (no-account staff share uuid.Nil).
+	byPerson := map[uuid.UUID]*UserWithAssignments{}
 	var order []uuid.UUID
 
 	for rows.Next() {
 		var (
-			userID, personID        uuid.UUID
-			email, displayName, status string
-			posCode, posTitle, subName, effFrom string
-			subID                   *uuid.UUID
-			isPrimary               bool
+			userID, personID                     uuid.UUID
+			email, displayName, status, homeOrg  string
+			posCode, posTitle, subName, effFrom  string
+			employmentType, gradeCode, gradeName string
+			subID                                *uuid.UUID
+			isPrimary, pendingGrade              bool
 		)
-		if err := rows.Scan(&userID, &email, &displayName, &status,
-			&personID, &posCode, &posTitle, &subID, &subName, &isPrimary, &effFrom,
+		if err := rows.Scan(
+			&userID, &email, &displayName, &status,
+			&personID, &homeOrg,
+			&posCode, &posTitle, &subID, &subName, &isPrimary, &effFrom,
+			&employmentType, &gradeCode, &gradeName, &pendingGrade,
 		); err != nil {
 			return nil, err
 		}
-		u, ok := byID[userID]
+		u, ok := byPerson[personID]
 		if !ok {
+			uid := userID
 			pid := personID
 			u = &UserWithAssignments{
-				UserID: userID, Email: email, DisplayName: displayName,
-				UserStatus: status, PersonID: &pid,
+				UserID: uid, Email: email, DisplayName: displayName,
+				UserStatus: status, PersonID: &pid, HomeOrganization: homeOrg,
 			}
-			byID[userID] = u
-			order = append(order, userID)
+			byPerson[personID] = u
+			order = append(order, personID)
 		}
 		if posCode != "" {
 			u.Assignments = append(u.Assignments, struct {
-				PositionCode  string     `json:"position_code"`
-				PositionTitle string     `json:"position_title"`
-				SubsidiaryID  *uuid.UUID `json:"subsidiary_id,omitempty"`
-				SubsidiaryName string    `json:"subsidiary_name,omitempty"`
-				IsPrimary     bool       `json:"is_primary"`
-				EffectiveFrom string     `json:"effective_from"`
-			}{posCode, posTitle, subID, subName, isPrimary, effFrom})
+				PositionCode       string     `json:"position_code"`
+				PositionTitle      string     `json:"position_title"`
+				SubsidiaryID       *uuid.UUID `json:"subsidiary_id,omitempty"`
+				SubsidiaryName     string     `json:"subsidiary_name,omitempty"`
+				IsPrimary          bool       `json:"is_primary"`
+				EffectiveFrom      string     `json:"effective_from"`
+				EmploymentType     string     `json:"employment_type"`
+				GradeLevelCode     string     `json:"grade_level_code,omitempty"`
+				GradeLevelName     string     `json:"grade_level_name,omitempty"`
+				PendingGradeReview bool       `json:"pending_grade_review"`
+			}{posCode, posTitle, subID, subName, isPrimary, effFrom,
+				employmentType, gradeCode, gradeName, pendingGrade})
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -191,9 +249,63 @@ func (s *Store) ListUsersWithAssignments(ctx context.Context) ([]UserWithAssignm
 	}
 	out := make([]UserWithAssignments, 0, len(order))
 	for _, id := range order {
-		out = append(out, *byID[id])
+		out = append(out, *byPerson[id])
 	}
 	return out, nil
+}
+
+// ListPendingGradeReview returns all active assignments flagged for grade confirmation.
+func (s *Store) ListPendingGradeReview(ctx context.Context) ([]PendingGradeRow, error) {
+	const q = `
+		SELECT
+			a.id                      AS assignment_id,
+			p.id                      AS person_id,
+			COALESCE(u.display_name, p.first_name || ' ' || p.last_name) AS display_name,
+			p.email,
+			COALESCE(s.name, '')      AS subsidiary_name,
+			COALESCE(pos.title, '')   AS position_title,
+			COALESCE(a.grade_level_code, '')  AS grade_level_code,
+			COALESCE(gl.display_name, '')     AS grade_level_name
+		FROM organization.assignment a
+		JOIN organization.person p      ON p.id    = a.person_id
+		LEFT JOIN identity.users u      ON u.id    = p.user_id
+		LEFT JOIN organization.position pos ON pos.id  = a.position_id
+		LEFT JOIN organization.subsidiary s ON s.id    = a.subsidiary_id
+		LEFT JOIN organization.grade_level gl ON gl.code = a.grade_level_code
+		WHERE a.pending_grade_review = true
+		  AND a.effective_to IS NULL
+		ORDER BY p.last_name, p.first_name
+	`
+	rows, err := s.pool.Query(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []PendingGradeRow
+	for rows.Next() {
+		var r PendingGradeRow
+		if err := rows.Scan(&r.AssignmentID, &r.PersonID, &r.DisplayName, &r.Email,
+			&r.SubsidiaryName, &r.PositionTitle, &r.GradeLevelCode, &r.GradeLevelName); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// SetAssignmentGradeLevel updates the grade on the person's current primary assignment
+// and clears the pending_grade_review flag.
+func (s *Store) SetAssignmentGradeLevel(ctx context.Context, personID uuid.UUID, gradeCode string) error {
+	const q = `
+		UPDATE organization.assignment
+		SET    grade_level_code     = $1,
+		       pending_grade_review = false
+		WHERE  person_id            = $2
+		  AND  effective_to         IS NULL
+		  AND  is_primary           = true
+	`
+	_, err := s.pool.Exec(ctx, q, gradeCode, personID)
+	return err
 }
 
 // PositionRow is the view returned by GetPositionsBySubsidiary.
@@ -243,6 +355,8 @@ func (s *Store) GetOrgChart(ctx context.Context, subsidiaryID *uuid.UUID) ([]Org
 		`
 		args = []interface{}{*subsidiaryID}
 	} else {
+		// No subsidiary filter — return ALL positions across all entities so the
+		// "All Entities" view reflects every member of staff.
 		q = `
 			SELECT
 				p.id, p.code, p.title, p.reports_to_position_id,
@@ -258,7 +372,6 @@ func (s *Store) GetOrgChart(ctx context.Context, subsidiaryID *uuid.UUID) ([]Org
 				AND (a.effective_to IS NULL OR a.effective_to >= CURRENT_DATE)
 			LEFT JOIN organization.person per ON per.id = a.person_id
 			LEFT JOIN identity.users u          ON u.id  = per.user_id
-			WHERE p.subsidiary_id IS NULL
 			GROUP BY p.id, p.code, p.title, p.reports_to_position_id
 			ORDER BY p.title
 		`

@@ -110,6 +110,8 @@ function OrgTreeNode({ node, depth = 0 }: { node: TreeNode; depth?: number }) {
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
 
+type OrgUser = { user_id: string; display_name: string; person_id?: string; assignments?: { subsidiary_id?: string }[] };
+
 export default function OrgChartPage() {
   const [selectedSub, setSelectedSub] = useState<string>("");
 
@@ -118,7 +120,8 @@ export default function OrgChartPage() {
     queryFn: async () => {
       const res = await fetch(`${BASE}/api/v1/org/subsidiaries`, { credentials: "include" });
       if (!res.ok) return [];
-      return ((await res.json()) ?? []) as SubsidiaryOption[];
+      const d = await res.json().catch(() => []);
+      return Array.isArray(d) ? d as SubsidiaryOption[] : [];
     },
   });
 
@@ -128,16 +131,37 @@ export default function OrgChartPage() {
       const params = selectedSub ? `?subsidiary_id=${selectedSub}` : "";
       const res = await fetch(`${BASE}/api/v1/org/org-chart${params}`, { credentials: "include" });
       if (!res.ok) return [];
-      return ((await res.json()) ?? []) as OrgNode[];
+      const d = await res.json().catch(() => []);
+      return Array.isArray(d) ? d as OrgNode[] : [];
+    },
+  });
+
+  // Fetch actual staff count — people with active assignments in the selected entity.
+  const { data: allUsers = [] } = useQuery<OrgUser[]>({
+    queryKey: ["org-users"],
+    staleTime: 0,
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/v1/org/users`, { credentials: "include" });
+      if (!res.ok) return [];
+      const d = await res.json().catch(() => []);
+      return Array.isArray(d) ? d as OrgUser[] : [];
     },
   });
 
   const tree = buildTree(nodes);
-  const selectedSubName = subsidiaries.find(s => s.id === selectedSub)?.name ?? "Group-level";
+  const selectedSubName = subsidiaries.find(s => s.id === selectedSub)?.name ?? "All Entities";
+
+  // Staff count: people who have at least one assignment in the selected subsidiary (or any, if none selected).
+  const staffInView = selectedSub
+    ? allUsers.filter(u => u.person_id && u.assignments?.some(a => a.subsidiary_id === selectedSub)).length
+    : allUsers.filter(u => u.person_id).length;
 
   const totalPositions = nodes.length;
   const filledPositions = nodes.filter(n => n.holder_names.length > 0).length;
   const vacantPositions = totalPositions - filledPositions;
+
+  // Unique staff names currently shown in chart nodes.
+  const staffInChart = new Set(nodes.flatMap(n => n.holder_names)).size;
 
   return (
     <div className="max-w-[1400px] mx-auto space-y-6">
@@ -153,17 +177,18 @@ export default function OrgChartPage() {
         <select value={selectedSub} onChange={e => setSelectedSub(e.target.value)}
                 className="h-9 px-3 rounded-xl text-[12px] font-medium outline-none appearance-none"
                 style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)", color: "var(--pg-text-1)" }}>
-          <option value="">Group-level positions</option>
+          <option value="">All Entities</option>
           {subsidiaries.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-4 gap-4">
         {[
-          { label: "Total Positions", value: totalPositions,  color: "#2563eb", bg: "#eff6ff", icon: Building2 },
-          { label: "Filled",          value: filledPositions, color: "#059669", bg: "#ecfdf5", icon: User },
-          { label: "Vacant",          value: vacantPositions, color: "#d97706", bg: "#fffbeb", icon: Users },
+          { label: "Total Staff",      value: staffInView,     sub: "active employees",         color: "#7c3aed", bg: "#f5f3ff", icon: Users },
+          { label: "Total Positions",  value: totalPositions,  sub: "defined roles",             color: "#2563eb", bg: "#eff6ff", icon: Building2 },
+          { label: "Filled",           value: filledPositions, sub: `${staffInChart} names shown`, color: "#059669", bg: "#ecfdf5", icon: User },
+          { label: "Vacant",           value: vacantPositions, sub: "open positions",            color: "#d97706", bg: "#fffbeb", icon: Users },
         ].map(s => (
           <div key={s.label} className="rounded-xl p-4 flex items-center gap-3"
                style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}>
@@ -173,6 +198,7 @@ export default function OrgChartPage() {
             <div>
               <p className="text-[22px] font-bold tabular leading-none" style={{ color: "var(--pg-text-1)" }}>{s.value}</p>
               <p className="text-[10px] font-bold uppercase tracking-wider mt-0.5" style={{ color: s.color }}>{s.label}</p>
+              <p className="text-[9px] mt-0.5" style={{ color: "var(--pg-text-4)" }}>{s.sub}</p>
             </div>
           </div>
         ))}

@@ -1,0 +1,67 @@
+# /etc/nginx/sites-available/app.pageos.org
+# PageOS — mirrors the anike.run / imole.tv pattern on this VPS.
+# Enable: ln -s /etc/nginx/sites-available/app.pageos.org /etc/nginx/sites-enabled/
+# SSL:    certbot --nginx -d app.pageos.org
+
+server {
+    listen 80;
+    server_name app.pageos.org;
+
+    # Let's Encrypt ACME challenge
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    server_name app.pageos.org;
+    http2 on;
+
+    # Certbot will fill these in automatically
+    ssl_certificate     /etc/letsencrypt/live/app.pageos.org/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/app.pageos.org/privkey.pem;
+    include             /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam         /etc/letsencrypt/ssl-dhparams.pem;
+
+    # Security headers
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options nosniff;
+    add_header X-Frame-Options SAMEORIGIN;
+
+    # Allow large file uploads (documents, assets)
+    client_max_body_size 50M;
+
+    # ── Go API (/api/v1/...) ──────────────────────────────────────────────────
+    location /api/ {
+        proxy_pass         http://127.0.0.1:8090;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_read_timeout 120s;
+    }
+
+    # ── Next.js web app ───────────────────────────────────────────────────────
+    location / {
+        proxy_pass         http://127.0.0.1:3090;
+        proxy_http_version 1.1;
+        proxy_set_header   Upgrade    $http_upgrade;
+        proxy_set_header   Connection "upgrade";
+        proxy_set_header   Host       $host;
+        proxy_set_header   X-Real-IP  $remote_addr;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+    }
+
+    # Next.js static assets — long cache
+    location /_next/static/ {
+        proxy_pass http://127.0.0.1:3090;
+        expires    1y;
+        add_header Cache-Control "public, immutable";
+    }
+}

@@ -2,13 +2,12 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api/client";
 import {
   Search, UserPlus, RefreshCw, UserX, UserCheck,
   ChevronRight, X, Check, AlertCircle, Copy, CheckCircle2,
   ArrowRight, Building2, Briefcase, FolderPlus,
   Upload, FileText, File, Image, Download, Shield, ShieldCheck,
-  ShieldAlert, Loader2, Eye,
+  ShieldAlert, Loader2, Eye, EyeOff,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -22,13 +21,74 @@ type Assignment = {
   position_code: string; position_title: string;
   subsidiary_id?: string; subsidiary_name?: string;
   is_primary: boolean; effective_from: string;
+  employment_type: string;
+  grade_level_code?: string;
+  grade_level_name?: string;
+  pending_grade_review: boolean;
 };
 
 type Employee = {
   user_id: string; email: string; display_name: string;
-  user_status: "active" | "inactive"; person_id?: string;
+  user_status: "active" | "inactive" | "no_account"; person_id?: string;
+  home_organization?: string;
   assignments: Assignment[];
 };
+
+// ── Employment type badge ──────────────────────────────────────────────────────
+
+const EMPLOYMENT_TYPE_STYLES: Record<string, { label: string; bg: string; color: string }> = {
+  secondee:  { label: "Secondee",  bg: "#ede9fe", color: "#7c3aed" },
+  intern:    { label: "Intern",    bg: "#fef3c7", color: "#d97706" },
+  nysc:      { label: "NYSC",      bg: "#d1fae5", color: "#059669" },
+  contract:  { label: "Contract",  bg: "#dbeafe", color: "#2563eb" },
+};
+
+function EmploymentBadge({ type }: { type: string }) {
+  const style = EMPLOYMENT_TYPE_STYLES[type];
+  if (!style) return null;
+  return (
+    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide"
+          style={{ background: style.bg, color: style.color }}>
+      {style.label}
+    </span>
+  );
+}
+
+const NIL_UUID = "00000000-0000-0000-0000-000000000000";
+function hasAccount(emp: Employee) { return emp.user_id && emp.user_id !== NIL_UUID; }
+
+function StatusPill({ status }: { status: string }) {
+  const styles: Record<string, { bg: string; color: string; label: string }> = {
+    active:     { bg: "#d1fae5", color: "#065f46", label: "active" },
+    inactive:   { bg: "#fee2e2", color: "#991b1b", label: "inactive" },
+    no_account: { bg: "#f1f5f9", color: "#475569", label: "no account" },
+  };
+  const s = styles[status] ?? styles.no_account;
+  return (
+    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full w-fit"
+          style={{ background: s.bg, color: s.color }}>
+      {s.label}
+    </span>
+  );
+}
+
+function GradeBadge({ code, name, pending }: { code?: string; name?: string; pending?: boolean }) {
+  if (!code) return null;
+  return (
+    <span className="flex items-center gap-1">
+      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide"
+            style={{ background: "var(--pg-muted-bg)", color: "var(--pg-text-2)", border: "1px solid var(--pg-card-border)" }}>
+        {name || code}
+      </span>
+      {pending && (
+        <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide"
+              style={{ background: "#fef3c7", color: "#d97706" }}>
+          review
+        </span>
+      )}
+    </span>
+  );
+}
 
 type SubsidiaryOption = { id: string; code: string; name: string };
 type Position = { id: string; code: string; title: string; subsidiary_id?: string; is_group_level: boolean; reports_to_title?: string };
@@ -404,6 +464,7 @@ function AddToDepartmentDialog({
     e.preventDefault();
     if (!selectedSub) { setError("Select a subsidiary."); return; }
     if (!positionCode) { setError("Select a position."); return; }
+    if (!employee.person_id) { setError("This employee has no person record and cannot be assigned."); return; }
     setSaving(true); setError("");
     try {
       // Find position_id from code
@@ -766,6 +827,152 @@ function ResetPasswordDialog({ employee, onClose }: { employee: Employee; onClos
   );
 }
 
+// ── Provision Account Dialog ──────────────────────────────────────────────────
+
+function ProvisionAccountDialog({ employee, onClose }: { employee: Employee; onClose: () => void }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [password, setPassword] = useState("");
+  const [showPwd, setShowPwd] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState("");
+
+  function generatePassword() {
+    const chars = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#";
+    return Array.from({ length: 12 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!password) { setError("Password is required."); return; }
+    if (password.length < 8) { setError("Password must be at least 8 characters."); return; }
+    if (!employee.person_id) { setError("This employee has no person record — cannot provision an account."); return; }
+    setSaving(true); setError("");
+    try {
+      const res = await fetch(`${BASE}/api/v1/admin/persons/${employee.person_id}/provision-account`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ password }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: { message: "Request failed" } }));
+        throw new Error(err.error?.message ?? "Request failed");
+      }
+      setDone(true);
+      queryClient.invalidateQueries({ queryKey: ["org-users"] });
+      toast({ title: "Account Provisioned", description: `${employee.display_name} can now log in with their email.` });
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+         style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(6px)" }}
+         onClick={onClose}>
+      <div className="w-full max-w-sm rounded-2xl overflow-hidden"
+           style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)", boxShadow: "0 24px 64px rgba(0,0,0,0.3)" }}
+           onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: "1px solid var(--pg-row-border)" }}>
+          <div>
+            <h2 className="text-[15px] font-bold" style={{ color: "var(--pg-text-1)" }}>Provision Login Account</h2>
+            <p className="text-[12px] mt-0.5" style={{ color: "var(--pg-text-3)" }}>{employee.display_name}</p>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg" style={{ color: "var(--pg-text-3)" }}>
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {done ? (
+          <div className="p-6 space-y-4">
+            <div className="flex flex-col items-center gap-3 py-4 text-center">
+              <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ background: "#d1fae5" }}>
+                <Check className="w-6 h-6 text-emerald-600" />
+              </div>
+              <div>
+                <p className="text-[14px] font-semibold" style={{ color: "var(--pg-text-1)" }}>Account created</p>
+                <p className="text-[12px] mt-1" style={{ color: "var(--pg-text-3)" }}>
+                  {employee.display_name} can now log in with<br />
+                  <span className="font-medium" style={{ color: "var(--pg-text-2)" }}>{employee.email}</span>
+                </p>
+              </div>
+              <p className="text-[11px] px-3 py-2 rounded-xl w-full text-center"
+                 style={{ background: "#fef3c7", color: "#d97706", border: "1px solid #fde68a" }}>
+                Share the temporary password securely — they must change it on first login.
+              </p>
+            </div>
+            <button onClick={onClose}
+                    className="w-full h-9 rounded-xl text-[13px] font-medium"
+                    style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}>
+              Close
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={submit} className="p-6 space-y-4">
+            <div className="px-4 py-3 rounded-xl text-[12px]" style={{ background: "var(--pg-muted-bg)" }}>
+              <p style={{ color: "var(--pg-text-3)" }}>Login email (from employee record):</p>
+              <p className="font-semibold mt-0.5" style={{ color: "var(--pg-text-1)" }}>{employee.email}</p>
+            </div>
+
+            <div>
+              <label className="block text-[12px] font-medium mb-1.5" style={{ color: "var(--pg-text-2)" }}>
+                Temporary Password *
+              </label>
+              <div className="flex gap-2">
+                <div className="flex-1 flex items-center gap-2 h-10 px-3 rounded-xl"
+                     style={{ background: "var(--pg-input)", border: "1px solid var(--pg-input-border)" }}>
+                  <input
+                    type={showPwd ? "text" : "password"}
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    placeholder="Min. 8 characters"
+                    className="flex-1 text-[13px] bg-transparent outline-none font-mono"
+                    style={{ color: "var(--pg-text-1)" }}
+                  />
+                  <button type="button" onClick={() => setShowPwd(v => !v)}
+                          className="shrink-0" style={{ color: "var(--pg-text-4)" }}>
+                    {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <button type="button"
+                        onClick={() => setPassword(generatePassword())}
+                        className="h-10 px-3 rounded-xl text-[11px] font-semibold shrink-0"
+                        style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}>
+                  Generate
+                </button>
+              </div>
+            </div>
+
+            {error && (
+              <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl" style={{ background: "#fef2f2", border: "1px solid #fecaca" }}>
+                <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                <p className="text-[13px] text-red-600">{error}</p>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2" style={{ borderTop: "1px solid var(--pg-row-border)" }}>
+              <button type="button" onClick={onClose}
+                      className="h-9 px-4 rounded-xl text-[13px] font-medium"
+                      style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}>
+                Cancel
+              </button>
+              <button type="submit" disabled={saving}
+                      className="h-9 px-5 rounded-xl text-[13px] font-semibold text-white disabled:opacity-60"
+                      style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                {saving ? "Provisioning…" : "Create Account"}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function HRRecordsPage() {
@@ -787,9 +994,10 @@ export default function HRRecordsPage() {
       setSubFilter("all");
     }
   }, [activePosition?.id, subsidiary?.ID]);
-  const [transferEmp, setTransfer]  = useState<Employee | null>(null);
-  const [resetEmp, setResetEmp]     = useState<Employee | null>(null);
-  const [addDeptEmp, setAddDept]    = useState<Employee | null>(null);
+  const [transferEmp, setTransfer]     = useState<Employee | null>(null);
+  const [resetEmp, setResetEmp]        = useState<Employee | null>(null);
+  const [addDeptEmp, setAddDept]       = useState<Employee | null>(null);
+  const [provisionEmp, setProvision]   = useState<Employee | null>(null);
 
   const { data: rawUsers = [], isLoading } = useQuery({
     queryKey: ["org-users"],
@@ -826,7 +1034,7 @@ export default function HRRecordsPage() {
       || u.assignments?.some(a => a.position_title?.toLowerCase().includes(q) || a.subsidiary_name?.toLowerCase().includes(q));
     const matchFilter = filter === "all"
       || (filter === "active"     && u.user_status === "active")
-      || (filter === "inactive"   && u.user_status === "inactive")
+      || (filter === "inactive"   && (u.user_status === "inactive" || u.user_status === "no_account"))
       || (filter === "unassigned" && !u.assignments?.length);
     const matchSub = subFilter === "all" || u.assignments?.some(a => a.subsidiary_id === subFilter);
     return matchSearch && matchFilter && matchSub;
@@ -921,7 +1129,7 @@ export default function HRRecordsPage() {
                          onMouseLeave={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = ""; }}>
                       <div className="flex items-center gap-2.5 min-w-0">
                         <div className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
-                             style={{ background: emp.user_status === "active" ? "linear-gradient(135deg,#2563eb,#1d4ed8)" : "#94a3b8" }}>
+                             style={{ background: emp.user_status === "active" ? "linear-gradient(135deg,#2563eb,#1d4ed8)" : emp.user_status === "no_account" ? "linear-gradient(135deg,#64748b,#475569)" : "#94a3b8" }}>
                           {initials(emp.display_name)}
                         </div>
                         <div className="min-w-0">
@@ -929,7 +1137,10 @@ export default function HRRecordsPage() {
                           <p className="text-[11px] truncate" style={{ color: "var(--pg-text-3)" }}>{emp.email}</p>
                         </div>
                       </div>
-                      <p className="text-[12px] truncate" style={{ color: "var(--pg-text-2)" }}>{primary?.position_title ?? "—"}</p>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <p className="text-[12px] truncate" style={{ color: "var(--pg-text-2)" }}>{primary?.position_title ?? "—"}</p>
+                        {primary && <EmploymentBadge type={primary.employment_type} />}
+                      </div>
                       <div className="flex flex-wrap gap-1">
                         {subs.length === 0 ? (
                           <span className="text-[11px]" style={{ color: "var(--pg-text-4)" }}>No assignment</span>
@@ -937,10 +1148,7 @@ export default function HRRecordsPage() {
                           <span key={s} className="text-[10px] font-medium px-1.5 py-0.5 rounded-full" style={{ background: "var(--pg-muted-bg)", color: "var(--pg-text-2)" }}>{s?.split(" ")[1] ?? s}</span>
                         ))}
                       </div>
-                      <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full w-fit"
-                            style={{ background: emp.user_status === "active" ? "#d1fae5" : "#fee2e2", color: emp.user_status === "active" ? "#065f46" : "#991b1b" }}>
-                        {emp.user_status}
-                      </span>
+                      <StatusPill status={emp.user_status} />
                       <ChevronRight className="w-4 h-4 justify-self-end" style={{ color: "var(--pg-text-4)" }} />
                     </div>
                   );
@@ -980,15 +1188,26 @@ export default function HRRecordsPage() {
                 ) : (
                   <div className="space-y-2">
                     {selected.assignments.map((a, i) => (
-                      <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: "var(--pg-muted-bg)" }}>
-                        <Briefcase className="w-3.5 h-3.5 shrink-0" style={{ color: "#2563eb" }} />
-                        <div className="flex-1 min-w-0">
+                      <div key={i} className="flex items-start gap-2 px-3 py-2.5 rounded-xl" style={{ background: "var(--pg-muted-bg)" }}>
+                        <Briefcase className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: "#2563eb" }} />
+                        <div className="flex-1 min-w-0 space-y-1">
                           <p className="text-[12px] font-medium truncate" style={{ color: "var(--pg-text-1)" }}>{a.position_title}</p>
-                          <p className="text-[11px]" style={{ color: "var(--pg-text-3)" }}>{a.subsidiary_name ?? "Group-level"} {a.is_primary && "· Primary"}</p>
+                          <p className="text-[11px]" style={{ color: "var(--pg-text-3)" }}>
+                            {a.subsidiary_name ?? "Group-level"}{a.is_primary && " · Primary"}
+                          </p>
+                          <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                            <EmploymentBadge type={a.employment_type} />
+                            <GradeBadge code={a.grade_level_code} name={a.grade_level_name} pending={a.pending_grade_review} />
+                          </div>
                         </div>
                       </div>
                     ))}
                   </div>
+                )}
+                {selected.home_organization && (
+                  <p className="text-[11px] mt-2 px-1" style={{ color: "var(--pg-text-3)" }}>
+                    Home org: <span className="font-medium" style={{ color: "var(--pg-text-2)" }}>{selected.home_organization}</span>
+                  </p>
                 )}
               </div>
 
@@ -1013,22 +1232,35 @@ export default function HRRecordsPage() {
                         onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
                   <ArrowRight className="w-3.5 h-3.5 text-blue-600" /> Transfer / Change Role
                 </button>
-                <button onClick={() => { setResetEmp(selected); setSelected(null); }}
-                        className="w-full flex items-center gap-2 h-9 px-3 rounded-xl text-[12px] font-medium transition-colors"
-                        style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-1)" }}
-                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--pg-muted-bg)"}
-                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
-                  <RefreshCw className="w-3.5 h-3.5 text-amber-500" /> Reset Password
-                </button>
-                <button onClick={() => deactivateMutation.mutate(selected)}
-                        disabled={deactivateMutation.isPending}
-                        className="w-full flex items-center gap-2 h-9 px-3 rounded-xl text-[12px] font-medium transition-colors"
-                        style={{ border: `1px solid ${selected.user_status === "active" ? "#fca5a5" : "#a7f3d0"}`, color: selected.user_status === "active" ? "#dc2626" : "#059669" }}
-                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = selected.user_status === "active" ? "#fef2f2" : "#ecfdf5"}
-                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
-                  {selected.user_status === "active" ? <UserX className="w-3.5 h-3.5" /> : <UserCheck className="w-3.5 h-3.5" />}
-                  {selected.user_status === "active" ? "Deactivate Account" : "Reactivate Account"}
-                </button>
+
+                {hasAccount(selected) ? (
+                  <>
+                    <button onClick={() => { setResetEmp(selected); setSelected(null); }}
+                            className="w-full flex items-center gap-2 h-9 px-3 rounded-xl text-[12px] font-medium transition-colors"
+                            style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-1)" }}
+                            onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--pg-muted-bg)"}
+                            onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
+                      <RefreshCw className="w-3.5 h-3.5 text-amber-500" /> Reset Password
+                    </button>
+                    <button onClick={() => deactivateMutation.mutate(selected)}
+                            disabled={deactivateMutation.isPending}
+                            className="w-full flex items-center gap-2 h-9 px-3 rounded-xl text-[12px] font-medium transition-colors"
+                            style={{ border: `1px solid ${selected.user_status === "active" ? "#fca5a5" : "#a7f3d0"}`, color: selected.user_status === "active" ? "#dc2626" : "#059669" }}
+                            onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = selected.user_status === "active" ? "#fef2f2" : "#ecfdf5"}
+                            onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
+                      {selected.user_status === "active" ? <UserX className="w-3.5 h-3.5" /> : <UserCheck className="w-3.5 h-3.5" />}
+                      {selected.user_status === "active" ? "Deactivate Account" : "Reactivate Account"}
+                    </button>
+                  </>
+                ) : (
+                  <button onClick={() => { setProvision(selected); setSelected(null); }}
+                          className="w-full flex items-center gap-2 h-9 px-3 rounded-xl text-[12px] font-medium transition-colors"
+                          style={{ border: "1px solid #bfdbfe", color: "#2563eb" }}
+                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#eff6ff"}
+                          onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
+                    <UserPlus className="w-3.5 h-3.5" /> Provision Login Account
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -1039,6 +1271,7 @@ export default function HRRecordsPage() {
       {addDeptEmp  && <AddToDepartmentDialog employee={addDeptEmp} subsidiaries={subsidiaries} onClose={() => setAddDept(null)} />}
       {transferEmp && <TransferDialog employee={transferEmp} subsidiaries={subsidiaries} onClose={() => setTransfer(null)} />}
       {resetEmp    && <ResetPasswordDialog employee={resetEmp} onClose={() => setResetEmp(null)} />}
+      {provisionEmp && <ProvisionAccountDialog employee={provisionEmp} onClose={() => setProvision(null)} />}
     </div>
   );
 }

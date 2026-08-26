@@ -11,7 +11,7 @@ import {
   Bell, Command, ChevronDown, Check, Building2, LogOut, Loader2,
   PanelLeft, ChevronRight, Inbox, Sun, Moon, X, Clock,
   CheckCircle2, AlertCircle, Info, FileBarChart,
-  Star, User, ClipboardList, Lock,
+  Star, User, ClipboardList, Lock, Package,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
@@ -28,17 +28,28 @@ const WM_NAV: NavGroup[] = [
     { href: "/wm/dashboard",          label: "My Dashboard",   icon: LayoutDashboard },
     { href: "/ai",                    label: "AI Copilot",     icon: Brain, badge: "AI" },
   ]},
+  { id: "crm", label: "CRM", items: [
+    { href: "/crm",          label: "Dashboard",  icon: LayoutDashboard },
+    { href: "/crm/contacts", label: "Contacts",   icon: Users },
+    { href: "/crm/pipeline", label: "Pipeline",   icon: LineChart },
+    { href: "/crm/tasks",    label: "Tasks",      icon: ClipboardList },
+  ]},
   { id: "clients", label: "My Clients", items: [
     { href: "/wm/clients",            label: "Client List",    icon: Users },
     { href: "/wm/pipeline",           label: "Pipeline",       icon: LineChart },
     { href: "/investments/onboarding",label: "New Onboarding", icon: UserPlus },
   ]},
+  { id: "portfolio", label: "Portfolios", items: [
+    { href: "/wm/portfolio",          label: "Funds & Mandates",  icon: BarChart2 },
+    { href: "/wm/portfolio/accounts", label: "Client Accounts",   icon: Users },
+  ]},
   { id: "business", label: "My Business", items: [
-    { href: "/wm/commission",         label: "My Commission",  icon: DollarSign },
-    { href: "/approval",              label: "Approvals",      icon: CheckSquare },
-    { href: "/appraisal",             label: "My Appraisal",   icon: ClipboardList },
-    { href: "/documents",             label: "Documents",      icon: FolderOpen },
-    { href: "/vault",                 label: "My Vault",       icon: Lock },
+    { href: "/wm/commission",           label: "My Commission",       icon: DollarSign },
+    { href: "/approval",                label: "Approvals",           icon: CheckSquare },
+    { href: "/appraisal",               label: "My Appraisal",        icon: ClipboardList },
+    { href: "/hr/documents/my",         label: "My Documents",        icon: FileText },
+    { href: "/documents",               label: "Shared Documents",    icon: FolderOpen },
+    { href: "/vault",                   label: "My Vault",            icon: Lock },
   ]},
 ];
 
@@ -56,10 +67,15 @@ const MD_NAV: NavGroup[] = [
     { href: "/md/exchange-rates",     label: "Exchange Rates", icon: RefreshCw },
   ]},
   { id: "ops", label: "Operations", items: [
-    { href: "/investments/onboarding",label: "Onboarding",     icon: UserPlus },
-    { href: "/approval",              label: "Approvals",      icon: CheckSquare },
-    { href: "/reports",               label: "Reports",        icon: FileBarChart },
-    { href: "/vault",                 label: "My Vault",       icon: Lock },
+    { href: "/investments/onboarding",label: "Onboarding",       icon: UserPlus },
+    { href: "/approval",              label: "Approvals",         icon: CheckSquare },
+    { href: "/hr/documents/my",       label: "My Documents",      icon: FileText },
+    { href: "/reports",               label: "Reports",           icon: FileBarChart },
+    { href: "/vault",                 label: "My Vault",          icon: Lock },
+  ]},
+  { id: "portfolio", label: "Portfolio", items: [
+    { href: "/wm/portfolio",          label: "Funds & Mandates",  icon: BarChart2 },
+    { href: "/wm/portfolio/accounts", label: "Client Accounts",   icon: Users },
   ]},
   { id: "finance", label: "Finance", items: [
     { href: "/finance",               label: "Finance",        icon: TrendingUp },
@@ -79,6 +95,7 @@ const COMPLIANCE_NAV: NavGroup[] = [
   ]},
   { id: "actions", label: "Actions", items: [
     { href: "/approval",              label: "Approvals",      icon: CheckSquare },
+    { href: "/hr/documents/my",       label: "My Documents",   icon: FileText },
     { href: "/documents",             label: "Documents",      icon: FolderOpen },
     { href: "/vault",                 label: "My Vault",       icon: Lock },
   ]},
@@ -89,6 +106,10 @@ const FINANCE_NAV: NavGroup[] = [
     { href: "/dashboard",             label: "Dashboard",      icon: LayoutDashboard },
     { href: "/ai",                    label: "AI Copilot",     icon: Brain, badge: "AI" },
   ]},
+  { id: "portfolio", label: "Investments", items: [
+    { href: "/wm/portfolio",          label: "Funds & Mandates",  icon: BarChart2 },
+    { href: "/wm/portfolio/accounts", label: "Client Accounts",   icon: Users },
+  ]},
   { id: "finance", label: "Finance", items: [
     { href: "/finance",               label: "Overview",       icon: TrendingUp },
     { href: "/finance/reconciliation",label: "Reconciliation", icon: RefreshCw },
@@ -96,11 +117,18 @@ const FINANCE_NAV: NavGroup[] = [
     { href: "/finance/journals",      label: "Journals",       icon: FileText },
     { href: "/finance/payables",      label: "Payables",       icon: CreditCard },
     { href: "/finance/receivables",   label: "Receivables",    icon: Wallet },
+    { href: "/finance/assets",        label: "Fixed Assets",   icon: Package },
   ]},
   { id: "reporting", label: "Reporting", items: [
-    { href: "/reports",               label: "Reports",        icon: FileBarChart },
-    { href: "/approval",              label: "Approvals",      icon: CheckSquare },
-    { href: "/vault",                 label: "My Vault",       icon: Lock },
+    { href: "/finance/budget",                    label: "Budget vs Actual", icon: Target },
+    { href: "/finance/reports/pl",                label: "P&L Statement",    icon: TrendingUp },
+    { href: "/finance/reports/balance-sheet",     label: "Balance Sheet",    icon: BarChart2 },
+    { href: "/finance/reports/cash-flow",         label: "Cash Flow",        icon: RefreshCw },
+    { href: "/finance/reports/consolidated",      label: "Consolidated",     icon: PieChart },
+    { href: "/finance/reports/vat",               label: "VAT Return",       icon: FileBarChart },
+    { href: "/finance/reports/wht",               label: "WHT Register",     icon: FileText },
+    { href: "/approval",                     label: "Approvals",        icon: CheckSquare },
+    { href: "/vault",                        label: "My Vault",         icon: Lock },
   ]},
 ];
 
@@ -113,6 +141,7 @@ const HR_NAV: NavGroup[] = [
     { href: "/hr/records",        label: "Employee Directory", icon: Users },
     { href: "/hr/org-chart",      label: "Org Chart",          icon: Building2 },
     { href: "/hr/admin",          label: "User Management",    icon: UserSearch },
+    { href: "/hr/documents",      label: "Document Requests",  icon: FolderOpen },
     { href: "/recruitment",       label: "Recruitment",        icon: UserPlus },
   ]},
   { id: "appraisals", label: "Appraisals", items: [
@@ -120,12 +149,13 @@ const HR_NAV: NavGroup[] = [
     { href: "/appraisal",           label: "My Assessment",     icon: Star },
   ]},
   { id: "payroll", label: "Payroll & Benefits", items: [
-    { href: "/payroll",           label: "Payroll",         icon: DollarSign },
+    { href: "/payroll",             label: "Payroll Runs",      icon: DollarSign },
+    { href: "/payroll/remittance",  label: "PAYE & Pension",    icon: Shield },
   ]},
   { id: "actions", label: "Actions", items: [
-    { href: "/approval",          label: "Approvals",       icon: CheckSquare },
-    { href: "/documents",         label: "Documents",       icon: FolderOpen },
-    { href: "/vault",             label: "My Vault",        icon: Lock },
+    { href: "/approval",              label: "Approvals",       icon: CheckSquare },
+    { href: "/hr/documents/my",       label: "My Documents",    icon: FileText },
+    { href: "/vault",                 label: "My Vault",        icon: Lock },
   ]},
 ];
 
@@ -138,11 +168,21 @@ const ADMIN_NAV: NavGroup[] = [
     { href: "/hr/admin",               label: "User Management",  icon: Users },
     { href: "/settings",               label: "System Settings",  icon: Settings },
   ]},
+  { id: "crm", label: "CRM", items: [
+    { href: "/crm",          label: "CRM Dashboard", icon: LayoutDashboard },
+    { href: "/crm/contacts", label: "Contacts",      icon: Users },
+    { href: "/crm/pipeline", label: "Pipeline",      icon: LineChart },
+  ]},
+  { id: "investments", label: "Investments", items: [
+    { href: "/wm/portfolio",           label: "Funds & Mandates", icon: BarChart2 },
+    { href: "/wm/portfolio/accounts",  label: "Client Accounts",  icon: Users },
+  ]},
   { id: "finance", label: "Finance", items: [
     { href: "/finance",                label: "Overview",         icon: TrendingUp },
     { href: "/finance/reconciliation", label: "Reconciliation",   icon: RefreshCw },
     { href: "/finance/ledger",         label: "General Ledger",   icon: BookOpen },
     { href: "/finance/journals",       label: "Journals",         icon: FileText },
+    { href: "/finance/assets",         label: "Fixed Assets",     icon: Package },
   ]},
   { id: "governance", label: "Governance", items: [
     { href: "/approval",               label: "Approvals",        icon: CheckSquare },
@@ -154,6 +194,7 @@ const ADMIN_NAV: NavGroup[] = [
     { href: "/investments/onboarding", label: "Onboarding",       icon: UserPlus },
     { href: "/hr",                     label: "HR",               icon: Users },
     { href: "/payroll",                label: "Payroll",          icon: DollarSign },
+    { href: "/hr/documents",           label: "Doc Requests",     icon: FolderOpen },
   ]},
   { id: "intel", label: "Intelligence", items: [
     { href: "/reports",                label: "Reports",          icon: FileBarChart },
@@ -169,6 +210,7 @@ const DEFAULT_NAV: NavGroup[] = [
   { id: "personal", label: "My Work", items: [
     { href: "/appraisal",             label: "My Appraisal",   icon: ClipboardList },
     { href: "/approval",              label: "Approvals",      icon: CheckSquare },
+    { href: "/hr/documents/my",       label: "My Documents",   icon: FileText },
     { href: "/vault",                 label: "My Vault",       icon: Lock },
   ]},
   { id: "finance", label: "Finance", items: [
@@ -408,7 +450,11 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const canSwitch    = subsidiaries.length > 1;
   const navGroups    = navForRole(primaryCode);
   const allNavItems  = navGroups.flatMap(g => g.items);
-  const activeItem   = allNavItems.find(i => pathname === i.href || pathname.startsWith(i.href + "/"));
+  // Pick the most specific (longest href) matching item so that /finance/journals
+  // is highlighted instead of /finance when siblings share the same prefix.
+  const activeItem = allNavItems
+    .filter(i => pathname === i.href || pathname.startsWith(i.href + "/"))
+    .sort((a, b) => b.href.length - a.href.length)[0] ?? null;
   const activeGrp    = navGroups.find(g => g.items.some(i => pathname === i.href || pathname.startsWith(i.href + "/")));
   const W = collapsed ? 60 : 260;
 
@@ -427,7 +473,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
     <div className="flex min-h-screen w-full" style={{ background: "var(--pg-bg)" }}>
 
       {/* ═══ SIDEBAR ═════════════════════════════════════════════════════════ */}
-      <aside style={{ width: W, minWidth: W, transition: "width 0.22s cubic-bezier(0.4,0,0.2,1)", background: "linear-gradient(180deg,#080d18 0%,#0c1222 100%)", position: "relative", overflow: "visible", zIndex: 40 }}
+      <aside style={{ width: W, minWidth: W, transition: "width 0.22s cubic-bezier(0.4,0,0.2,1)", background: "linear-gradient(180deg,#080d18 0%,#0c1222 100%)", position: "sticky", top: 0, height: "100vh", overflow: "visible", zIndex: 40 }}
              className="hidden md:flex flex-col shrink-0">
 
         {/* Glow */}
@@ -529,7 +575,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
               )}
               {group.label && collapsed && <div className="my-2 mx-2 h-px" style={{ background: "rgba(255,255,255,0.06)" }} />}
               {group.items.map(({ href, label, icon: Icon, badge }) => {
-                const active = pathname === href || pathname.startsWith(href + "/");
+                const active = activeItem?.href === href;
                 return (
                   <Link key={href} href={href} title={collapsed ? label : undefined}
                         className={cn("flex items-center rounded-lg transition-all duration-150 group mb-0.5",
@@ -548,19 +594,21 @@ export function AppLayout({ children }: { children: ReactNode }) {
               })}
             </div>
           ))}
-          {!collapsed && <div className="mt-4 mb-1 mx-2 h-px" style={{ background: "rgba(255,255,255,0.06)" }} />}
-          <Link href="/settings" title={collapsed ? "Settings" : undefined}
-                className={cn("flex items-center rounded-lg transition-all group",
-                              collapsed ? "h-9 w-9 mx-auto justify-center" : "gap-2.5 px-3 py-2",
-                              pathname.startsWith("/settings") ? "text-white" : "text-slate-400 hover:text-white")}
-                style={pathname.startsWith("/settings") ? { background: "linear-gradient(135deg,rgba(37,99,235,0.88),rgba(29,78,216,0.88))" } : undefined}>
-            <Settings className="w-4 h-4 shrink-0 text-slate-500 group-hover:text-slate-300" />
-            {!collapsed && <span className="text-[13px] font-medium">Settings</span>}
-          </Link>
         </div>
 
-        {/* User footer */}
-        <div className="relative z-10 p-3 shrink-0" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+        {/* Settings + User footer — always visible, never scrolls */}
+        <div className="relative z-10 shrink-0" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+          <div className="px-2 pt-2 pb-1">
+            <Link href="/settings" title={collapsed ? "Settings" : undefined}
+                  className={cn("flex items-center rounded-lg transition-all group",
+                                collapsed ? "h-9 w-9 mx-auto justify-center" : "gap-2.5 px-3 py-2",
+                                pathname.startsWith("/settings") ? "text-white" : "text-slate-400 hover:text-white")}
+                  style={pathname.startsWith("/settings") ? { background: "linear-gradient(135deg,rgba(37,99,235,0.88),rgba(29,78,216,0.88))" } : undefined}>
+              <Settings className="w-4 h-4 shrink-0 text-slate-500 group-hover:text-slate-300" />
+              {!collapsed && <span className="text-[13px] font-medium">Settings</span>}
+            </Link>
+          </div>
+          <div className="p-3" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
           {collapsed ? (
             <div className="relative" ref={userRef}>
               <button onClick={() => setUserMenuOpen(m => !m)}
@@ -629,6 +677,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
               )}
             </div>
           )}
+          </div>
         </div>
       </aside>
 

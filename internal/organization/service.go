@@ -226,10 +226,32 @@ func (s *Service) GetUserSubsidiaries(ctx context.Context, userID uuid.UUID) ([]
 // UserWithAssignments is the HR view of a user with all their current org positions.
 type UserWithAssignments = store.UserWithAssignments
 
+// PendingGradeRow is the view returned by ListPendingGradeReview.
+type PendingGradeRow = store.PendingGradeRow
+
 // ListUsersWithAssignments returns all identity users with their active assignments.
 // Used by the HR user-management screen.
 func (s *Service) ListUsersWithAssignments(ctx context.Context) ([]UserWithAssignments, error) {
 	return s.store.ListUsersWithAssignments(ctx)
+}
+
+// ListPendingGradeReview returns all active assignments flagged for grade confirmation.
+func (s *Service) ListPendingGradeReview(ctx context.Context) ([]PendingGradeRow, error) {
+	return s.store.ListPendingGradeReview(ctx)
+}
+
+// UpdateGradeLevel sets the grade level code on a person's primary active assignment
+// and clears the pending_grade_review flag.
+func (s *Service) UpdateGradeLevel(ctx context.Context, personID uuid.UUID, gradeCode string) error {
+	if err := s.store.SetAssignmentGradeLevel(ctx, personID, gradeCode); err != nil {
+		return fmt.Errorf("organization: update grade level: %w", err)
+	}
+	_ = s.audit.Write(ctx, audit.Entry{
+		Actor: audit.Actor{Type: "system"}, Action: "organization.assignment.grade_updated",
+		ResourceType: "person", ResourceID: personID.String(),
+		Context: map[string]any{"grade_level_code": gradeCode},
+	})
+	return nil
 }
 
 // PositionWithMeta is the public view returned by GetPositionsBySubsidiary.
@@ -283,10 +305,9 @@ func (s *Service) HasRole(ctx context.Context, userID uuid.UUID, codes ...string
 // GetGroupPosition looks up a group-level position (subsidiary_id IS NULL) by code.
 // Used when provisioning users into roles that span all subsidiaries.
 func (s *Service) GetGroupPosition(ctx context.Context, code string) (Position, error) {
-	row, err := s.store.GetPositionByCode(ctx, orgdb.GetPositionByCodeParams{
-		SubsidiaryID: nil,
-		Code:         code,
-	})
+	// Use the raw store method that queries with IS NULL — the generated
+	// GetPositionByCode uses "= $1" which never matches NULL in PostgreSQL.
+	row, err := s.store.GetGroupPositionByCode(ctx, code)
 	if err != nil {
 		return Position{}, fmt.Errorf("organization: group position %q not found: %w", code, err)
 	}

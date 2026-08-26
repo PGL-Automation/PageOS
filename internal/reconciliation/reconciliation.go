@@ -28,6 +28,7 @@ type BankAccount struct {
 	AccountNumber   string            `json:"account_number"`
 	AccountName     string            `json:"account_name"`
 	Currency        string            `json:"currency"`
+	GLAccountCode   string            `json:"gl_account_code"`
 	ParserColumnMap map[string]string `json:"parser_column_map"`
 	Status          string            `json:"status"`
 }
@@ -127,7 +128,7 @@ func NewService(db *pgxpool.Pool, a *audit.Writer) *Service {
 
 // ── Bank accounts ─────────────────────────────────────────────────────────────
 
-func (s *Service) CreateBankAccount(ctx context.Context, subsidiaryID uuid.UUID, bankName, accountNumber, accountName, currency string, colMap map[string]string) (BankAccount, error) {
+func (s *Service) CreateBankAccount(ctx context.Context, subsidiaryID uuid.UUID, bankName, accountNumber, accountName, currency, glAccountCode string, colMap map[string]string) (BankAccount, error) {
 	colMapJSON := []byte("{}")
 	if len(colMap) > 0 {
 		colMapJSON, _ = json.Marshal(colMap)
@@ -143,19 +144,139 @@ func (s *Service) CreateBankAccount(ctx context.Context, subsidiaryID uuid.UUID,
 	if err != nil {
 		return BankAccount{}, fmt.Errorf("reconciliation: create bank account: %w", err)
 	}
-	return toBankAccount(row), nil
+	// Persist the GL account code (added in migration 00033; sqlc model predates it).
+	if _, err := s.store.Pool().Exec(ctx,
+		`UPDATE reconciliation.bank_account SET gl_account_code = $1 WHERE id = $2`,
+		glAccountCode, row.ID,
+	); err != nil {
+		return BankAccount{}, fmt.Errorf("reconciliation: set gl_account_code: %w", err)
+	}
+	acc := toBankAccount(row)
+	acc.GLAccountCode = glAccountCode
+	return acc, nil
+}
+
+// SetGLAccountCode updates the gl_account_code on an existing bank account.
+func (s *Service) SetGLAccountCode(ctx context.Context, bankAccountID uuid.UUID, code string) error {
+	_, err := s.store.Pool().Exec(ctx,
+		`UPDATE reconciliation.bank_account SET gl_account_code = $1 WHERE id = $2`,
+		code, bankAccountID,
+	)
+	return err
 }
 
 func (s *Service) ListBankAccounts(ctx context.Context, subsidiaryID uuid.UUID) ([]BankAccount, error) {
-	rows, err := s.store.ListBankAccounts(ctx, subsidiaryID)
+	const q = `
+		SELECT id, subsidiary_id, bank_name, account_number, account_name,
+		       currency, COALESCE(gl_account_code,'') AS gl_account_code,
+		       parser_column_map, status
+		FROM   reconciliation.bank_account
+		WHERE  subsidiary_id = $1 AND status = 'active'
+		ORDER  BY bank_name
+	`
+	rows, err := s.store.Pool().Query(ctx, q, subsidiaryID)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]BankAccount, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, toBankAccount(r))
+	defer rows.Close()
+	var out []BankAccount
+	for rows.Next() {
+		var a BankAccount
+		var colMapJSON []byte
+		if err := rows.Scan(&a.ID, &a.SubsidiaryID, &a.BankName, &a.AccountNumber,
+			&a.AccountName, &a.Currency, &a.GLAccountCode, &colMapJSON, &a.Status); err != nil {
+			return nil, err
+		}
+		_ = json.Unmarshal(colMapJSON, &a.ParserColumnMap)
+		out = append(out, a)
 	}
-	return out, nil
+	return out, rows.Err()
+}
+
+// SyncFromJournals derives internal transactions for this bank account directly
+// from posted finance journal lines that hit the account's GL code, within the
+// given date range (YYYY-MM-DD). Rows that were already synced are skipped via
+// the unique index on (bank_account_id, related_id) WHERE related_type='journal_line'.
+// Returns the number of newly-inserted transactions.
+func (s *Service) SyncFromJournals(ctx context.Context, bankAccountID, syncedBy uuid.UUID, from, to string) (int, error) {
+	// Look up the bank account to get its GL account code and subsidiary.
+	var glCode string
+	var subsidiaryID uuid.UUID
+	if err := s.store.Pool().QueryRow(ctx,
+		`SELECT COALESCE(gl_account_code,''), subsidiary_id
+		 FROM   reconciliation.bank_account WHERE id = $1`, bankAccountID,
+	).Scan(&glCode, &subsidiaryID); err != nil {
+		return 0, fmt.Errorf("reconciliation: bank account not found: %w", err)
+	}
+	if glCode == "" {
+		return 0, fmt.Errorf("reconciliation: bank account has no GL account code — set one first")
+	}
+
+	// Fetch all posted journal lines hitting this GL code in the date range.
+	const q = `
+		SELECT jl.id, h.reference, h.date, jl.narration,
+		       jl.debit::float8, jl.credit::float8
+		FROM   finance.journal_line   jl
+		JOIN   finance.journal_header h ON h.id = jl.journal_id
+		WHERE  jl.account_code = $1
+		  AND  h.status        = 'posted'
+		  AND  ($2::text = '' OR h.date::text >= $2)
+		  AND  ($3::text = '' OR h.date::text <= $3)
+		ORDER  BY h.date, h.reference
+	`
+	rows, err := s.store.Pool().Query(ctx, q, glCode, from, to)
+	if err != nil {
+		return 0, fmt.Errorf("reconciliation: query journal lines: %w", err)
+	}
+	defer rows.Close()
+
+	relatedType := "journal_line"
+	count := 0
+	for rows.Next() {
+		var lineID uuid.UUID
+		var ref, narration string
+		var txnDate time.Time
+		var debit, credit float64
+		if err := rows.Scan(&lineID, &ref, &txnDate, &narration, &debit, &credit); err != nil {
+			return count, err
+		}
+		if debit == 0 && credit == 0 {
+			continue
+		}
+
+		// Direction: GL debit on bank account = cash in; GL credit = cash out.
+		direction := "credit"
+		amountKobo := int64(debit * 100)
+		if credit != 0 {
+			direction = "debit"
+			amountKobo = int64(credit * 100)
+		}
+
+		// Insert, skipping if this journal line was already synced (unique index).
+		_, err := s.store.Pool().Exec(ctx, `
+			INSERT INTO reconciliation.internal_transaction
+			    (subsidiary_id, bank_account_id, type, direction, amount_kobo,
+			     currency, reference, related_type, related_id, txn_date)
+			VALUES ($1,$2,'journal_entry',$3,$4,'NGN',$5,$6,$7,$8)
+			ON CONFLICT DO NOTHING
+		`, subsidiaryID, bankAccountID, direction, amountKobo,
+			ref, relatedType, lineID, toPGDate(txnDate))
+		if err != nil {
+			return count, fmt.Errorf("reconciliation: insert txn for line %s: %w", lineID, err)
+		}
+		count++
+	}
+	if err := rows.Err(); err != nil {
+		return count, err
+	}
+
+	_ = s.audit.Write(ctx, audit.Entry{
+		Actor:        audit.Actor{Type: "user", ID: syncedBy.String()},
+		Action:       "reconciliation.ledger.synced_from_journals",
+		ResourceType: "bank_account", ResourceID: bankAccountID.String(),
+		Context: map[string]any{"from": from, "to": to, "rows_inserted": count, "gl_account_code": glCode},
+	})
+	return count, nil
 }
 
 // ── Ledger upload + parse ─────────────────────────────────────────────────────

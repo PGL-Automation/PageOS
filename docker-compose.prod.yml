@@ -1,0 +1,100 @@
+# Production stack for 187.124.112.25
+# Caddy (proxy-caddy-1 in /opt/proxy/) routes app.pageos.org → these containers.
+# Services join proxy_net so Caddy can reach them by container name.
+# No host port mappings needed — Caddy is the only ingress.
+
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     ${POSTGRES_USER:-pageos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB:       ${POSTGRES_DB:-pageos}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pageos}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER:     ${MINIO_ROOT_USER:-pageos}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+    volumes:
+      - miniodata:/data
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      PAGEOS_ENV:          production
+      PAGEOS_HTTP_ADDR:    ":8080"
+      PAGEOS_LOG_LEVEL:    info
+      PAGEOS_DATABASE_URL: "postgres://${POSTGRES_USER:-pageos}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-pageos}?sslmode=disable"
+      PAGEOS_S3_ENDPOINT:          http://minio:9000
+      PAGEOS_S3_BUCKET:            ${S3_BUCKET:-pageos-docs}
+      PAGEOS_S3_REGION:            us-east-1
+      PAGEOS_S3_ACCESS_KEY_ID:     ${MINIO_ROOT_USER:-pageos}
+      PAGEOS_S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      PAGEOS_S3_FORCE_PATH_STYLE:  "true"
+      PAGEOS_SMTP_HOST: ${SMTP_HOST:-}
+      PAGEOS_SMTP_PORT: ${SMTP_PORT:-587}
+      PAGEOS_SMTP_USER: ${SMTP_USER:-}
+      PAGEOS_SMTP_PASS: ${SMTP_PASS:-}
+      PAGEOS_SMTP_FROM: ${SMTP_FROM:-noreply@pageos.org}
+    networks:
+      - default     # reach postgres + minio
+      - proxy_net   # reachable from Caddy as "pageos-api-1:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      args:
+        # Baked in at Next.js build time — must be the live HTTPS URL.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://app.pageos.org}
+    restart: unless-stopped
+    environment:
+      API_URL:             http://api:8080   # server-side SSR calls (stays on Docker network)
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://app.pageos.org}
+      # Next.js standalone binds to process.env.HOSTNAME which Docker sets to the
+      # container short-ID. That resolves to only one network interface. Force 0.0.0.0
+      # so the server listens on ALL interfaces (including proxy_net for Caddy).
+      HOSTNAME: "0.0.0.0"
+    networks:
+      - default     # reach api
+      - proxy_net   # reachable from Caddy as "pageos-web-1:3000"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  miniodata:
+
+networks:
+  default: {}
+  proxy_net:
+    external: true

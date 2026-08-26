@@ -260,6 +260,9 @@ export default function WMPipelinePage() {
   const { data: cards = [], isLoading } = useQuery<PipelineCard[]>({
     queryKey: ["wm-pipeline", subsidId, user?.ID],
     enabled:  Boolean(subsidId) && Boolean(user?.ID),
+    staleTime: 0,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
     queryFn:  async () => {
       const { data: cases, error } = await api.GET("/onboarding/cases", {
         params: { query: { subsidiary_id: subsidId } },

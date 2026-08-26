@@ -1,0 +1,66 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "${{ secrets.VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+
+      - name: Sync code to VPS
+        # Same retry pattern as imole-v2 (VPS occasionally drops SYNs briefly)
+        run: |
+          for i in $(seq 1 12); do
+            rsync -az --delete \
+              -e "ssh -o ConnectTimeout=15 -o ConnectionAttempts=1" \
+              --exclude '.git' \
+              --exclude '.env' \
+              --exclude '.env.prod' \
+              --exclude 'node_modules' \
+              --exclude '.next' \
+              --exclude 'bin' \
+              ./ root@${{ secrets.VPS_HOST }}:/opt/pageos/ && exit 0
+            echo "rsync attempt $i failed; retrying in 20s..."; sleep 20
+          done
+          exit 1
+
+      - name: Build and restart services
+        run: |
+          ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=6 \
+              root@${{ secrets.VPS_HOST }} '
+            set -e
+            cd /opt/pageos
+            test -f .env || {
+              echo "FATAL: /opt/pageos/.env missing on server — see DEPLOY.md step 3"
+              exit 1
+            }
+            docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
+            docker compose -f docker-compose.prod.yml ps
+          '
+
+      - name: Health check
+        run: |
+          for i in $(seq 1 15); do
+            if curl -fsS --max-time 10 https://app.pageos.org/api/v1/healthz; then
+              echo; echo "healthy ✓"; exit 0
+            fi
+            echo "waiting for API (attempt $i)..."; sleep 15
+          done
+          echo "API did not become healthy in time"
+          exit 1

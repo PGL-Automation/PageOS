@@ -38,6 +38,7 @@ export default function ReconciliationPage() {
 
   const [accountSheet, setAccountSheet] = useState(false);
   const [runSheet, setRunSheet] = useState(false);
+  const [syncingGLFor, setSyncingGLFor] = useState<string | null>(null);
   const [uploadingLedgerFor, setUploadingLedgerFor] = useState<string | null>(null);
   const [uploadingStatementFor, setUploadingStatementFor] = useState<string | null>(null);
   const ledgerInputRef = useRef<HTMLInputElement>(null);
@@ -96,23 +97,25 @@ export default function ReconciliationPage() {
     onError: (e) => toast({ title: "Error", description: (e as Error).message, variant: "destructive" }),
   });
 
-  const uploadLedgerMutation = useMutation({
-    mutationFn: async ({ accountId, file }: { accountId: string; file: File }) => {
-      const fd = new FormData();
-      fd.append("file", file);
+  const syncGLMutation = useMutation({
+    mutationFn: async ({ accountId, from, to }: { accountId: string; from: string; to: string }) => {
       const res = await fetch(
-        `http://localhost:8081/api/v1/reconciliation/accounts/${accountId}/ledger?subsidiary_id=${subsidId}`,
-        { method: "POST", body: fd, credentials: "include" }
+        `http://localhost:8081/api/v1/reconciliation/accounts/${accountId}/sync-gl`,
+        {
+          method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ from, to }),
+        }
       );
       const json = await res.json();
-      if (!res.ok) throw new Error((json as Record<string, string>).message ?? "Upload failed");
-      return json as { rows_imported: number };
+      if (!res.ok) throw new Error(json?.error?.message ?? json?.message ?? "Sync failed");
+      return json as { rows_synced: number };
     },
     onSuccess: (data) => {
-      toast({ title: "Ledger Uploaded", description: `${data.rows_imported} rows imported as internal transactions.` });
-      setUploadingLedgerFor(null);
+      toast({ title: "GL Synced", description: `${data.rows_synced} new transaction${data.rows_synced !== 1 ? "s" : ""} pulled from finance journals.` });
+      setSyncingGLFor(null);
     },
-    onError: (e) => toast({ title: "Upload Failed", description: (e as Error).message, variant: "destructive" }),
+    onError: (e) => { toast({ title: "Sync Failed", description: (e as Error).message, variant: "destructive" }); setSyncingGLFor(null); },
   });
 
   const uploadStatementMutation = useMutation({
@@ -135,21 +138,35 @@ export default function ReconciliationPage() {
     onError: (e) => toast({ title: "Upload Failed", description: (e as Error).message, variant: "destructive" }),
   });
 
-  function triggerLedgerUpload(accountId: string) {
-    setUploadingLedgerFor(accountId);
-    ledgerInputRef.current?.click();
-  }
-
-  function triggerStatementUpload(accountId: string) {
-    setUploadingStatementFor(accountId);
-    statementInputRef.current?.click();
-  }
+  const uploadLedgerMutation = useMutation({
+    mutationFn: async ({ accountId, file }: { accountId: string; file: File }) => {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(
+        `http://localhost:8081/api/v1/reconciliation/accounts/${accountId}/ledger?subsidiary_id=${subsidId}`,
+        { method: "POST", body: fd, credentials: "include" }
+      );
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.message ?? "Upload failed");
+      return json as { rows_imported: number };
+    },
+    onSuccess: (data) => {
+      toast({ title: "GL Ledger Uploaded", description: `${data.rows_imported} rows imported.` });
+      setUploadingLedgerFor(null);
+    },
+    onError: (e) => { toast({ title: "Upload Failed", description: (e as Error).message, variant: "destructive" }); setUploadingLedgerFor(null); },
+  });
 
   function onLedgerFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file || !uploadingLedgerFor) return;
     uploadLedgerMutation.mutate({ accountId: uploadingLedgerFor, file });
     e.target.value = "";
+  }
+
+  function triggerStatementUpload(accountId: string) {
+    setUploadingStatementFor(accountId);
+    statementInputRef.current?.click();
   }
 
   // Statement upload needs period dates — use a small prompt via form
@@ -241,13 +258,25 @@ export default function ReconciliationPage() {
                         <TableCell><Badge variant="outline" className="text-xs">{a.status}</Badge></TableCell>
                         <TableCell className="text-right" onClick={e => e.stopPropagation()}>
                           <div className="flex items-center justify-end gap-1">
-                            <Button variant="ghost" size="sm" title="Upload GL ledger"
-                              disabled={uploadLedgerMutation.isPending && uploadingLedgerFor === a.id}
-                              onClick={() => triggerLedgerUpload(a.id)}>
-                              {uploadLedgerMutation.isPending && uploadingLedgerFor === a.id
+                            <Button variant="ghost" size="sm" title="Sync internal transactions from finance journals (primary)"
+                              disabled={syncGLMutation.isPending && syncingGLFor === a.id}
+                              onClick={() => {
+                                setSyncingGLFor(a.id);
+                                syncGLMutation.mutate({ accountId: a.id, from: "", to: "" });
+                              }}>
+                              {syncGLMutation.isPending && syncingGLFor === a.id
                                 ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
                                 : <BookOpen className="w-3.5 h-3.5" />}
-                              <span className="ml-1 hidden lg:inline">Ledger</span>
+                              <span className="ml-1 hidden lg:inline">Sync GL</span>
+                            </Button>
+                            <Button variant="ghost" size="sm" title="Upload GL export file (fallback)"
+                              disabled={uploadLedgerMutation.isPending && uploadingLedgerFor === a.id}
+                              className="text-slate-400 hover:text-slate-600"
+                              onClick={() => { setUploadingLedgerFor(a.id); ledgerInputRef.current?.click(); }}>
+                              {uploadLedgerMutation.isPending && uploadingLedgerFor === a.id
+                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                : <Upload className="w-3.5 h-3.5" />}
+                              <span className="ml-1 hidden lg:inline">Upload GL</span>
                             </Button>
                             <Button variant="ghost" size="sm" title="Upload bank statement"
                               onClick={() => { setUploadingStatementFor(a.id); statementInputRef.current?.click(); }}>

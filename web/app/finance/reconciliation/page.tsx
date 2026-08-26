@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 type BankAccount = {
   id: string; subsidiary_id: string; bank_name: string;
   account_number: string; account_name: string; currency: string;
+  gl_account_code: string;
   parser_column_map: Record<string, string>; status: string;
 };
 
@@ -78,13 +79,23 @@ function shortKobo(n: number) {
 
 // ── Account setup form ────────────────────────────────────────────────────────
 
+const GL_ACCOUNT_OPTIONS = [
+  { code: "1110", label: "1110 – Cash at Bank (GTBank)" },
+  { code: "1111", label: "1111 – Cash at Bank (UBA)" },
+  { code: "1112", label: "1112 – Cash at Bank (Stanbic)" },
+  { code: "1113", label: "1113 – Cash at Bank (Access)" },
+  { code: "1114", label: "1114 – Cash at Bank (Zenith)" },
+  { code: "1115", label: "1115 – Cash at Bank (FCMB)" },
+];
+
 function AddAccountForm({ subsidiaryId, onCreated }: { subsidiaryId: string; onCreated: () => void }) {
   const { toast } = useToast();
-  const [bankName, setBankName]       = useState("");
+  const [bankName, setBankName]           = useState("");
   const [accountNumber, setAccountNumber] = useState("");
-  const [accountName, setAccountName] = useState("");
-  const [currency, setCurrency]       = useState("NGN");
-  const [saving, setSaving]           = useState(false);
+  const [accountName, setAccountName]     = useState("");
+  const [currency, setCurrency]           = useState("NGN");
+  const [glCode, setGlCode]               = useState("1110");
+  const [saving, setSaving]               = useState(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -93,7 +104,14 @@ function AddAccountForm({ subsidiaryId, onCreated }: { subsidiaryId: string; onC
       await reconFetch("/accounts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subsidiary_id: subsidiaryId, bank_name: bankName, account_number: accountNumber, account_name: accountName, currency }),
+        body: JSON.stringify({
+          subsidiary_id: subsidiaryId,
+          bank_name: bankName,
+          account_number: accountNumber,
+          account_name: accountName,
+          currency,
+          gl_account_code: glCode,
+        }),
       });
       toast({ title: "Bank Account Created" });
       onCreated();
@@ -134,6 +152,16 @@ function AddAccountForm({ subsidiaryId, onCreated }: { subsidiaryId: string; onC
             <option value="USD">USD — US Dollar</option>
           </select>
         </div>
+        <div className="md:col-span-2">
+          <label className="block text-[12px] font-medium mb-1.5" style={{ color: "var(--pg-text-2)" }}>
+            GL Account Code <span className="text-[11px] font-normal" style={{ color: "var(--pg-text-3)" }}>— used to sync transactions from the journal ledger</span>
+          </label>
+          <select value={glCode} onChange={e => setGlCode(e.target.value)}
+                  className="w-full h-10 px-3 rounded-xl text-[13px] outline-none appearance-none font-mono"
+                  style={{ background: "var(--pg-input)", border: "1px solid var(--pg-input-border)", color: "var(--pg-text-1)" }}>
+            {GL_ACCOUNT_OPTIONS.map(o => <option key={o.code} value={o.code}>{o.label}</option>)}
+          </select>
+        </div>
       </div>
       <div className="flex justify-end">
         <button type="submit" disabled={saving}
@@ -148,6 +176,87 @@ function AddAccountForm({ subsidiaryId, onCreated }: { subsidiaryId: string; onC
 
 // ── File upload section ───────────────────────────────────────────────────────
 
+// ── Inline GL code editor ─────────────────────────────────────────────────────
+
+function GLCodeEditor({ account, onUpdated }: { account: BankAccount; onUpdated: () => void }) {
+  const { toast } = useToast();
+  const [editing, setEditing] = useState(!account.gl_account_code);
+  const [value, setValue] = useState(account.gl_account_code || GL_ACCOUNT_OPTIONS[0].code);
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    if (value === account.gl_account_code) { setEditing(false); return; }
+    setSaving(true);
+    try {
+      const res = await fetch(`${BASE}/api/v1/reconciliation/accounts/${account.id}/gl-code`, {
+        method: "PATCH", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gl_account_code: value }),
+      });
+      if (!res.ok) throw new Error("Failed to update GL code");
+      toast({ title: "GL account code updated" });
+      onUpdated();
+      setEditing(false);
+    } catch (err) {
+      toast({ title: "Failed", description: (err as Error).message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const optionLabel = GL_ACCOUNT_OPTIONS.find(o => o.code === account.gl_account_code)?.label;
+
+  return (
+    <div className="rounded-xl p-3 mb-3" style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)" }}>
+      <div className="flex items-center gap-2 mb-1">
+        <span className="text-[11px] font-semibold" style={{ color: "var(--pg-text-2)" }}>Linked GL Account</span>
+        {!editing && (
+          account.gl_account_code ? (
+            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full"
+                  style={{ background: "#eff6ff", color: "#2563eb" }}>{account.gl_account_code}</span>
+          ) : (
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                  style={{ background: "#fef2f2", color: "#dc2626" }}>not set</span>
+          )
+        )}
+        {!editing && (
+          <button onClick={() => setEditing(true)}
+                  className="ml-auto text-[10px] font-semibold"
+                  style={{ color: "#2563eb" }}>
+            {account.gl_account_code ? "Change" : "Set now"}
+          </button>
+        )}
+      </div>
+
+      {editing ? (
+        <div className="flex gap-2 mt-2">
+          <select value={value} onChange={e => setValue(e.target.value)}
+                  className="flex-1 h-8 px-2 rounded-lg text-[12px] font-mono outline-none appearance-none"
+                  style={{ background: "var(--pg-input)", border: "1px solid var(--pg-input-border)", color: "var(--pg-text-1)" }}>
+            {GL_ACCOUNT_OPTIONS.map(o => <option key={o.code} value={o.code}>{o.label}</option>)}
+          </select>
+          <button onClick={save} disabled={saving}
+                  className="h-8 px-3 rounded-lg text-[11px] font-semibold text-white disabled:opacity-60"
+                  style={{ background: "#2563eb" }}>
+            {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save"}
+          </button>
+          {account.gl_account_code && (
+            <button onClick={() => setEditing(false)}
+                    className="h-8 px-2 rounded-lg text-[11px]"
+                    style={{ color: "var(--pg-text-3)" }}>
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      ) : (
+        <p className="text-[11px]" style={{ color: "var(--pg-text-3)" }}>
+          {optionLabel ?? "All posted journals hitting this account code are pulled as internal transactions."}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function UploadSection({
   account, subsidiaryId, statements, onUploaded,
 }: {
@@ -158,36 +267,34 @@ function UploadSection({
 }) {
   const { toast } = useToast();
   const statRef   = useRef<HTMLInputElement>(null);
-  const ledgRef   = useRef<HTMLInputElement>(null);
 
-  // File selection state (before upload)
-  const [pendingStatFile,   setPendingStatFile]   = useState<File | null>(null);
-  const [pendingLedgerFile, setPendingLedgerFile] = useState<File | null>(null);
+  const [pendingStatFile, setPendingStatFile] = useState<File | null>(null);
+  const [statResult,      setStatResult]      = useState<{ name: string; period: string } | null>(null);
+  const [syncResult,      setSyncResult]      = useState<{ rows: number; from: string; to: string } | null>(null);
 
-  // Upload result state (after successful upload)
-  const [statResult,   setStatResult]   = useState<{ name: string; period: string } | null>(null);
-  const [ledgerResult, setLedgerResult] = useState<{ name: string; rows: number } | null>(null);
-
-  // Form fields for bank statement
   const [statPeriodStart, setStatStart] = useState("");
   const [statPeriodEnd,   setStatEnd]   = useState("");
   const [openBal,  setOpenBal]          = useState("0");
   const [closeBal, setCloseBal]         = useState("0");
 
-  const [uploadingBankStat, setUploadBankStat] = useState(false);
-  const [uploadingLedger,   setUploadLedger]   = useState(false);
+  const ledgRef   = useRef<HTMLInputElement>(null);
 
-  // ── Statement file picked ────────────────────────────────────────────────
+  const [syncFrom, setSyncFrom] = useState("");
+  const [syncTo,   setSyncTo]   = useState("");
+  const [showLedgerUpload, setShowLedgerUpload] = useState(false);
+  const [pendingLedgerFile, setPendingLedgerFile] = useState<File | null>(null);
+  const [ledgerResult, setLedgerResult] = useState<{ name: string; rows: number } | null>(null);
+
+  const [uploadingBankStat, setUploadBankStat] = useState(false);
+  const [syncingGL,         setSyncingGL]       = useState(false);
+  const [uploadingLedger,   setUploadingLedger] = useState(false);
+
+  // Pre-fill sync range from statement period when available
+  const lastStatement = statements[0];
+
   function onStatFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     if (f) { setPendingStatFile(f); setStatResult(null); }
-    e.target.value = "";
-  }
-
-  // ── Ledger file picked ───────────────────────────────────────────────────
-  function onLedgerFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
-    if (f) { setPendingLedgerFile(f); setLedgerResult(null); }
     e.target.value = "";
   }
 
@@ -222,10 +329,16 @@ function UploadSection({
     }
   }
 
-  // ── Upload GL ledger ─────────────────────────────────────────────────────
+  // ── Ledger file picked (secondary path) ─────────────────────────────────
+  function onLedgerFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (f) { setPendingLedgerFile(f); setLedgerResult(null); }
+    e.target.value = "";
+  }
+
   async function uploadLedger() {
     if (!pendingLedgerFile) return;
-    setUploadLedger(true);
+    setUploadingLedger(true);
     try {
       const fd = new FormData();
       fd.append("file", pendingLedgerFile);
@@ -243,7 +356,34 @@ function UploadSection({
     } catch (err) {
       toast({ title: "Ledger Upload Failed", description: (err as Error).message, variant: "destructive" });
     } finally {
-      setUploadLedger(false);
+      setUploadingLedger(false);
+    }
+  }
+
+  // ── Sync GL from finance journals ────────────────────────────────────────
+  async function syncFromJournals() {
+    const from = syncFrom || lastStatement?.period_start?.slice(0, 10) || "";
+    const to   = syncTo   || lastStatement?.period_end?.slice(0, 10)   || "";
+    setSyncingGL(true);
+    try {
+      const res = await fetch(
+        `${BASE}/api/v1/reconciliation/accounts/${account.id}/sync-gl`,
+        {
+          method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ from, to }),
+        },
+      );
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(body?.error?.message ?? body?.message ?? `Server error ${res.status}`);
+      const rows = body?.rows_synced ?? 0;
+      setSyncResult({ rows, from, to });
+      toast({ title: "GL Synced ✓", description: `${rows} new transaction${rows !== 1 ? "s" : ""} pulled from finance journals.` });
+      onUploaded();
+    } catch (err) {
+      toast({ title: "GL Sync Failed", description: (err as Error).message, variant: "destructive" });
+    } finally {
+      setSyncingGL(false);
     }
   }
 
@@ -381,93 +521,137 @@ function UploadSection({
           </p>
         </div>
 
-        {/* ── GL Ledger ──────────────────────────────────────────────────── */}
+        {/* ── GL Sync ────────────────────────────────────────────────────── */}
         <div>
           <p className="text-[11px] font-bold uppercase tracking-widest mb-3" style={{ color: "var(--pg-text-3)" }}>
-            2. GL Ledger Export (Excel or CSV)
+            2. Internal Ledger (from Finance Journals)
           </p>
 
           {/* Success state */}
-          {ledgerResult && (
+          {syncResult && (
             <div className="flex items-start gap-2 mb-3 px-3 py-2.5 rounded-xl"
                  style={{ background: "#f5f3ff", border: "1px solid #c4b5fd" }}>
               <CheckCircle2 className="w-4 h-4 text-violet-500 shrink-0 mt-0.5" />
               <div>
-                <p className="text-[12px] font-semibold text-violet-800">{ledgerResult.name}</p>
-                <p className="text-[11px] text-violet-600">{ledgerResult.rows} transaction rows imported</p>
-              </div>
-              <button onClick={() => setLedgerResult(null)} className="ml-auto text-violet-400 hover:text-violet-600">
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
-
-          {/* File picked but not uploaded yet */}
-          {pendingLedgerFile && !ledgerResult && (
-            <div className="flex items-center gap-2 mb-3 px-3 py-2.5 rounded-xl"
-                 style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)" }}>
-              <FileText className="w-4 h-4 shrink-0" style={{ color: "#7c3aed" }} />
-              <div className="flex-1 min-w-0">
-                <p className="text-[12px] font-medium truncate" style={{ color: "var(--pg-text-1)" }}>{pendingLedgerFile.name}</p>
-                <p className="text-[10px]" style={{ color: "var(--pg-text-3)" }}>
-                  {(pendingLedgerFile.size / 1024).toFixed(1)} KB — ready to upload
+                <p className="text-[12px] font-semibold text-violet-800">
+                  {syncResult.rows} transaction{syncResult.rows !== 1 ? "s" : ""} synced
+                </p>
+                <p className="text-[11px] text-violet-600">
+                  {syncResult.from} → {syncResult.to} · GL {account.gl_account_code || "—"}
                 </p>
               </div>
-              <button onClick={() => setPendingLedgerFile(null)} style={{ color: "var(--pg-text-3)" }}>
+              <button onClick={() => setSyncResult(null)} className="ml-auto text-violet-400 hover:text-violet-600">
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
           )}
 
-          {!ledgerResult && (
-            <div className="rounded-xl p-3 mb-3" style={{ background: "var(--pg-muted-bg)" }}>
-              <p className="text-[11px] font-semibold mb-1" style={{ color: "var(--pg-text-2)" }}>Providus GL Format (.xlsx)</p>
-              <p className="text-[11px] leading-relaxed" style={{ color: "var(--pg-text-3)" }}>
-                9-column Excel: Ledger ID · Date · Batch No · Trans.No · Description · Reference · Debit · Credit · Balance
-              </p>
+          {/* GL code — inline editable */}
+          <GLCodeEditor account={account} onUpdated={onUploaded} />
+
+          {/* Date range */}
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            <div>
+              <label className="block text-[11px] font-medium mb-1" style={{ color: "var(--pg-text-2)" }}>From</label>
+              <input type="date"
+                     value={syncFrom || lastStatement?.period_start?.slice(0, 10) || ""}
+                     onChange={e => setSyncFrom(e.target.value)}
+                     className="w-full h-9 px-2 rounded-lg text-[12px] outline-none font-mono"
+                     style={{ background: "var(--pg-input)", border: "1px solid var(--pg-input-border)", color: "var(--pg-text-1)" }} />
             </div>
-          )}
+            <div>
+              <label className="block text-[11px] font-medium mb-1" style={{ color: "var(--pg-text-2)" }}>To</label>
+              <input type="date"
+                     value={syncTo || lastStatement?.period_end?.slice(0, 10) || ""}
+                     onChange={e => setSyncTo(e.target.value)}
+                     className="w-full h-9 px-2 rounded-lg text-[12px] outline-none font-mono"
+                     style={{ background: "var(--pg-input)", border: "1px solid var(--pg-input-border)", color: "var(--pg-text-1)" }} />
+            </div>
+          </div>
 
-          <input ref={ledgRef} type="file" accept=".xlsx,.xls,.XLSX,.csv,.CSV" className="hidden" onChange={onLedgerFilePicked} />
-
-          {!pendingLedgerFile && !ledgerResult && (
-            <button onClick={() => ledgRef.current?.click()}
-                    className="w-full flex items-center justify-center gap-2 h-10 rounded-xl text-[12px] font-semibold text-white"
-                    style={{ background: "linear-gradient(135deg,#7c3aed,#4f46e5)" }}>
-              <Upload className="w-3.5 h-3.5" /> Choose Ledger File (Excel or CSV)
-            </button>
-          )}
-
-          {pendingLedgerFile && !ledgerResult && (
-            <button onClick={uploadLedger} disabled={uploadingLedger}
-                    className="w-full flex items-center justify-center gap-2 h-10 rounded-xl text-[12px] font-semibold text-white disabled:opacity-60"
-                    style={{ background: "linear-gradient(135deg,#059669,#047857)" }}>
-              {uploadingLedger ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-              {uploadingLedger ? "Uploading…" : `Upload ${pendingLedgerFile.name}`}
-            </button>
-          )}
-
-          {ledgerResult && (
-            <button onClick={() => { setLedgerResult(null); ledgRef.current?.click(); }}
-                    className="w-full flex items-center justify-center gap-2 h-9 rounded-xl text-[12px] font-medium"
-                    style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}>
-              <Upload className="w-3.5 h-3.5" /> Upload Another Ledger
-            </button>
-          )}
+          <button onClick={syncFromJournals} disabled={syncingGL || !account.gl_account_code}
+                  className="w-full flex items-center justify-center gap-2 h-10 rounded-xl text-[12px] font-semibold text-white disabled:opacity-50"
+                  style={{ background: "linear-gradient(135deg,#7c3aed,#4f46e5)" }}>
+            {syncingGL ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+            {syncingGL ? "Syncing…" : "Sync from Finance Journals"}
+          </button>
 
           <p className="text-[10px] mt-2" style={{ color: "var(--pg-text-4)" }}>
-            Excel (.xlsx) or CSV accepted. Providus GL 9-column format supported.
+            Pulls all posted journal lines for the linked GL code. Already-synced entries are skipped automatically.
           </p>
+
+          {/* ── Secondary: manual GL export upload ──────────────────────── */}
+          <div className="mt-4 pt-4" style={{ borderTop: "1px dashed var(--pg-row-border)" }}>
+            <button onClick={() => setShowLedgerUpload(v => !v)}
+                    className="flex items-center gap-1.5 text-[11px] font-medium w-full"
+                    style={{ color: "var(--pg-text-3)" }}>
+              <Upload className="w-3 h-3" />
+              Or upload a GL export file instead
+              <ChevronDown className={cn("w-3 h-3 ml-auto transition-transform", showLedgerUpload && "rotate-180")} />
+            </button>
+
+            {showLedgerUpload && (
+              <div className="mt-3 space-y-2">
+                {ledgerResult && (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg"
+                       style={{ background: "#f5f3ff", border: "1px solid #c4b5fd" }}>
+                    <CheckCircle2 className="w-3.5 h-3.5 text-violet-500 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[11px] font-semibold text-violet-800 truncate">{ledgerResult.name}</p>
+                      <p className="text-[10px] text-violet-600">{ledgerResult.rows} rows imported</p>
+                    </div>
+                    <button onClick={() => setLedgerResult(null)} className="shrink-0 text-violet-400 hover:text-violet-600">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
+
+                {pendingLedgerFile && !ledgerResult && (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg"
+                       style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)" }}>
+                    <FileText className="w-3.5 h-3.5 shrink-0" style={{ color: "#7c3aed" }} />
+                    <p className="flex-1 text-[11px] truncate" style={{ color: "var(--pg-text-1)" }}>{pendingLedgerFile.name}</p>
+                    <button onClick={() => setPendingLedgerFile(null)} style={{ color: "var(--pg-text-3)" }}>
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
+
+                <input ref={ledgRef} type="file" accept=".xlsx,.xls,.XLSX,.csv,.CSV" className="hidden" onChange={onLedgerFilePicked} />
+
+                {!pendingLedgerFile && !ledgerResult && (
+                  <button onClick={() => ledgRef.current?.click()}
+                          className="w-full h-9 flex items-center justify-center gap-1.5 rounded-lg text-[12px] font-medium"
+                          style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)", background: "var(--pg-muted-bg)" }}>
+                    <Upload className="w-3.5 h-3.5" /> Choose GL Export File
+                  </button>
+                )}
+
+                {pendingLedgerFile && !ledgerResult && (
+                  <button onClick={uploadLedger} disabled={uploadingLedger}
+                          className="w-full h-9 flex items-center justify-center gap-1.5 rounded-lg text-[12px] font-semibold text-white disabled:opacity-60"
+                          style={{ background: "#059669" }}>
+                    {uploadingLedger ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                    {uploadingLedger ? "Uploading…" : `Upload ${pendingLedgerFile.name}`}
+                  </button>
+                )}
+
+                <p className="text-[10px]" style={{ color: "var(--pg-text-4)" }}>
+                  Providus GL Excel (.xlsx) or generic CSV. Use this if the journal module doesn&apos;t cover all transactions.
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Step 3 prompt */}
-      {(statResult || hasStatements) && ledgerResult && (
+      {(statResult || hasStatements) && syncResult && (
         <div className="flex items-center gap-3 px-5 py-4"
              style={{ borderTop: "1px solid var(--pg-row-border)", background: "rgba(37,99,235,0.04)" }}>
           <CheckCircle2 className="w-4 h-4 text-blue-500 shrink-0" />
           <p className="text-[12px] font-medium" style={{ color: "var(--pg-text-2)" }}>
-            Both files uploaded. Select a date range above and click <strong>New Run</strong> to start auto-matching.
+            Statement uploaded and GL synced. Select a date range above and click <strong>New Run</strong> to start auto-matching.
           </p>
         </div>
       )}
@@ -603,7 +787,10 @@ export default function ReconciliationPage() {
   const { data: accounts = [], refetch: refetchAccounts } = useQuery<BankAccount[]>({
     queryKey: ["recon-accounts", subsidId],
     enabled: Boolean(subsidId),
-    queryFn: () => reconFetch(`/accounts?subsidiary_id=${subsidId}`),
+    queryFn: async () => {
+      const raw = await reconFetch(`/accounts?subsidiary_id=${subsidId}`);
+      return Array.isArray(raw) ? (raw as BankAccount[]) : [];
+    },
   });
 
   const selectedAccount = accounts.find(a => a.id === selectedAccountId) ?? accounts[0] ?? null;
@@ -615,7 +802,10 @@ export default function ReconciliationPage() {
   const { data: runs = [], refetch: refetchRuns } = useQuery<ReconRun[]>({
     queryKey: ["recon-runs", effectiveAccountId],
     enabled: Boolean(effectiveAccountId),
-    queryFn: () => reconFetch(`/runs?bank_account_id=${effectiveAccountId}`),
+    queryFn: async () => {
+      const raw = await reconFetch(`/runs?bank_account_id=${effectiveAccountId}`);
+      return Array.isArray(raw) ? (raw as ReconRun[]) : [];
+    },
   });
 
   const selectedRun = runs.find(r => r.id === selectedRunId) ?? null;
@@ -624,7 +814,10 @@ export default function ReconciliationPage() {
   const { data: statements = [], refetch: refetchStatements } = useQuery<Statement[]>({
     queryKey: ["recon-statements", effectiveAccountId],
     enabled: Boolean(effectiveAccountId),
-    queryFn: () => reconFetch(`/accounts/${effectiveAccountId}/statements`),
+    queryFn: async () => {
+      const raw = await reconFetch(`/accounts/${effectiveAccountId}/statements`);
+      return Array.isArray(raw) ? (raw as Statement[]) : [];
+    },
   });
 
   // Fetch run details (summary)
@@ -638,7 +831,10 @@ export default function ReconciliationPage() {
   const { data: fullMatches = [], isLoading: matchesLoading } = useQuery<FullMatch[]>({
     queryKey: ["recon-full", selectedRunId],
     enabled: Boolean(selectedRunId),
-    queryFn: () => reconFetch(`/runs/${selectedRunId}/full`),
+    queryFn: async () => {
+      const raw = await reconFetch(`/runs/${selectedRunId}/full`);
+      return Array.isArray(raw) ? (raw as FullMatch[]) : [];
+    },
   });
 
   // Create a new reconciliation run (auto-matches on creation)
@@ -747,11 +943,15 @@ export default function ReconciliationPage() {
   const unmatchedI  = (summary?.unmatched_internal ?? 0);
   const matchPct    = total > 0 ? Math.round((matched / total) * 100) : 0;
 
+  // AI-suggested = auto-matched with confidence < 100% (not a separate status value).
+  const isAISuggested = (m: FullMatch) =>
+    m.match_type === "auto" && (m.confidence_pct ?? 100) < 100;
+
   // Filter matches
   const filtered = fullMatches.filter(m => {
     if (filter === "matched"      && m.status !== "matched")            return false;
     if (filter === "unmatched"    && !m.status.startsWith("unmatched")) return false;
-    if (filter === "ai_suggested" && m.status !== "ai_suggested")       return false;
+    if (filter === "ai_suggested" && !isAISuggested(m))                 return false;
     if (search) {
       const q = search.toLowerCase();
       return m.bank_narration?.toLowerCase().includes(q)
@@ -761,7 +961,7 @@ export default function ReconciliationPage() {
     return true;
   });
 
-  const aiPending = fullMatches.filter(m => m.status === "ai_suggested").length;
+  const aiPending = fullMatches.filter(isAISuggested).length;
 
   // Difference calculation
   const bankTotal   = fullMatches.reduce((s, m) => s + (m.bank_credit_kobo - m.bank_debit_kobo), 0);

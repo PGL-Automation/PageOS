@@ -7,8 +7,10 @@ import { useAuth } from "@/lib/auth";
 import { usePosition } from "@/lib/position";
 import {
   Users, UserPlus, UserCheck, UserX, ArrowRight,
-  CheckSquare, Clock, Brain, Building2,
+  CheckSquare, Clock, Brain, Building2, AlertTriangle,
+  CalendarDays, Check, X,
 } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
 
@@ -24,12 +26,156 @@ type UserRow = {
   }>;
 };
 
+type PendingGradeRow = {
+  assignment_id: string;
+  person_id: string;
+  display_name: string;
+  email: string;
+  subsidiary_name: string;
+  position_title: string;
+  grade_level_code: string;
+  grade_level_name: string;
+};
+
+type GradeLevel = { code: string; display_name: string };
+
+// ── Pending Grade Confirmation Card ───────────────────────────────────────────
+
+function PendingGradeCard() {
+  const queryClient = useQueryClient();
+  const [confirming, setConfirming] = useState<string | null>(null); // person_id
+  const [newGrade, setNewGrade] = useState<Record<string, string>>({});
+
+  const { data: pending = [] } = useQuery<PendingGradeRow[]>({
+    queryKey: ["pending-grades"],
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/v1/admin/pending-grades`, { credentials: "include" });
+      if (!res.ok) return [];
+      return ((await res.json()) ?? []) as PendingGradeRow[];
+    },
+  });
+
+  const { data: gradeLevels = [] } = useQuery<GradeLevel[]>({
+    queryKey: ["grade-levels"],
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/v1/org/grade-levels`, { credentials: "include" });
+      if (!res.ok) {
+        // Fallback static list until the endpoint is wired
+        return [
+          { code: "ANALYST", display_name: "Analyst" },
+          { code: "ASSOCIATE", display_name: "Associate" },
+          { code: "EXECUTIVE_ASSOCIATE", display_name: "Executive Associate" },
+          { code: "SENIOR_EXEC_ASSOCIATE", display_name: "Senior Executive Associate" },
+          { code: "ASSISTANT_MANAGER", display_name: "Assistant Manager" },
+          { code: "DEPUTY_MANAGER", display_name: "Deputy Manager" },
+          { code: "MANAGER", display_name: "Manager" },
+          { code: "SENIOR_MANAGER", display_name: "Senior Manager" },
+          { code: "AVP", display_name: "Assistant Vice President" },
+          { code: "VP", display_name: "Vice President" },
+          { code: "SVP", display_name: "Senior Vice President" },
+        ];
+      }
+      return ((await res.json()) ?? []) as GradeLevel[];
+    },
+  });
+
+  const confirmMutation = useMutation({
+    mutationFn: async ({ userId, gradeCode }: { userId: string; gradeCode: string }) => {
+      const res = await fetch(`${BASE}/api/v1/admin/users/${userId}/grade`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ grade_level_code: gradeCode }),
+      });
+      if (!res.ok) throw new Error("Failed to update grade");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["pending-grades"] });
+      queryClient.invalidateQueries({ queryKey: ["org-users"] });
+      setConfirming(null);
+    },
+  });
+
+  if (pending.length === 0) return null;
+
+  return (
+    <div className="rounded-2xl overflow-hidden" style={{ background: "var(--pg-card)", border: "1px solid #fcd34d" }}>
+      <div className="flex items-center gap-2.5 px-5 py-3.5" style={{ borderBottom: "1px solid var(--pg-row-border)", background: "#fffbeb" }}>
+        <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
+        <div>
+          <h2 className="text-[13px] font-semibold" style={{ color: "var(--pg-text-1)" }}>
+            Pending Grade Confirmation
+            <span className="ml-2 text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: "#fef3c7", color: "#d97706" }}>
+              {pending.length}
+            </span>
+          </h2>
+          <p className="text-[11px]" style={{ color: "var(--pg-text-3)" }}>
+            These employees have transitional grade designations that require confirmation.
+          </p>
+        </div>
+      </div>
+      <div className="divide-y" style={{ borderColor: "var(--pg-row-border)" }}>
+        {pending.map(row => (
+          <div key={row.person_id} className="px-5 py-3.5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[13px] font-medium" style={{ color: "var(--pg-text-1)" }}>{row.display_name}</p>
+                <p className="text-[11px]" style={{ color: "var(--pg-text-3)" }}>
+                  {row.position_title} · {row.subsidiary_name}
+                </p>
+                <p className="text-[11px] mt-0.5" style={{ color: "var(--pg-text-3)" }}>
+                  Current grade: <span className="font-semibold" style={{ color: "var(--pg-text-2)" }}>{row.grade_level_name || row.grade_level_code}</span>
+                </p>
+              </div>
+              {confirming === row.person_id ? (
+                <div className="flex items-center gap-2 shrink-0">
+                  <select
+                    value={newGrade[row.person_id] ?? row.grade_level_code}
+                    onChange={e => setNewGrade(g => ({ ...g, [row.person_id]: e.target.value }))}
+                    className="h-8 px-2 rounded-lg text-[12px] outline-none"
+                    style={{ background: "var(--pg-input)", border: "1px solid var(--pg-input-border)", color: "var(--pg-text-1)" }}>
+                    {gradeLevels.map(g => (
+                      <option key={g.code} value={g.code}>{g.display_name}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => confirmMutation.mutate({ userId: row.person_id, gradeCode: newGrade[row.person_id] ?? row.grade_level_code })}
+                    disabled={confirmMutation.isPending}
+                    className="w-7 h-7 flex items-center justify-center rounded-lg text-white"
+                    style={{ background: "#059669" }}>
+                    <Check className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => setConfirming(null)}
+                    className="w-7 h-7 flex items-center justify-center rounded-lg"
+                    style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-3)" }}>
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => { setConfirming(row.person_id); setNewGrade(g => ({ ...g, [row.person_id]: row.grade_level_code })); }}
+                  className="shrink-0 h-7 px-3 rounded-lg text-[11px] font-semibold text-white"
+                  style={{ background: "linear-gradient(135deg,#d97706,#b45309)" }}>
+                  Confirm Grade
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 type Subsidiary = { id: string; code: string; name: string };
 
 export default function HRDashboard() {
   const { user, subsidiary } = useAuth();
   const { activePosition } = usePosition();
   const [selectedSubId, setSelectedSubId] = useState<string>("all");
+  const [now, setNow] = useState<Date | null>(null);
+  useEffect(() => { setNow(new Date()); }, []);
 
   // Sync to the active subsidiary context:
   // - Group-level positions (subsidiary_id is null) → show all
@@ -90,10 +236,10 @@ export default function HRDashboard() {
   ];
 
   const QUICK_ACTIONS = [
-    { label: "Onboard New User",     icon: UserPlus,    href: "/hr/admin",   color: "#2563eb", bg: "#eff6ff" },
-    { label: "Employee Directory",   icon: Users,       href: "/hr/records", color: "#7c3aed", bg: "#f5f3ff" },
-    { label: "View Approvals",       icon: CheckSquare, href: "/approval",   color: "#059669", bg: "#ecfdf5" },
-    { label: "Ask AI",               icon: Brain,       href: "/ai",         color: "#0891b2", bg: "#ecfeff" },
+    { label: "Onboard New User",     icon: UserPlus,     href: "/hr/admin",   color: "#2563eb", bg: "#eff6ff" },
+    { label: "Employee Directory",   icon: Users,        href: "/hr/records", color: "#7c3aed", bg: "#f5f3ff" },
+    { label: "Leave Management",     icon: CalendarDays, href: "/hr/leave",   color: "#059669", bg: "#ecfdf5" },
+    { label: "View Approvals",       icon: CheckSquare,  href: "/approval",   color: "#d97706", bg: "#fffbeb" },
   ];
 
   // Per-subsidiary breakdown (shown when "All" selected)
@@ -109,10 +255,10 @@ export default function HRDashboard() {
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-[20px] font-bold leading-tight" style={{ color: "var(--pg-text-1)" }}>
-            {getGreeting()}, {firstName}.
+            {now ? getGreeting() : "Welcome"}, {firstName}.
           </h1>
           <p className="text-[12px] mt-0.5" style={{ color: "var(--pg-text-3)" }}>
-            {new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })} · Page Group HR
+            {now ? now.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : ""} · Page Group HR
           </p>
         </div>
 
@@ -141,6 +287,9 @@ export default function HRDashboard() {
           </div>
         )}
       </div>
+
+      {/* Pending grade review — shown only when there are flagged employees */}
+      <PendingGradeCard />
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

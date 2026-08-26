@@ -112,6 +112,40 @@ func (s *Service) ListClients(ctx context.Context, subsidiaryID uuid.UUID) ([]do
 	return out, nil
 }
 
+// ListAllClients returns clients across ALL subsidiaries, optionally filtered by status.
+// Used by Finance / Operations roles who need to see approved clients without
+// being restricted to a single subsidiary.
+//
+// When status = "active", it returns clients whose status IS active OR whose
+// most recent onboarding case is in state "approved" — this handles cases where
+// UpdateClientStatus may have failed silently on an older approval.
+func (s *Service) ListAllClients(ctx context.Context, status string) ([]domain.Client, error) {
+	const q = `
+		SELECT DISTINCT ON (c.id)
+		       c.id, c.subsidiary_id, c.client_type, c.display_name, c.status, c.broker_id
+		FROM   onboarding.client c
+		LEFT   JOIN onboarding.onboarding_case oc ON oc.client_id = c.id
+		WHERE  ($1::text = ''
+		        OR c.status = $1
+		        OR ($1 = 'active' AND oc.state = 'approved'))
+		ORDER  BY c.id, c.created_at DESC
+	`
+	rows, err := s.store.Pool().Query(ctx, q, status)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Client
+	for rows.Next() {
+		var c domain.Client
+		if err := rows.Scan(&c.ID, &c.SubsidiaryID, &c.ClientType, &c.DisplayName, &c.Status, &c.BrokerID); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
 // ── Cases ────────────────────────────────────────────────────────────────────
 
 // CreateCase opens a new onboarding case and materialises the requirement
@@ -475,10 +509,13 @@ func (s *Service) HandleApprovalEvent(ctx context.Context, e approval.TerminalEv
 			}); err != nil {
 				return err
 			}
-			// Mark the client as active.
-			_, _ = q.UpdateClientStatus(ctx, onboardingdb.UpdateClientStatusParams{
+			// Mark the client as active — propagate error so the transaction rolls back
+			// if status update fails (prevents orphaned approved cases with inactive clients).
+			if _, err := q.UpdateClientStatus(ctx, onboardingdb.UpdateClientStatusParams{
 				ID: caseRow.ClientID, Status: "active",
-			})
+			}); err != nil {
+				return fmt.Errorf("onboarding: set client active: %w", err)
+			}
 			_ = s.audit.Write(ctx, audit.Entry{
 				Actor: audit.Actor{Type: "system"}, Action: "onboarding.case.approved",
 				ResourceType: "onboarding_case", ResourceID: e.ResourceID.String(),

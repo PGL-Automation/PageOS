@@ -26,6 +26,16 @@ import (
 	appraisalhttp "github.com/pagegroup/pageos/internal/appraisal/http"
 	"github.com/pagegroup/pageos/internal/broker"
 	brokerhttp "github.com/pagegroup/pageos/internal/broker/http"
+	"github.com/pagegroup/pageos/internal/finance"
+	financehttp "github.com/pagegroup/pageos/internal/finance/http"
+	"github.com/pagegroup/pageos/internal/payroll"
+	payrollhttp "github.com/pagegroup/pageos/internal/payroll/http"
+	"github.com/pagegroup/pageos/internal/crm"
+	crmhttp "github.com/pagegroup/pageos/internal/crm/http"
+	"github.com/pagegroup/pageos/internal/portfolio"
+	portfoliohttp "github.com/pagegroup/pageos/internal/portfolio/http"
+	"github.com/pagegroup/pageos/internal/hr"
+	hrhttp "github.com/pagegroup/pageos/internal/hr/http"
 	"github.com/pagegroup/pageos/internal/documents"
 	documentshttp "github.com/pagegroup/pageos/internal/documents/http"
 	"github.com/pagegroup/pageos/internal/identity"
@@ -143,9 +153,28 @@ func run() error {
 	appraisalSvc := appraisal.NewService(pool)
 	appraisalH   := appraisalhttp.New(appraisalSvc)
 
+	hrSvc := hr.NewService(pool)
+	hrH   := hrhttp.New(hrSvc, pool)
+
+	financeSvc := finance.NewService(pool)
+	financeH   := financehttp.New(financeSvc)
+
+	payrollSvc := payroll.NewService(pool, financeSvc)
+	payrollH   := payrollhttp.New(payrollSvc)
+
+	portfolioSvc := portfolio.NewService(pool, financeSvc)
+	portfolioH   := portfoliohttp.New(portfolioSvc)
+
+	crmSvc := crm.NewService(pool)
+	crmH   := crmhttp.New(crmSvc)
+
 	// --- Bootstrap: create super-admin and initial HR user if they don't exist ---
 	if err := seedBootstrap(ctx, pool, identitySvc, orgSvc, logger); err != nil {
 		logger.Warn("bootstrap seed failed (non-fatal)", "err", err)
+	}
+	// --- Provision login accounts for all staff without one (default password) ---
+	if err := seedStaffAccounts(ctx, pool, identitySvc, logger); err != nil {
+		logger.Warn("staff account seed failed (non-fatal)", "err", err)
 	}
 
 	// --- Notification dispatcher (background) ---
@@ -162,9 +191,17 @@ func run() error {
 		api.Mount("/approval", approvalH.Routes(identityH.Authenticator))
 		api.Mount("/reconciliation", reconH.Routes(identityH.Authenticator))
 		api.Mount("/appraisal", appraisalH.Routes(identityH.Authenticator))
+		api.Mount("/hr", hrH.Routes(identityH.Authenticator))
+		api.Mount("/finance", financeH.Routes(identityH.Authenticator))
+		api.Mount("/payroll", payrollH.Routes(identityH.Authenticator))
+		api.Mount("/portfolio", portfolioH.Routes(identityH.Authenticator))
+		api.Mount("/crm", crmH.Routes(identityH.Authenticator))
 		// Admin endpoints: user lifecycle management (HR / GROUP_ADMIN).
 		api.With(identityH.Authenticator).Post("/admin/provision-user",
 			provisionUserHandler(identitySvc, orgSvc))
+		// Provision a login account for an existing person record (no new person created).
+		api.With(identityH.Authenticator).Post("/admin/persons/{personId}/provision-account",
+			provisionAccountHandler(pool, identitySvc, auditWriter))
 		api.With(identityH.Authenticator).Post("/admin/users/{userId}/reset-password",
 			resetPasswordHandler(pool, auditWriter))
 		api.With(identityH.Authenticator).Post("/admin/users/{userId}/deactivate",
@@ -172,9 +209,13 @@ func run() error {
 		api.With(identityH.Authenticator).Post("/admin/users/{userId}/reactivate",
 			reactivateUserHandler(pool, auditWriter))
 		api.With(identityH.Authenticator).Get("/admin/users/{userId}",
-			getUserDetailHandler(pool, orgSvc))
+			getUserDetailHandler(pool, orgSvc, appraisalSvc))
 		api.With(identityH.Authenticator).Post("/admin/users/{userId}/transfer",
 			transferEmployeeHandler(pool, orgSvc, auditWriter))
+		api.With(identityH.Authenticator).Patch("/admin/users/{userId}/grade",
+			updateGradeHandler(pool, orgSvc, auditWriter))
+		api.With(identityH.Authenticator).Get("/admin/pending-grades",
+			pendingGradesHandler(orgSvc))
 	})
 
 	srv := &http.Server{
@@ -299,6 +340,64 @@ func seedBootstrap(ctx context.Context, pool *pgxpool.Pool, identitySvc *identit
 	return nil
 }
 
+// seedStaffAccounts creates login accounts for every organization.person record
+// that does not yet have a user_id. Runs at startup; safe to call repeatedly.
+// Default password is PageGroup@2026! — HR should communicate this and employees
+// should change it on first login.
+func seedStaffAccounts(ctx context.Context, pool *pgxpool.Pool, identitySvc *identity.Service, log *slog.Logger) error {
+	const defaultPassword = "PageGroup@2026!"
+
+	type personRow struct {
+		id    uuid.UUID
+		first string
+		last  string
+		email string
+	}
+
+	rows, err := pool.Query(ctx,
+		`SELECT id, first_name, last_name, email
+		 FROM   organization.person
+		 WHERE  user_id IS NULL
+		 ORDER  BY last_name, first_name`)
+	if err != nil {
+		return fmt.Errorf("staff seed: query persons: %w", err)
+	}
+	var persons []personRow
+	for rows.Next() {
+		var p personRow
+		if err := rows.Scan(&p.id, &p.first, &p.last, &p.email); err != nil {
+			rows.Close()
+			return err
+		}
+		persons = append(persons, p)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	provisioned := 0
+	for _, p := range persons {
+		displayName := strings.TrimSpace(p.first + " " + p.last)
+		user, err := identitySvc.Register(ctx, p.email, defaultPassword, displayName)
+		if err != nil {
+			log.Warn("staff seed: register failed", "email", p.email, "err", err)
+			continue
+		}
+		if _, err := pool.Exec(ctx,
+			`UPDATE organization.person SET user_id = $1 WHERE id = $2`,
+			user.ID, p.id); err != nil {
+			log.Warn("staff seed: link failed", "email", p.email, "err", err)
+			continue
+		}
+		provisioned++
+	}
+	if provisioned > 0 {
+		log.Info("staff seed: provisioned accounts", "count", provisioned)
+	}
+	return nil
+}
+
 func splitName(displayName string) (first, last string) {
 	parts := strings.Fields(displayName)
 	if len(parts) == 0 {
@@ -321,7 +420,7 @@ func isHROrAdmin(ctx context.Context, pool *pgxpool.Pool, callerID uuid.UUID) bo
 			JOIN organization.position pos ON pos.id = a.position_id
 			JOIN organization.person per ON per.id = a.person_id
 			WHERE per.user_id = $1
-			  AND pos.code = ANY(ARRAY['HR_MANAGER','HR_OFFICER','GROUP_ADMIN','IT_ADMIN'])
+			  AND pos.code = ANY(ARRAY['HR_MANAGER','HR_OFFICER','GROUP_ADMIN','IT_ADMIN','HEAD_HR'])
 			  AND a.effective_from <= CURRENT_DATE
 			  AND (a.effective_to IS NULL OR a.effective_to >= CURRENT_DATE)
 		)
@@ -454,6 +553,85 @@ func provisionUserHandler(identitySvc *identity.Service, orgSvc *organization.Se
 	}
 }
 
+// provisionAccountHandler creates a login account for a person who already exists
+// in organization.person (e.g. staff seeded from the employee register without a login).
+// It creates the identity.users row, then links it back to the person record.
+func provisionAccountHandler(pool *pgxpool.Pool, identitySvc *identity.Service, auditWriter *audit.Writer) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, ok := identityhttp.UserFrom(r.Context())
+		if !ok || !isHROrAdmin(r.Context(), pool, caller.ID) {
+			httpx.Error(w, http.StatusForbidden, "forbidden", "HR or admin access required")
+			return
+		}
+		personID, err := uuid.Parse(chi.URLParam(r, "personId"))
+		if err != nil {
+			httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid person id")
+			return
+		}
+
+		var in struct {
+			Password    string `json:"password"`
+			DisplayName string `json:"display_name"` // optional override
+		}
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid JSON")
+			return
+		}
+		if in.Password == "" {
+			httpx.Error(w, http.StatusBadRequest, "bad_request", "password is required")
+			return
+		}
+
+		// Load the existing person to get their email and name.
+		var firstName, lastName, email string
+		var existingUserID *uuid.UUID
+		err = pool.QueryRow(r.Context(),
+			`SELECT first_name, last_name, email, user_id FROM organization.person WHERE id = $1`,
+			personID).Scan(&firstName, &lastName, &email, &existingUserID)
+		if err != nil {
+			httpx.Error(w, http.StatusNotFound, "not_found", "person not found")
+			return
+		}
+		if existingUserID != nil {
+			httpx.Error(w, http.StatusConflict, "already_provisioned", "this person already has a login account")
+			return
+		}
+
+		displayName := strings.TrimSpace(firstName + " " + lastName)
+		if in.DisplayName != "" {
+			displayName = in.DisplayName
+		}
+
+		// Create the identity user.
+		user, err := identitySvc.Register(r.Context(), email, in.Password, displayName)
+		if err != nil {
+			httpx.Error(w, http.StatusBadRequest, "create_user_failed", err.Error())
+			return
+		}
+
+		// Link the new user back to the existing person record.
+		if _, err := pool.Exec(r.Context(),
+			`UPDATE organization.person SET user_id = $1 WHERE id = $2`,
+			user.ID, personID); err != nil {
+			httpx.Error(w, http.StatusInternalServerError, "link_failed", err.Error())
+			return
+		}
+
+		_ = auditWriter.Write(r.Context(), audit.Entry{
+			Actor:        audit.Actor{Type: "user", ID: caller.ID.String()},
+			Action:       "identity.user.provisioned_for_existing_person",
+			ResourceType: "person", ResourceID: personID.String(),
+			Context: map[string]any{"user_id": user.ID.String(), "email": email},
+		})
+		httpx.JSON(w, http.StatusCreated, map[string]any{
+			"user_id":     user.ID,
+			"person_id":   personID,
+			"email":       email,
+			"display_name": displayName,
+		})
+	}
+}
+
 // ── User lifecycle handlers ────────────────────────────────────────────────────
 
 func generateTempPassword() string {
@@ -552,8 +730,8 @@ func reactivateUserHandler(pool *pgxpool.Pool, auditWriter *audit.Writer) http.H
 	}
 }
 
-// getUserDetailHandler returns a user with all their current org assignments.
-func getUserDetailHandler(pool *pgxpool.Pool, orgSvc *organization.Service) http.HandlerFunc {
+// getUserDetailHandler returns a user with their org assignments and last appraisal summary.
+func getUserDetailHandler(pool *pgxpool.Pool, orgSvc *organization.Service, appraisalSvc *appraisal.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userID, err := uuid.Parse(chi.URLParam(r, "userId"))
 		if err != nil {
@@ -576,7 +754,109 @@ func getUserDetailHandler(pool *pgxpool.Pool, orgSvc *organization.Service) http
 			return
 		}
 		positions, _ := orgSvc.GetUserPositionsInSubsidiary(r.Context(), userID, uuid.Nil)
-		httpx.JSON(w, http.StatusOK, map[string]any{"user": u, "positions": positions})
+
+		// Last completed appraisal summary.
+		type AppraisalSummary struct {
+			CycleTitle   string   `json:"cycle_title"`
+			Status       string   `json:"status"`
+			SelfScore    *float64 `json:"self_score"`
+			ManagerScore *float64 `json:"manager_score"`
+			OverallScore *float64 `json:"overall_score"`
+			ClosedAt     string   `json:"closed_at"`
+		}
+		var lastAppraisal *AppraisalSummary
+		const appraisalQ = `
+			SELECT c.title, s.status,
+			       s.self_score::float8, s.manager_score::float8,
+			       s.overall_score::float8,
+			       COALESCE(c.closed_at::text, '')
+			FROM   appraisal.submission s
+			JOIN   appraisal.cycle c ON c.id = s.cycle_id
+			WHERE  s.appraisee_id = $1
+			  AND  s.status       = 'completed'
+			ORDER BY c.closed_at DESC NULLS LAST
+			LIMIT 1
+		`
+		var a AppraisalSummary
+		if scanErr := pool.QueryRow(r.Context(), appraisalQ, userID).Scan(
+			&a.CycleTitle, &a.Status, &a.SelfScore, &a.ManagerScore, &a.OverallScore, &a.ClosedAt,
+		); scanErr == nil {
+			lastAppraisal = &a
+		}
+
+		httpx.JSON(w, http.StatusOK, map[string]any{
+			"user":           u,
+			"positions":      positions,
+			"last_appraisal": lastAppraisal,
+		})
+	}
+}
+
+// updateGradeHandler sets the grade level on a user's primary active assignment.
+func updateGradeHandler(pool *pgxpool.Pool, orgSvc *organization.Service, auditWriter *audit.Writer) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, ok := identityhttp.UserFrom(r.Context())
+		if !ok || !isHROrAdmin(r.Context(), pool, caller.ID) {
+			httpx.Error(w, http.StatusForbidden, "forbidden", "HR or admin access required")
+			return
+		}
+		targetUserID, err := uuid.Parse(chi.URLParam(r, "userId"))
+		if err != nil {
+			httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid user id")
+			return
+		}
+		var in struct {
+			GradeLevelCode string `json:"grade_level_code"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.GradeLevelCode == "" {
+			httpx.Error(w, http.StatusBadRequest, "bad_request", "grade_level_code is required")
+			return
+		}
+
+		// Validate the grade code exists.
+		var exists bool
+		_ = pool.QueryRow(r.Context(),
+			"SELECT EXISTS(SELECT 1 FROM organization.grade_level WHERE code = $1)",
+			in.GradeLevelCode).Scan(&exists)
+		if !exists {
+			httpx.Error(w, http.StatusBadRequest, "invalid_grade", "unknown grade_level_code")
+			return
+		}
+
+		// Resolve person_id from user_id.
+		var personID uuid.UUID
+		if err := pool.QueryRow(r.Context(),
+			"SELECT id FROM organization.person WHERE user_id = $1", targetUserID).Scan(&personID); err != nil {
+			httpx.Error(w, http.StatusNotFound, "person_not_found", "no person record for this user")
+			return
+		}
+
+		if err := orgSvc.UpdateGradeLevel(r.Context(), personID, in.GradeLevelCode); err != nil {
+			httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+			return
+		}
+		_ = auditWriter.Write(r.Context(), audit.Entry{
+			Actor:        audit.Actor{Type: "user", ID: caller.ID.String()},
+			Action:       "organization.assignment.grade_confirmed",
+			ResourceType: "user", ResourceID: targetUserID.String(),
+			Context: map[string]any{"grade_level_code": in.GradeLevelCode},
+		})
+		httpx.JSON(w, http.StatusOK, map[string]string{"grade_level_code": in.GradeLevelCode})
+	}
+}
+
+// pendingGradesHandler returns all employees whose grade level is awaiting confirmation.
+func pendingGradesHandler(orgSvc *organization.Service) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		rows, err := orgSvc.ListPendingGradeReview(r.Context())
+		if err != nil {
+			httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+			return
+		}
+		if rows == nil {
+			rows = []organization.PendingGradeRow{}
+		}
+		httpx.JSON(w, http.StatusOK, rows)
 	}
 }
 

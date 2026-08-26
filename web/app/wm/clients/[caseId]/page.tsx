@@ -547,8 +547,113 @@ export default function ClientDetailPage() {
 
           {/* Notes */}
           <NotesPanel caseId={caseId} notes={notes} onAdd={addNote} />
+
+          {/* Investment Accounts — shows accounts linked to this client after compliance approval */}
+          <InvestmentAccountsPanel clientId={c.ClientID} />
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Investment Accounts Panel ─────────────────────────────────────────────────
+
+const BASE_PORTFOLIO = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081");
+
+type PortfolioAccount = {
+  id: string; account_number: string; fund_name: string; fund_type: string;
+  invested_amount: number; current_value: number; unrealized_pnl: number;
+  status: string; opened_date: string;
+};
+
+function InvestmentAccountsPanel({ clientId }: { clientId: string }) {
+  const { data: accounts = [] } = useQuery<PortfolioAccount[]>({
+    queryKey: ["client-portfolio-accounts", clientId],
+    enabled: Boolean(clientId),
+    queryFn: async () => {
+      const res = await fetch(
+        `${BASE_PORTFOLIO}/api/v1/portfolio/accounts?client_id=${clientId}`,
+        { credentials: "include" },
+      );
+      if (!res.ok) return [];
+      return ((await res.json()) ?? []) as PortfolioAccount[];
+    },
+  });
+
+  const fmt = (n: number) => new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN", maximumFractionDigits: 0 }).format(Math.abs(n));
+
+  return (
+    <div className="rounded-2xl overflow-hidden"
+         style={{ border: "1px solid var(--pg-card-border)", background: "var(--pg-card)" }}>
+      <div className="flex items-center justify-between px-5 py-3.5"
+           style={{ borderBottom: "1px solid var(--pg-row-border)" }}>
+        <div className="flex items-center gap-2">
+          <TrendingUp className="w-4 h-4" style={{ color: "#2563eb" }} />
+          <p className="text-[13px] font-semibold" style={{ color: "var(--pg-text-1)" }}>
+            Investment Accounts
+          </p>
+          {accounts.length > 0 && (
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                  style={{ background: "#eff6ff", color: "#2563eb" }}>
+              {accounts.length}
+            </span>
+          )}
+        </div>
+        <Link href="/wm/portfolio/accounts"
+              className="text-[11px] font-semibold" style={{ color: "#2563eb" }}>
+          View all →
+        </Link>
+      </div>
+
+      {accounts.length === 0 ? (
+        <div className="px-5 py-6 text-center">
+          <p className="text-[12px]" style={{ color: "var(--pg-text-3)" }}>
+            No investment accounts yet.
+          </p>
+          {/* Only show open link once client is active (compliance approved) */}
+          <Link href="/wm/portfolio/accounts"
+                className="inline-flex items-center gap-1 mt-2 text-[12px] font-semibold"
+                style={{ color: "#2563eb" }}>
+            Open an account <ChevronRight className="w-3 h-3" />
+          </Link>
+        </div>
+      ) : (
+        <div className="divide-y divide-slate-100/80">
+          {accounts.map(acc => {
+            const pnlPos = acc.unrealized_pnl >= 0;
+            return (
+              <Link key={acc.id} href={`/wm/portfolio/accounts/${acc.id}`}
+                    className="flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50/60 transition-colors">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <p className="text-[12px] font-mono font-semibold" style={{ color: "#2563eb" }}>
+                      {acc.account_number}
+                    </p>
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                          style={{ background: acc.status === "active" ? "#d1fae5" : "#f1f5f9",
+                                   color: acc.status === "active" ? "#065f46" : "#475569" }}>
+                      {acc.status}
+                    </span>
+                  </div>
+                  <p className="text-[11px]" style={{ color: "var(--pg-text-3)" }}>
+                    {acc.fund_name} · Opened {acc.opened_date}
+                  </p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-[13px] font-bold" style={{ color: "var(--pg-text-1)" }}>
+                    {fmt(acc.current_value)}
+                  </p>
+                  <p className="text-[11px] font-semibold"
+                     style={{ color: pnlPos ? "#059669" : "#dc2626" }}>
+                    {pnlPos ? "+" : "−"}{fmt(acc.unrealized_pnl)}
+                  </p>
+                </div>
+                <ChevronRight className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--pg-text-4)" }} />
+              </Link>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

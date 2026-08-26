@@ -37,9 +37,11 @@ func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 
 	r.Post("/accounts", h.createAccount)
 	r.Get("/accounts", h.listAccounts)
+	r.Patch("/accounts/{id}/gl-code", h.setGLCode)
 	r.Get("/accounts/{id}/statements", h.listStatements)
 	r.Post("/accounts/{id}/statements", h.uploadStatement)
 	r.Post("/accounts/{id}/ledger", h.uploadLedger)
+	r.Post("/accounts/{id}/sync-gl", h.syncGL)
 
 	r.Post("/transactions", h.createInternalTxn)
 
@@ -69,6 +71,7 @@ func (h *Handler) createAccount(w http.ResponseWriter, r *http.Request) {
 		AccountNumber string            `json:"account_number"`
 		AccountName   string            `json:"account_name"`
 		Currency      string            `json:"currency"`
+		GLAccountCode string            `json:"gl_account_code"`
 		ColMap        map[string]string `json:"parser_column_map"`
 	}
 	if !decode(w, r, &in) {
@@ -77,12 +80,31 @@ func (h *Handler) createAccount(w http.ResponseWriter, r *http.Request) {
 	if in.Currency == "" {
 		in.Currency = "NGN"
 	}
-	acct, err := h.svc.CreateBankAccount(r.Context(), in.SubsidiaryID, in.BankName, in.AccountNumber, in.AccountName, in.Currency, in.ColMap)
+	acct, err := h.svc.CreateBankAccount(r.Context(), in.SubsidiaryID, in.BankName, in.AccountNumber, in.AccountName, in.Currency, in.GLAccountCode, in.ColMap)
 	if err != nil {
 		httpx.Error(w, http.StatusBadRequest, "create_failed", err.Error())
 		return
 	}
 	httpx.JSON(w, http.StatusCreated, acct)
+}
+
+func (h *Handler) setGLCode(w http.ResponseWriter, r *http.Request) {
+	accountID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid account id")
+		return
+	}
+	var in struct {
+		GLAccountCode string `json:"gl_account_code"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if err := h.svc.SetGLAccountCode(r.Context(), accountID, in.GLAccountCode); err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "update_failed", err.Error())
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]string{"gl_account_code": in.GLAccountCode})
 }
 
 func (h *Handler) listAccounts(w http.ResponseWriter, r *http.Request) {
@@ -224,6 +246,35 @@ func (h *Handler) uploadLedger(w http.ResponseWriter, r *http.Request) {
 		"rows_imported": count,
 		"account_id":    accountID,
 		"format":        format,
+	})
+}
+
+// syncGL derives internal transactions for a bank account from its posted
+// finance journal lines, replacing the need to upload a GL export file.
+// Body: { "from": "YYYY-MM-DD", "to": "YYYY-MM-DD" }
+func (h *Handler) syncGL(w http.ResponseWriter, r *http.Request) {
+	accountID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid account id")
+		return
+	}
+	var in struct {
+		From string `json:"from"`
+		To   string `json:"to"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	user, _ := identityhttp.UserFrom(r.Context())
+	count, err := h.svc.SyncFromJournals(r.Context(), accountID, user.ID, in.From, in.To)
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "sync_failed", err.Error())
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{
+		"rows_synced": count,
+		"from":        in.From,
+		"to":          in.To,
 	})
 }
 

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api/client";
 import { useToast } from "@/hooks/use-toast";
@@ -205,11 +205,40 @@ function StepClientSetup({
 /* ─── Step 2: Application Form ──────────────────────────────────── */
 function StepApplicationForm({
   caseId,
+  initialData,
   onSaved,
 }: {
-  caseId: string;
-  onSaved: () => void;
+  caseId:        string;
+  initialData?:  Record<string, unknown>;
+  onSaved:       () => void;
 }) {
+  // Fetch any previously-saved application data so the form is pre-populated
+  // when the user returns to this step after navigating forward and back.
+  const { data: caseDetails, isLoading } = useQuery({
+    queryKey: ["case", caseId],
+    queryFn: async () => {
+      const { data } = await api.GET("/onboarding/cases/{id}", {
+        params: { path: { id: caseId } },
+      });
+      return data ?? null;
+    },
+    enabled: Boolean(caseId),
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="w-5 h-5 animate-spin" style={{ color: "var(--pg-text-3)" }} />
+      </div>
+    );
+  }
+
+  // Server data wins (reflects last save); prop supplies the client name on first visit.
+  const merged: Record<string, unknown> = {
+    ...initialData,
+    ...(caseDetails?.application ?? {}),
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -218,7 +247,7 @@ function StepApplicationForm({
             Application Form
           </h2>
           <p className="text-[13px] mt-0.5" style={{ color: "var(--pg-text-3)" }}>
-            Fill in the client&apos;s details. You can save and return to this page later.
+            Fill in the client&apos;s details, then click <strong>Save &amp; Continue</strong>.
           </p>
         </div>
         <Button
@@ -229,16 +258,8 @@ function StepApplicationForm({
           Skip for now <ChevronRight className="ml-1 w-3.5 h-3.5" />
         </Button>
       </div>
-      <ApplicationForm caseId={caseId} />
-      <div className="flex justify-end pt-2">
-        <Button
-          onClick={onSaved}
-          className="h-10 px-6 rounded-xl text-[13px] font-semibold"
-          style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}
-        >
-          Save &amp; Continue <ChevronRight className="ml-1 w-4 h-4" />
-        </Button>
-      </div>
+      {/* onSaveSuccess wires the form's submit button to save then advance. */}
+      <ApplicationForm caseId={caseId} initialData={merged} onSaveSuccess={onSaved} />
     </div>
   );
 }
@@ -327,6 +348,7 @@ function StepReview({
   onBack: () => void;
 }) {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   // Fetch full case details for summary
   const { data: caseDetails, isLoading } = useQuery({
@@ -349,6 +371,11 @@ function StepReview({
       return data;
     },
     onSuccess: () => {
+      // Invalidate all case-related caches so the pipeline page shows the
+      // updated state immediately when the WM is redirected there.
+      queryClient.invalidateQueries({ queryKey: ["wm-pipeline"] });
+      queryClient.invalidateQueries({ queryKey: ["case"] });
+      queryClient.invalidateQueries({ queryKey: ["case-details"] });
       toast({
         title: "Case Submitted",
         description: "The onboarding case has been submitted for review.",
@@ -547,6 +574,7 @@ export default function OnboardingPage() {
         {step === 2 && client && onboardingCase && (
           <StepApplicationForm
             caseId={caseId}
+            initialData={{ full_name: client.DisplayName }}
             onSaved={() => setStep(3)}
           />
         )}

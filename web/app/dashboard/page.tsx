@@ -3,22 +3,55 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { usePosition, roleFamily } from "@/lib/position";
+import { api } from "@/lib/api/client";
+import { components } from "@/lib/api/types";
 import {
   Brain, TrendingUp, TrendingDown, RefreshCw, CheckSquare, Shield,
   AlertTriangle, ChevronRight, ArrowUpRight, Clock, Check, Zap,
-  Users, DollarSign, LineChart, BarChart2, FileText, Star, Loader2,
+  Users, DollarSign, LineChart, BarChart2, FileText, Loader2,
+  ClipboardList, User, Building2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+// ── Types ───────────────────────────────────────────────────────────────────────
+
+type QueueItem = components["schemas"]["ApprovalQueueItem"];
+
+type Fund = {
+  id: string;
+  aum: number;
+  status: string;
+};
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
+
+const BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8081";
 
 function getGreeting() {
   const h = new Date().getHours();
   if (h < 12) return "Good morning";
   if (h < 17) return "Good afternoon";
   return "Good evening";
+}
+
+/** Format a naira amount in kobo → ₦B / ₦M / ₦k */
+function formatNaira(kobo: number): string {
+  const naira = kobo / 100;
+  if (naira >= 1_000_000_000) return `₦${(naira / 1_000_000_000).toFixed(1)}B`;
+  if (naira >= 1_000_000)     return `₦${(naira / 1_000_000).toFixed(1)}M`;
+  if (naira >= 1_000)         return `₦${(naira / 1_000).toFixed(1)}k`;
+  return `₦${naira.toFixed(0)}`;
+}
+
+/** Format AUM which is already in naira (not kobo) */
+function formatAUM(naira: number): string {
+  if (naira >= 1_000_000_000) return `₦${(naira / 1_000_000_000).toFixed(1)}B`;
+  if (naira >= 1_000_000)     return `₦${(naira / 1_000_000).toFixed(1)}M`;
+  if (naira >= 1_000)         return `₦${(naira / 1_000).toFixed(0)}k`;
+  return `₦${naira.toFixed(0)}`;
 }
 
 function Sparkline({ data, up }: { data: number[]; up: boolean }) {
@@ -38,27 +71,12 @@ function Sparkline({ data, up }: { data: number[]; up: boolean }) {
   );
 }
 
-// ── Mock data ──────────────────────────────────────────────────────────────────
-
-const KPIs = [
-  { label: "Total AUM",           value: "₦89.4B",  change: "+12.4%", up: true,  data: [72,75,73,78,77,80,84,83,87,89], unit: "YoY" },
-  { label: "Net Revenue (Q4)",    value: "₦3.2B",   change: "+8.2%",  up: true,  data: [28,29,27,30,31,29,32,31,32,32], unit: "vs Q3" },
-  { label: "Operating Expenses",  value: "₦1.1B",   change: "-3.1%",  up: false, data: [12,12,13,12,11,11,11,11,11,11], unit: "vs Q3" },
-  { label: "Cash Position",       value: "₦12.3B",  change: "+5.8%",  up: true,  data: [10,10,11,11,12,11,12,12,12,12], unit: "MoM" },
-  { label: "Active Clients",      value: "1,247",   change: "+18",    up: true,  data: [110,115,118,120,122,125,128,130,132,135], unit: "this month" },
-];
-
-const APPROVALS = [
-  { id: "1", title: "Account Opening — Adebayo Johnson", module: "Onboarding", priority: "urgent", time: "2h ago",  from: "F. Okonkwo" },
-  { id: "2", title: "Payment Auth. — ₦25M Wire Transfer", module: "Finance",    priority: "urgent", time: "4h ago",  from: "J. Eze" },
-  { id: "3", title: "Risk Exception — Delta Corp Exposure", module: "Risk",      priority: "high",   time: "6h ago",  from: "A. Nwosu" },
-  { id: "4", title: "New Vendor Onboarding — TechSoft Ltd", module: "Procure.",  priority: "medium", time: "1d ago",  from: "B. Lawal" },
-];
+// ── Static / sample data ───────────────────────────────────────────────────────
 
 const AI_INSIGHTS = [
-  { type: "warning", text: "3 unmatched bank transactions totalling ₦1.24M in GT Bank reconciliation.", action: "Review now", href: "/finance/reconciliation" },
+  { type: "warning", text: "3 unmatched bank transactions in GT Bank reconciliation. Review for accuracy.", action: "Review now", href: "/finance/reconciliation" },
   { type: "info",    text: "Cash flow model shows potential shortfall in 58 days at current burn rate.", action: "See forecast", href: "/finance" },
-  { type: "success", text: "Revenue up 12.4% MoM — Q4 target on track. No intervention needed.", action: null, href: null },
+  { type: "success", text: "Q4 target on track. No intervention needed.", action: null, href: null },
   { type: "warning", text: "2 compliance deadlines approaching within 14 days — FRCN filing & CAC return.", action: "View tasks", href: "/compliance" },
 ];
 
@@ -88,38 +106,213 @@ const PRIORITY_COLORS: Record<string, { bg: string; text: string; dot: string }>
   medium: { bg: "#fefce8", text: "#a16207", dot: "#eab308" },
 };
 
+function resourceLabel(type: string) {
+  const map: Record<string, string> = { onboarding_case: "Client Onboarding" };
+  return map[type] ?? type.replace(/_/g, " ");
+}
+
+// ── Role routing map (outside component — stable reference) ───────────────────
+
+const FAMILY_DEST: Partial<Record<ReturnType<typeof roleFamily>, string>> = {
+  wm:         "/wm/dashboard",
+  hr:         "/hr/dashboard",
+  finance:    "/finance",
+  compliance: "/compliance",
+  // md and default stay on this executive dashboard
+};
+
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
   const { user, subsidiary } = useAuth();
   const { primaryCode, isLoading: posLoading } = usePosition();
   const router = useRouter();
-  const [now, setNow] = useState(new Date());
+  const [now, setNow] = useState<Date | null>(null);
 
-  // Route each role family to its dedicated dashboard.
-  // Uses pattern matching so any future position code is handled automatically.
+  const redirectDest = posLoading ? null : (FAMILY_DEST[roleFamily(primaryCode)] ?? null);
+
   useEffect(() => {
-    if (posLoading) return;
-    const FAMILY_DEST: Partial<Record<ReturnType<typeof roleFamily>, string>> = {
-      wm:         "/wm/dashboard",
-      hr:         "/hr/dashboard",
-      finance:    "/finance",
-      compliance: "/compliance",
-      // md and default stay on this executive dashboard
-    };
-    const dest = FAMILY_DEST[roleFamily(primaryCode)];
-    if (dest) router.replace(dest);
-  }, [primaryCode, posLoading, router]);
+    if (redirectDest) router.replace(redirectDest);
+  }, [redirectDest, router]);
 
-  useEffect(() => { const t = setInterval(() => setNow(new Date()), 60000); return () => clearInterval(t); }, []);
+  useEffect(() => {
+    setNow(new Date());
+    const t = setInterval(() => setNow(new Date()), 60000);
+    return () => clearInterval(t);
+  }, []);
 
-  const dateStr = now.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-  const greeting = getGreeting();
+  const dateStr = now
+    ? now.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
+    : "";
+  const greeting = now ? getGreeting() : "Welcome";
   const firstName = user?.DisplayName?.split(" ")[0] ?? "there";
 
-  // Show a full-screen loader while positions are resolving to avoid a flash
-  // of the MD/Admin dashboard for users who will be redirected to a role dashboard.
-  if (posLoading) {
+  // ── Live data queries ──────────────────────────────────────────────────────
+
+  // Approval queue — already the source of truth for pending count
+  const { data: queueRaw = [] } = useQuery({
+    queryKey: ["approval-queue"],
+    queryFn: async () => {
+      const { data, error } = await api.GET("/approval/queue");
+      if (error) throw new Error("Failed to fetch queue");
+      return data ?? [];
+    },
+  });
+  const queue: QueueItem[] = Array.isArray(queueRaw) ? queueRaw : [];
+
+  // Portfolio funds — total AUM
+  const { data: fundsRaw } = useQuery({
+    queryKey: ["portfolio-funds", subsidiary?.ID ?? ""],
+    queryFn: async (): Promise<Fund[]> => {
+      const subId = subsidiary?.ID ?? "";
+      const url = `${BASE}/api/v1/portfolio/funds${subId ? `?subsidiary_id=${subId}` : ""}`;
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) return [];
+      const json = await res.json().catch(() => null);
+      return Array.isArray(json) ? (json as Fund[]) : [];
+    },
+    enabled: !posLoading && !redirectDest,
+  });
+  const funds: Fund[] = Array.isArray(fundsRaw) ? fundsRaw : [];
+  const totalAUM = funds.reduce((s, f) => s + (f.aum ?? 0), 0);
+
+  // Active clients — count
+  const { data: clientsRaw } = useQuery({
+    queryKey: ["onboarding-clients", subsidiary?.ID ?? ""],
+    queryFn: async () => {
+      if (!subsidiary?.ID) return [];
+      const { data } = await api.GET("/onboarding/clients", {
+        params: { query: { subsidiary_id: subsidiary.ID } },
+      });
+      return data ?? [];
+    },
+    enabled: Boolean(subsidiary?.ID) && !posLoading && !redirectDest,
+  });
+  const clients = Array.isArray(clientsRaw) ? clientsRaw : [];
+  const activeClientCount = clients.filter(c => c.Status === "active").length;
+
+  // Reconciliation accounts + latest run per account
+  const { data: accountsRaw } = useQuery({
+    queryKey: ["recon-accounts", subsidiary?.ID ?? ""],
+    queryFn: async () => {
+      if (!subsidiary?.ID) return [];
+      const { data } = await api.GET("/reconciliation/accounts", {
+        params: { query: { subsidiary_id: subsidiary.ID } },
+      });
+      return data ?? [];
+    },
+    enabled: Boolean(subsidiary?.ID) && !posLoading && !redirectDest,
+  });
+  const accounts = Array.isArray(accountsRaw) ? accountsRaw : [];
+
+  // Fetch runs for the first account (executive summary — most recent run)
+  const firstAccountId = accounts[0]?.id ?? null;
+  const { data: runsRaw } = useQuery({
+    queryKey: ["recon-runs", firstAccountId],
+    queryFn: async () => {
+      if (!firstAccountId) return [];
+      const { data } = await api.GET("/reconciliation/runs", {
+        params: { query: { bank_account_id: firstAccountId } },
+      });
+      return data ?? [];
+    },
+    enabled: Boolean(firstAccountId) && !posLoading && !redirectDest,
+  });
+  const runs = Array.isArray(runsRaw) ? runsRaw : [];
+
+  // Fetch the latest run's details for the summary
+  const latestRunId = runs.length > 0 ? runs[runs.length - 1]?.id : null;
+  const { data: latestRunDetails } = useQuery({
+    queryKey: ["recon-run-details", latestRunId],
+    queryFn: async () => {
+      if (!latestRunId) return null;
+      const { data } = await api.GET("/reconciliation/runs/{id}", {
+        params: { path: { id: latestRunId } },
+      });
+      return data ?? null;
+    },
+    enabled: Boolean(latestRunId) && !posLoading && !redirectDest,
+  });
+
+  // ── Derived recon stats ────────────────────────────────────────────────────
+
+  const reconSummary = latestRunDetails?.summary ?? null;
+  const reconMatched      = reconSummary?.matched ?? null;
+  const reconUnmatchBank  = reconSummary?.unmatched_bank ?? null;
+  const reconUnmatchLedger = reconSummary?.unmatched_internal ?? null;
+  const reconTotal        = reconSummary
+    ? (reconSummary.matched + reconSummary.unmatched_bank + reconSummary.unmatched_internal)
+    : 0;
+  const reconMatchedPct   = reconTotal > 0 && reconMatched !== null ? (reconMatched / reconTotal) * 100 : 0;
+  const reconBankPct      = reconTotal > 0 && reconUnmatchBank !== null ? (reconUnmatchBank / reconTotal) * 100 : 0;
+  const reconLedgerPct    = reconTotal > 0 && reconUnmatchLedger !== null ? (reconUnmatchLedger / reconTotal) * 100 : 0;
+  const hasReconData      = reconSummary !== null;
+
+  // ── KPI strip ─────────────────────────────────────────────────────────────
+
+  type KPI = {
+    label: string;
+    value: string;
+    change: string | null;
+    up: boolean;
+    data: number[];
+    unit: string;
+    href?: string;
+  };
+
+  const KPIs: KPI[] = [
+    {
+      label:  "Total AUM",
+      value:  fundsRaw !== undefined ? (totalAUM > 0 ? formatAUM(totalAUM) : "₦0") : "—",
+      change: null,
+      up:     true,
+      data:   [72, 75, 73, 78, 77, 80, 84, 83, 87, 89],
+      unit:   "across all funds",
+      href:   "/wm/portfolio",
+    },
+    {
+      label:  "Net Revenue",
+      value:  "—",
+      change: null,
+      up:     true,
+      data:   [28, 29, 27, 30, 31, 29, 32, 31, 32, 32],
+      unit:   "P&L report",
+      href:   "/finance/reports",
+    },
+    {
+      label:  "Operating Expenses",
+      value:  "—",
+      change: null,
+      up:     false,
+      data:   [12, 12, 13, 12, 11, 11, 11, 11, 11, 11],
+      unit:   "P&L report",
+      href:   "/finance/reports",
+    },
+    {
+      label:  "Cash Position",
+      value:  "—",
+      change: null,
+      up:     true,
+      data:   [10, 10, 11, 11, 12, 11, 12, 12, 12, 12],
+      unit:   "balance sheet",
+      href:   "/finance/reports",
+    },
+    {
+      label:  "Active Clients",
+      value:  clientsRaw !== undefined
+        ? (activeClientCount > 0 ? activeClientCount.toLocaleString() : clients.length > 0 ? clients.length.toLocaleString() : "0")
+        : "—",
+      change: null,
+      up:     true,
+      data:   [110, 115, 118, 120, 122, 125, 128, 130, 132, 135],
+      unit:   "onboarded",
+      href:   "/wm",
+    },
+  ];
+
+  // ── Hold loader ────────────────────────────────────────────────────────────
+
+  if (posLoading || redirectDest) {
     return (
       <div className="flex h-[80vh] items-center justify-center">
         <Loader2 className="w-7 h-7 animate-spin text-slate-300" />
@@ -154,23 +347,41 @@ export default function DashboardPage() {
 
       {/* ── KPI strip ────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
-        {KPIs.map(({ label, value, change, up, data, unit }) => (
-          <div key={label} className="rounded-2xl bg-white p-4 flex flex-col gap-3"
-               style={{ border: "1px solid #e8edf3", boxShadow: "0 1px 4px rgba(15,23,42,0.05)" }}>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{label}</p>
-            <div className="flex items-end justify-between gap-2">
-              <div>
-                <p className="text-[22px] font-bold text-slate-900 leading-none tabular">{value}</p>
-                <div className="flex items-center gap-1 mt-1.5">
-                  {up ? <TrendingUp className="w-3 h-3 text-emerald-500" /> : <TrendingDown className="w-3 h-3 text-red-500" />}
-                  <span className={cn("text-[11px] font-semibold", up ? "text-emerald-600" : "text-red-600")}>{change}</span>
-                  <span className="text-[10px] text-slate-400">{unit}</span>
+        {KPIs.map(({ label, value, change, up, data, unit, href }) => {
+          const isUnavailable = value === "—";
+          const card = (
+            <div key={label} className="rounded-2xl bg-white p-4 flex flex-col gap-3"
+                 style={{ border: "1px solid #e8edf3", boxShadow: "0 1px 4px rgba(15,23,42,0.05)" }}>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{label}</p>
+              <div className="flex items-end justify-between gap-2">
+                <div>
+                  <p className={cn("text-[22px] font-bold leading-none tabular", isUnavailable ? "text-slate-300" : "text-slate-900")}>
+                    {value}
+                  </p>
+                  <div className="flex items-center gap-1 mt-1.5">
+                    {!isUnavailable && change && (
+                      up ? <TrendingUp className="w-3 h-3 text-emerald-500" /> : <TrendingDown className="w-3 h-3 text-red-500" />
+                    )}
+                    {!isUnavailable && change && (
+                      <span className={cn("text-[11px] font-semibold", up ? "text-emerald-600" : "text-red-600")}>{change}</span>
+                    )}
+                    <span className={cn("text-[10px]", isUnavailable ? "text-blue-500 underline" : "text-slate-400")}>
+                      {unit}
+                    </span>
+                  </div>
                 </div>
+                <Sparkline data={data} up={up} />
               </div>
-              <Sparkline data={data} up={up} />
             </div>
-          </div>
-        ))}
+          );
+          return isUnavailable && href ? (
+            <Link key={label} href={href} className="block hover:opacity-80 transition-opacity">
+              {card}
+            </Link>
+          ) : (
+            <div key={label}>{card}</div>
+          );
+        })}
       </div>
 
       {/* ── Main grid ────────────────────────────────────────────────────── */}
@@ -179,7 +390,7 @@ export default function DashboardPage() {
         {/* Left 2/3 */}
         <div className="xl:col-span-2 space-y-5">
 
-          {/* AI insights */}
+          {/* AI insights — sample data */}
           <div className="rounded-2xl bg-white overflow-hidden"
                style={{ border: "1px solid #e8edf3", boxShadow: "0 1px 4px rgba(15,23,42,0.05)" }}>
             <div className="flex items-center justify-between px-5 py-4"
@@ -190,6 +401,7 @@ export default function DashboardPage() {
                   <Brain className="w-3.5 h-3.5 text-white" />
                 </div>
                 <h2 className="text-[13px] font-semibold text-slate-800">AI Insights</h2>
+                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-400">Sample</span>
               </div>
               <Link href="/ai" className="text-[11px] font-medium text-blue-600 hover:underline flex items-center gap-0.5">
                 Ask AI <ChevronRight className="w-3 h-3" />
@@ -211,13 +423,15 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Recent activity */}
+          {/* Recent activity — sample data */}
           <div className="rounded-2xl bg-white overflow-hidden"
                style={{ border: "1px solid #e8edf3", boxShadow: "0 1px 4px rgba(15,23,42,0.05)" }}>
             <div className="flex items-center justify-between px-5 py-4"
                  style={{ borderBottom: "1px solid #f1f5f9" }}>
-              <h2 className="text-[13px] font-semibold text-slate-800">Recent Activity</h2>
-              <span className="text-[11px] text-slate-400">Live</span>
+              <div className="flex items-center gap-2">
+                <h2 className="text-[13px] font-semibold text-slate-800">Recent Activity</h2>
+                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-400">Sample</span>
+              </div>
             </div>
             <div className="divide-y divide-slate-50">
               {ACTIVITY.map((item, i) => (
@@ -258,46 +472,68 @@ export default function DashboardPage() {
         {/* Right 1/3 */}
         <div className="space-y-5">
 
-          {/* Pending approvals */}
+          {/* Pending approvals — live queue */}
           <div className="rounded-2xl bg-white overflow-hidden"
                style={{ border: "1px solid #e8edf3", boxShadow: "0 1px 4px rgba(15,23,42,0.05)" }}>
             <div className="flex items-center justify-between px-5 py-4"
                  style={{ borderBottom: "1px solid #f1f5f9" }}>
               <div className="flex items-center gap-2">
                 <h2 className="text-[13px] font-semibold text-slate-800">Pending Approvals</h2>
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md tabular"
-                      style={{ background: "#fef2f2", color: "#dc2626" }}>23</span>
+                {queue.length > 0 && (
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md tabular"
+                        style={{ background: "#fef2f2", color: "#dc2626" }}>
+                    {queue.length}
+                  </span>
+                )}
               </div>
               <Link href="/approval" className="text-[11px] font-medium text-blue-600 hover:underline">View all</Link>
             </div>
-            <div className="divide-y divide-slate-50">
-              {APPROVALS.map(a => {
-                const pc = PRIORITY_COLORS[a.priority];
-                return (
-                  <Link key={a.id} href="/approval"
-                        className="flex items-start gap-3 px-4 py-3 hover:bg-slate-50/60 transition-colors group">
-                    <div className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0" style={{ background: pc.dot }} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[12px] font-medium text-slate-800 truncate leading-snug">{a.title}</p>
-                      <p className="text-[11px] text-slate-400 mt-0.5">{a.module} · {a.time}</p>
-                    </div>
-                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md shrink-0 capitalize"
-                          style={{ background: pc.bg, color: pc.text }}>
-                      {a.priority}
-                    </span>
-                  </Link>
-                );
-              })}
-            </div>
+
+            {queue.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
+                <ClipboardList className="w-8 h-8 text-slate-200 mb-2" />
+                <p className="text-[12px] text-slate-400">No items pending your review.</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-50">
+                {queue.slice(0, 5).map(a => {
+                  const c = (a.context as Record<string, unknown>) ?? {};
+                  const clientType = String(c.client_type ?? "");
+                  const Icon = clientType === "corporate" ? Building2 : User;
+                  // Map to a priority colour — default to medium
+                  const priorityKey = "medium";
+                  const pc = PRIORITY_COLORS[priorityKey];
+                  return (
+                    <Link key={a.step.ID} href="/approval"
+                          className="flex items-start gap-3 px-4 py-3 hover:bg-slate-50/60 transition-colors group">
+                      <div className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0" style={{ background: pc.dot }} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[12px] font-medium text-slate-800 truncate leading-snug">{a.step.Label}</p>
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <Icon className="w-3 h-3 shrink-0 text-slate-400" />
+                          <p className="text-[11px] text-slate-400 capitalize">
+                            {resourceLabel(a.resource_type)}{clientType ? ` · ${clientType}` : ""}
+                          </p>
+                        </div>
+                      </div>
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-300 mt-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+
             <div className="px-4 py-3" style={{ borderTop: "1px solid #f1f5f9" }}>
               <Link href="/approval"
                     className="w-full flex items-center justify-center gap-1.5 h-8 rounded-lg text-[12px] font-semibold text-blue-600 hover:bg-blue-50 transition-colors">
-                See all 23 pending <ChevronRight className="w-3 h-3" />
+                {queue.length > 0
+                  ? <>See all {queue.length} pending <ChevronRight className="w-3 h-3" /></>
+                  : <>Open approvals <ChevronRight className="w-3 h-3" /></>}
               </Link>
             </div>
           </div>
 
-          {/* Reconciliation status */}
+          {/* Reconciliation status — live data */}
           <div className="rounded-2xl bg-white overflow-hidden"
                style={{ border: "1px solid #e8edf3", boxShadow: "0 1px 4px rgba(15,23,42,0.05)" }}>
             <div className="flex items-center justify-between px-5 py-4"
@@ -308,27 +544,49 @@ export default function DashboardPage() {
               </div>
               <Link href="/finance/reconciliation" className="text-[11px] font-medium text-blue-600 hover:underline">Open</Link>
             </div>
-            <div className="p-5 space-y-3">
-              {[
-                { label: "Matched",         pct: 94.8, color: "#10b981", v: "2,835" },
-                { label: "Unmatched Bank",  pct: 3.1,  color: "#f59e0b", v: "12" },
-                { label: "Unmatched Ledger",pct: 2.1,  color: "#dc2626", v: "11" },
-              ].map(r => (
-                <div key={r.label}>
-                  <div className="flex justify-between mb-1">
-                    <span className="text-[11px] text-slate-500">{r.label}</span>
-                    <span className="text-[11px] font-semibold tabular" style={{ color: r.color }}>{r.v}</span>
+
+            {!hasReconData ? (
+              <div className="p-5 flex flex-col items-center justify-center text-center gap-2">
+                {accounts.length === 0 ? (
+                  <p className="text-[12px] text-slate-400">No bank accounts configured yet.</p>
+                ) : runs.length === 0 ? (
+                  <p className="text-[12px] text-slate-400">No reconciliation runs found.</p>
+                ) : (
+                  <p className="text-[12px] text-slate-400">Loading reconciliation data…</p>
+                )}
+                <Link href="/finance/reconciliation" className="text-[12px] font-medium text-blue-600 hover:underline">
+                  Go to reconciliation →
+                </Link>
+              </div>
+            ) : (
+              <div className="p-5 space-y-3">
+                {[
+                  { label: "Matched",          pct: reconMatchedPct,  color: "#10b981", v: reconMatched?.toLocaleString() ?? "—" },
+                  { label: "Unmatched Bank",   pct: reconBankPct,    color: "#f59e0b", v: reconUnmatchBank?.toLocaleString() ?? "—" },
+                  { label: "Unmatched Ledger", pct: reconLedgerPct,  color: "#dc2626", v: reconUnmatchLedger?.toLocaleString() ?? "—" },
+                ].map(r => (
+                  <div key={r.label}>
+                    <div className="flex justify-between mb-1">
+                      <span className="text-[11px] text-slate-500">{r.label}</span>
+                      <span className="text-[11px] font-semibold tabular" style={{ color: r.color }}>{r.v}</span>
+                    </div>
+                    <div className="h-1.5 rounded-full" style={{ background: "#f1f5f9" }}>
+                      <div className="h-1.5 rounded-full transition-all" style={{ width: `${r.pct}%`, background: r.color }} />
+                    </div>
                   </div>
-                  <div className="h-1.5 rounded-full" style={{ background: "#f1f5f9" }}>
-                    <div className="h-1.5 rounded-full transition-all" style={{ width: `${r.pct}%`, background: r.color }} />
-                  </div>
-                </div>
-              ))}
-              <p className="text-[11px] text-amber-600 font-medium mt-2">⚠ ₦1.24M difference — review required</p>
-            </div>
+                ))}
+                {(reconUnmatchBank !== null && reconUnmatchBank > 0) || (reconUnmatchLedger !== null && reconUnmatchLedger > 0) ? (
+                  <p className="text-[11px] text-amber-600 font-medium mt-2">
+                    ⚠ {((reconUnmatchBank ?? 0) + (reconUnmatchLedger ?? 0)).toLocaleString()} unmatched item{((reconUnmatchBank ?? 0) + (reconUnmatchLedger ?? 0)) === 1 ? "" : "s"} — review required
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-emerald-600 font-medium mt-2">All items matched.</p>
+                )}
+              </div>
+            )}
           </div>
 
-          {/* Today's agenda */}
+          {/* Today's agenda — static placeholder */}
           <div className="rounded-2xl bg-white overflow-hidden"
                style={{ border: "1px solid #e8edf3", boxShadow: "0 1px 4px rgba(15,23,42,0.05)" }}>
             <div className="px-5 py-4" style={{ borderBottom: "1px solid #f1f5f9" }}>
