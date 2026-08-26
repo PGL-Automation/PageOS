@@ -9,6 +9,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/pagegroup/pageos/internal/notification"
 )
 
 type Service struct{ pool *pgxpool.Pool }
@@ -502,7 +504,32 @@ func (s *Service) CreateTask(ctx context.Context, in CreateTaskInput, byID uuid.
 	).Scan(&id); err != nil {
 		return Task{}, fmt.Errorf("crm: create task: %w", err)
 	}
-	return s.getTask(ctx, id)
+	task, err := s.getTask(ctx, id)
+	if err != nil {
+		return Task{}, err
+	}
+
+	// Notify the assigned person that a task was assigned to them.
+	if in.AssignedTo != nil && *in.AssignedTo != byID {
+		contactLabel := ""
+		if task.ContactName != "" {
+			contactLabel = " for " + task.ContactName
+		}
+		dueLabel := ""
+		if in.DueDate != "" {
+			dueLabel = " Due: " + in.DueDate + "."
+		}
+		_ = notification.SendToUser(ctx, s.pool, *in.AssignedTo, notification.InApp{
+			Type:       "crm_task_assigned",
+			Title:      "New CRM Task Assigned",
+			Body:       fmt.Sprintf(`"%s"%s has been assigned to you by %s.%s`, in.Title, contactLabel, byName, dueLabel),
+			Link:       "/crm/tasks",
+			Priority:   in.Priority,
+			EntityType: "task",
+			EntityID:   &task.ID,
+		})
+	}
+	return task, nil
 }
 
 func (s *Service) ListTasks(ctx context.Context, assignedTo *uuid.UUID, contactID *uuid.UUID, status string) ([]Task, error) {

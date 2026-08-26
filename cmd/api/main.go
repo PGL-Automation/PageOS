@@ -46,6 +46,7 @@ import (
 	"github.com/pagegroup/pageos/internal/reconciliation"
 	reconhttp "github.com/pagegroup/pageos/internal/reconciliation/http"
 	"github.com/pagegroup/pageos/internal/notification"
+	notifhttp "github.com/pagegroup/pageos/internal/notification/http"
 	"github.com/pagegroup/pageos/internal/onboarding"
 	onboardinghttp "github.com/pagegroup/pageos/internal/onboarding/http"
 	"github.com/pagegroup/pageos/internal/organization"
@@ -181,6 +182,12 @@ func run() error {
 	dispatcher := notification.NewDispatcher(pool, emailSender, logger)
 	go dispatcher.Run(ctx)
 
+	// --- In-app notification scheduler (birthday/follow-up/task/leave reminders) ---
+	scheduler := notification.NewScheduler(pool, logger)
+	go scheduler.Run(ctx)
+
+	notifH := notifhttp.New(pool)
+
 	// --- HTTP router ---
 	router := httpx.NewRouter(logger, httpx.Deps{DB: pool}, func(api chi.Router) {
 		api.Mount("/auth", identityH.Routes())
@@ -196,6 +203,7 @@ func run() error {
 		api.Mount("/payroll", payrollH.Routes(identityH.Authenticator))
 		api.Mount("/portfolio", portfolioH.Routes(identityH.Authenticator))
 		api.Mount("/crm", crmH.Routes(identityH.Authenticator))
+		api.Mount("/notifications", notifH.Routes(identityH.Authenticator))
 		// Admin endpoints: user lifecycle management (HR / GROUP_ADMIN).
 		api.With(identityH.Authenticator).Post("/admin/provision-user",
 			provisionUserHandler(identitySvc, orgSvc))

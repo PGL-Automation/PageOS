@@ -18,6 +18,7 @@ import (
 	"github.com/pagegroup/pageos/internal/approval/store"
 	approvaldb "github.com/pagegroup/pageos/internal/approval/store/gen"
 	"github.com/pagegroup/pageos/internal/audit"
+	"github.com/pagegroup/pageos/internal/notification"
 )
 
 // ── Domain types ──────────────────────────────────────────────────────────────
@@ -112,13 +113,14 @@ var ErrStepNotPending = errors.New("approval: step is not in pending state")
 // Service holds the approval capabilities.
 type Service struct {
 	store    *store.Store
+	db       *pgxpool.Pool
 	org      OrgPositionResolver
 	audit    *audit.Writer
 	handlers []TerminalHandler
 }
 
 func NewService(db *pgxpool.Pool, org OrgPositionResolver, a *audit.Writer) *Service {
-	return &Service{store: store.New(db), org: org, audit: a}
+	return &Service{store: store.New(db), db: db, org: org, audit: a}
 }
 
 // OnTerminalEvent registers a callback invoked when any request reaches a
@@ -169,6 +171,25 @@ func (s *Service) CreateRequest(ctx context.Context, in CreateRequestInput) (Req
 		ResourceType: in.ResourceType, ResourceID: in.ResourceID.String(),
 		Context: map[string]any{"request_id": req.ID.String(), "routing_key": in.RoutingKey},
 	})
+
+	// Notify the holders of the first pending step's position.
+	label := resourceLabel(in.ResourceType)
+	for _, spec := range in.Steps {
+		if !spec.Skip {
+			resID := in.ResourceID
+			_ = notification.SendToPosition(ctx, s.db, spec.PositionID,
+				notification.InApp{
+					Type:       "approval_requested",
+					Title:      "Approval Required: " + label,
+					Body:       label + " has been submitted and requires your approval.",
+					Link:       "/approval",
+					Priority:   "urgent",
+					EntityType: in.ResourceType,
+					EntityID:   &resID,
+				})
+			break // only notify step-1 holders initially; advance-step notification deferred
+		}
+	}
 	return req, nil
 }
 
@@ -337,7 +358,60 @@ func (s *Service) finalise(ctx context.Context, req approvaldb.ApprovalApprovalR
 			})
 		}
 	}
+
+	// Notify the requester of the final outcome.
+	label := resourceLabel(req.ResourceType)
+	reqID := req.ResourceID
+	switch outcome {
+	case "approved":
+		_ = notification.SendToUserByID(ctx, s.db, req.CreatedBy, notification.InApp{
+			Type:       "approval_approved",
+			Title:      label + " Approved",
+			Body:       label + " has been approved by all reviewers.",
+			Link:       "/approval",
+			Priority:   "medium",
+			EntityType: req.ResourceType,
+			EntityID:   &reqID,
+		})
+	case "rejected":
+		body := label + " has been rejected."
+		if notes != "" {
+			body = label + " has been rejected: " + notes
+		}
+		_ = notification.SendToUserByID(ctx, s.db, req.CreatedBy, notification.InApp{
+			Type:       "approval_rejected",
+			Title:      label + " Rejected",
+			Body:       body,
+			Link:       "/approval",
+			Priority:   "urgent",
+			EntityType: req.ResourceType,
+			EntityID:   &reqID,
+		})
+	case "returned":
+		_ = notification.SendToUserByID(ctx, s.db, req.CreatedBy, notification.InApp{
+			Type:       "approval_returned",
+			Title:      label + " Returned for Revision",
+			Body:       label + " has been returned for revision. Please review and resubmit.",
+			Link:       "/approval",
+			Priority:   "high",
+			EntityType: req.ResourceType,
+			EntityID:   &reqID,
+		})
+	}
 	return nil
+}
+
+func resourceLabel(resourceType string) string {
+	labels := map[string]string{
+		"onboarding_case": "Client Onboarding",
+		"journal":         "Journal",
+		"payroll":         "Payroll Run",
+		"leave_request":   "Leave Request",
+	}
+	if l, ok := labels[resourceType]; ok {
+		return l
+	}
+	return "Request"
 }
 
 // ── type mappings ─────────────────────────────────────────────────────────────

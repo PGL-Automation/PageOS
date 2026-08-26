@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode, useState, useRef, useEffect, useCallback } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -316,40 +317,109 @@ function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void 
 
 // ── Notifications ──────────────────────────────────────────────────────────────
 
-const NOTIFS = [
-  { id:"n1", type:"approval", title:"Payment requires approval",           desc:"₦25M wire · Finance",            time:"2h",  read:false, priority:"urgent" },
-  { id:"n2", type:"alert",    title:"3 unmatched bank transactions",       desc:"GT Bank Nov · ₦1.24M diff",      time:"3h",  read:false, priority:"high" },
-  { id:"n3", type:"info",     title:"Auto-reconciliation complete",        desc:"2,835 transactions matched",      time:"5h",  read:false, priority:"low" },
-  { id:"n4", type:"approval", title:"Account opening pending review",      desc:"Adebayo Johnson · Onboarding",   time:"6h",  read:true,  priority:"medium" },
-  { id:"n5", type:"success",  title:"Q4 report signed off",                desc:"CFO approved Q4 Financial Report",time:"1d", read:true,  priority:"low" },
-  { id:"n6", type:"alert",    title:"Compliance deadline in 14 days",      desc:"FRCN filing · CAC annual return", time:"1d", read:true,  priority:"high" },
-];
-const NICON: Record<string, React.ElementType> = { approval:CheckSquare,alert:AlertCircle,info:Info,success:CheckCircle2 };
-const NCOLOR: Record<string, string> = { approval:"#2563eb",alert:"#dc2626",info:"#0891b2",success:"#059669" };
-const PDOT: Record<string, string>   = { urgent:"#dc2626",high:"#f97316",medium:"#f59e0b",low:"#94a3b8" };
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
+
+type InAppNotif = {
+  id: string;
+  type: string;
+  title: string;
+  body: string;
+  link?: string;
+  priority: "low" | "medium" | "high" | "urgent";
+  is_read: boolean;
+  created_at: string;
+};
+
+// Map notification type prefix → display colour + icon
+function typeStyle(type: string): { color: string; icon: React.ElementType } {
+  if (type.includes("approved") || type.includes("_approved"))  return { color: "#059669", icon: CheckCircle2 };
+  if (type.includes("rejected") || type.includes("_rejected"))  return { color: "#dc2626", icon: AlertCircle };
+  if (type.includes("approval") || type.includes("pending"))    return { color: "#2563eb", icon: CheckSquare };
+  if (type.includes("birthday"))                                 return { color: "#9333ea", icon: Star };
+  if (type.includes("leave"))                                    return { color: "#0891b2", icon: Clock };
+  if (type.includes("document") || type.includes("hr_"))        return { color: "#d97706", icon: FileText };
+  if (type.includes("task") || type.includes("followup"))       return { color: "#ea580c", icon: ClipboardList };
+  if (type.includes("journal") || type.includes("finance"))     return { color: "#6d28d9", icon: BookOpen };
+  if (type.includes("onboarding"))                              return { color: "#2563eb", icon: UserPlus };
+  return { color: "#475569", icon: Info };
+}
+
+const PDOT: Record<string, string> = { urgent: "#dc2626", high: "#f97316", medium: "#f59e0b", low: "#94a3b8" };
+
+function relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d}d ago`;
+  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+}
+
+function useNotifications(enabled: boolean) {
+  const qc = useQueryClient();
+  const { data, refetch } = useQuery<{ items: InAppNotif[]; unread_count: number }>({
+    queryKey: ["notifications"],
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/v1/notifications?limit=40`, { credentials: "include" });
+      if (!res.ok) throw new Error("failed");
+      return res.json();
+    },
+    enabled,
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+  });
+
+  const markRead = useMutation({
+    mutationFn: (id: string) => fetch(`${BASE}/api/v1/notifications/${id}/read`, { method: "POST", credentials: "include" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
+  });
+
+  const markAllRead = useMutation({
+    mutationFn: () => fetch(`${BASE}/api/v1/notifications/read-all`, { method: "POST", credentials: "include" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
+  });
+
+  return {
+    items: data?.items ?? [],
+    unreadCount: data?.unread_count ?? 0,
+    refetch,
+    markRead: (id: string) => markRead.mutate(id),
+    markAllRead: () => markAllRead.mutate(),
+  };
+}
 
 function NotificationsPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [read, setRead] = useState(new Set(NOTIFS.filter(n => n.read).map(n => n.id)));
+  const { items, unreadCount, markRead, markAllRead } = useNotifications(open);
+
   useEffect(() => {
     const k = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);
   }, [onClose]);
   if (!open) return null;
-  const unread = NOTIFS.filter(n => !read.has(n.id));
-  const earlier = NOTIFS.filter(n => read.has(n.id));
+
+  const unread  = items.filter(n => !n.is_read);
+  const earlier = items.filter(n =>  n.is_read);
+
   return (
     <>
       <div className="fixed inset-0 z-[90]" onClick={onClose} />
-      <div className="fixed top-12 right-0 bottom-0 w-[360px] z-[100] flex flex-col overflow-hidden"
+      <div className="fixed top-12 right-0 bottom-0 w-[380px] z-[100] flex flex-col overflow-hidden"
            style={{ background: "var(--pg-card)", borderLeft: "1px solid var(--pg-card-border)", boxShadow: "-8px 0 32px rgba(0,0,0,0.12)" }}>
         <div className="flex items-center justify-between px-4 py-3.5 shrink-0" style={{ borderBottom: "1px solid var(--pg-card-border)" }}>
           <div className="flex items-center gap-2">
             <h2 className="text-[14px] font-bold" style={{ color: "var(--pg-text-1)" }}>Notifications</h2>
-            {unread.length > 0 && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full text-white" style={{ background: "#2563eb" }}>{unread.length}</span>}
+            {unreadCount > 0 && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full text-white" style={{ background: "#2563eb" }}>{unreadCount}</span>}
           </div>
           <div className="flex items-center gap-2">
-            {unread.length > 0 && <button onClick={() => setRead(new Set(NOTIFS.map(n => n.id)))} className="text-[11px] font-medium text-blue-600 hover:underline">Mark all read</button>}
+            {unreadCount > 0 && (
+              <button onClick={markAllRead} className="text-[11px] font-medium text-blue-600 hover:underline">
+                Mark all read
+              </button>
+            )}
             <button onClick={onClose} className="w-6 h-6 flex items-center justify-center rounded-lg transition-colors" style={{ color: "var(--pg-text-3)" }}
                     onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--pg-muted-bg)"}
                     onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
@@ -358,34 +428,64 @@ function NotificationsPanel({ open, onClose }: { open: boolean; onClose: () => v
           </div>
         </div>
         <div className="flex-1 overflow-y-auto">
-          {unread.length > 0 && <><p className="px-4 pt-3 pb-1 text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--pg-text-3)" }}>Unread</p>
-            {unread.map(n => <NotifRow key={n.id} n={n} isRead={false} onRead={() => setRead(s => new Set([...s, n.id]))} />)}</>}
-          {earlier.length > 0 && <><p className="px-4 pt-4 pb-1 text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--pg-text-3)" }}>Earlier</p>
-            {earlier.map(n => <NotifRow key={n.id} n={n} isRead onRead={() => {}} />)}</>}
+          {items.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-16 gap-2">
+              <Bell className="w-8 h-8" style={{ color: "var(--pg-text-4)" }} />
+              <p className="text-[13px]" style={{ color: "var(--pg-text-3)" }}>No notifications yet</p>
+            </div>
+          )}
+          {unread.length > 0 && (
+            <>
+              <p className="px-4 pt-3 pb-1 text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--pg-text-3)" }}>Unread</p>
+              {unread.map(n => (
+                <NotifRow key={n.id} n={n} isRead={false}
+                  onRead={() => markRead(n.id)} onClose={onClose} />
+              ))}
+            </>
+          )}
+          {earlier.length > 0 && (
+            <>
+              <p className="px-4 pt-4 pb-1 text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--pg-text-3)" }}>Earlier</p>
+              {earlier.map(n => (
+                <NotifRow key={n.id} n={n} isRead onRead={() => {}} onClose={onClose} />
+              ))}
+            </>
+          )}
         </div>
       </div>
     </>
   );
 }
 
-function NotifRow({ n, isRead, onRead }: { n: typeof NOTIFS[0]; isRead: boolean; onRead: () => void }) {
-  const Icon = NICON[n.type] ?? Info;
+function NotifRow({ n, isRead, onRead, onClose }: {
+  n: InAppNotif; isRead: boolean; onRead: () => void; onClose: () => void;
+}) {
+  const { color, icon: Icon } = typeStyle(n.type);
+  const dot = PDOT[n.priority] ?? "#94a3b8";
+
+  function handleClick() {
+    if (!isRead) onRead();
+    if (n.link) { onClose(); window.location.href = n.link; }
+  }
+
   return (
     <div className="flex items-start gap-3 px-4 py-3.5 cursor-pointer transition-colors"
-         style={{ background: !isRead ? `${NCOLOR[n.type]}08` : undefined }}
-         onClick={onRead}
+         style={{ background: !isRead ? `${color}08` : undefined }}
+         onClick={handleClick}
          onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--pg-hover)"}
-         onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = !isRead ? `${NCOLOR[n.type]}08` : ""}>
+         onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = !isRead ? `${color}08` : ""}>
       <div className="relative shrink-0 mt-0.5">
-        <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: NCOLOR[n.type] + "18" }}>
-          <Icon className="w-3.5 h-3.5" style={{ color: NCOLOR[n.type] }} />
+        <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: color + "18" }}>
+          <Icon className="w-3.5 h-3.5" style={{ color }} />
         </div>
-        {!isRead && <div className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full" style={{ background: PDOT[n.priority ?? "low"], border: "2px solid var(--pg-card)" }} />}
+        {!isRead && <div className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full" style={{ background: dot, border: "2px solid var(--pg-card)" }} />}
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-[12.5px] leading-snug" style={{ color: isRead ? "var(--pg-text-2)" : "var(--pg-text-1)", fontWeight: isRead ? 400 : 600 }}>{n.title}</p>
-        <p className="text-[11px] mt-0.5 truncate" style={{ color: "var(--pg-text-3)" }}>{n.desc}</p>
-        <p className="text-[10px] mt-1 flex items-center gap-1" style={{ color: "var(--pg-text-4)" }}><Clock className="w-2.5 h-2.5" />{n.time} ago</p>
+        <p className="text-[11px] mt-0.5 leading-snug" style={{ color: "var(--pg-text-3)" }}>{n.body}</p>
+        <p className="text-[10px] mt-1 flex items-center gap-1" style={{ color: "var(--pg-text-4)" }}>
+          <Clock className="w-2.5 h-2.5" />{relativeTime(n.created_at)}
+        </p>
       </div>
     </div>
   );
@@ -407,7 +507,9 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const subRef  = useRef<HTMLDivElement>(null);
   const userRef = useRef<HTMLDivElement>(null);
 
-  const unread = NOTIFS.filter(n => !n.read).length;
+  // Hooks must be called before any early return.
+  const isAuthReady = !authLoading && !posLoading;
+  const { unreadCount: unread } = useNotifications(isAuthReady);
 
   useEffect(() => {
     const s = localStorage.getItem("pageos_sidebar");

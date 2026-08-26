@@ -131,14 +131,32 @@ func (s *Service) CreateRequest(ctx context.Context, in CreateLeaveInput) (Leave
 	).Scan(&id, &createdAt); err != nil {
 		return LeaveRequest{}, fmt.Errorf("hr: create leave request: %w", err)
 	}
-	return LeaveRequest{
+	req := LeaveRequest{
 		ID: id, PersonID: in.PersonID, PolicyID: in.PolicyID,
 		StartDate: in.StartDate, EndDate: in.EndDate,
 		DaysCount: in.DaysCount, Notes: in.Notes,
 		Status: "pending", CreatedAt: createdAt,
 		RelieverPersonID:   in.RelieverPersonID,
 		HandoverDocumentID: in.HandoverDocumentID,
-	}, nil
+	}
+
+	// Notify HR managers of the new leave request.
+	var personName string
+	_ = s.pool.QueryRow(ctx,
+		`SELECT first_name||' '||last_name FROM organization.person WHERE id=$1`, in.PersonID,
+	).Scan(&personName)
+	if personName != "" {
+		_ = notification.SendToRole(ctx, s.pool, uuid.Nil,
+			[]string{"HR_MANAGER", "HR_OFFICER", "HEAD_HR"},
+			notification.InApp{
+				Type:     "hr_leave_requested",
+				Title:    "New Leave Request",
+				Body:     fmt.Sprintf("%s has requested %.0f days leave from %s to %s.", personName, in.DaysCount, in.StartDate, in.EndDate),
+				Link:     "/hr",
+				Priority: "medium",
+			})
+	}
+	return req, nil
 }
 
 func (s *Service) ListRequests(ctx context.Context, personID *uuid.UUID, status string) ([]LeaveRequest, error) {
@@ -234,6 +252,30 @@ func (s *Service) ReviewRequest(ctx context.Context, in ReviewInput) error {
 	}
 	if tag.RowsAffected() == 0 {
 		return fmt.Errorf("hr: request not found or already reviewed")
+	}
+
+	// Notify employee of the decision.
+	if in.Action == "approve" || in.Action == "reject" {
+		var personID uuid.UUID
+		var start, end string
+		_ = s.pool.QueryRow(ctx,
+			`SELECT person_id, start_date::text, end_date::text FROM hr.leave_request WHERE id=$1`,
+			in.RequestID,
+		).Scan(&personID, &start, &end)
+		if personID != uuid.Nil {
+			title := "Leave Request Approved"
+			body := fmt.Sprintf("Your leave from %s to %s has been approved.", start, end)
+			priority := "medium"
+			if in.Action == "reject" {
+				title = "Leave Request Declined"
+				body = fmt.Sprintf("Your leave request from %s to %s has been declined.", start, end)
+				priority = "high"
+			}
+			_ = notification.SendToUser(ctx, s.pool, personID, notification.InApp{
+				Type: "hr_leave_" + in.Action + "d", Title: title, Body: body,
+				Link: "/hr", Priority: priority,
+			})
+		}
 	}
 	return nil
 }
@@ -409,6 +451,20 @@ func (s *Service) CreateDocumentRequest(ctx context.Context, in CreateDocumentRe
 	if err := tx.Commit(ctx); err != nil {
 		return DocumentRequest{}, err
 	}
+
+	// In-app notification to the employee (best-effort, post-commit).
+	dueStr := ""
+	if req.DueDate != nil {
+		dueStr = fmt.Sprintf(" Please upload by %s.", *req.DueDate)
+	}
+	_ = notification.SendToUser(ctx, s.pool, in.PersonID, notification.InApp{
+		Type:     "hr_document_requested",
+		Title:    "Document Request from HR",
+		Body:     fmt.Sprintf("HR has requested your %s.%s", in.DocumentType, dueStr),
+		Link:     "/hr/documents/my",
+		Priority: "high",
+	})
+
 	return req, nil
 }
 
@@ -451,7 +507,29 @@ func (s *Service) FulfillDocumentRequest(ctx context.Context, requestID, documen
 		  AND  person_id   = $3
 		  AND  status      = 'pending'
 	`, requestID, documentID, byPersonID)
-	return err
+	if err != nil {
+		return err
+	}
+	// Notify HR managers that the employee uploaded a document.
+	var personName, docType string
+	_ = s.pool.QueryRow(ctx, `
+		SELECT p.first_name||' '||p.last_name, dr.document_type
+		FROM documents.document_request dr
+		JOIN organization.person p ON p.id = dr.person_id
+		WHERE dr.id = $1`, requestID,
+	).Scan(&personName, &docType)
+	if personName != "" {
+		_ = notification.SendToRole(ctx, s.pool, uuid.Nil,
+			[]string{"HR_MANAGER", "HR_OFFICER", "HEAD_HR"},
+			notification.InApp{
+				Type:     "hr_document_uploaded",
+				Title:    "Document Uploaded",
+				Body:     fmt.Sprintf("%s has uploaded their %s.", personName, docType),
+				Link:     "/hr/documents",
+				Priority: "medium",
+			})
+	}
+	return nil
 }
 
 // DeclineDocumentRequest lets an employee mark a request as declined with a reason.

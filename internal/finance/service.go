@@ -11,6 +11,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/pagegroup/pageos/internal/notification"
 )
 
 // Service owns all finance business logic and runs raw SQL directly.
@@ -384,6 +386,12 @@ func (s *Service) DeleteDraft(ctx context.Context, journalID uuid.UUID) error {
 
 // SubmitForApproval moves a draft journal to pending_approval.
 func (s *Service) SubmitForApproval(ctx context.Context, journalID, byID uuid.UUID, byName string) error {
+	var ref, desc, subIDStr string
+	_ = s.pool.QueryRow(ctx,
+		`SELECT reference, COALESCE(description,''), COALESCE(subsidiary_id::text,'')
+		 FROM finance.journal_header WHERE id=$1`, journalID,
+	).Scan(&ref, &desc, &subIDStr)
+
 	tag, err := s.pool.Exec(ctx, `
 		UPDATE finance.journal_header
 		SET    status       = 'pending_approval',
@@ -399,6 +407,24 @@ func (s *Service) SubmitForApproval(ctx context.Context, journalID, byID uuid.UU
 	if tag.RowsAffected() == 0 {
 		return fmt.Errorf("finance: journal not found or not a draft")
 	}
+
+	// Notify Finance managers that a journal needs approval.
+	subID, _ := uuid.Parse(subIDStr)
+	body := fmt.Sprintf("Journal %s — %s has been submitted for approval by %s.", ref, desc, byName)
+	if desc == "" {
+		body = fmt.Sprintf("Journal %s has been submitted for approval by %s.", ref, byName)
+	}
+	_ = notification.SendToRole(ctx, s.pool, subID,
+		[]string{"FINANCE_MANAGER", "FINANCE_CONTROLLER", "CFO", "MANAGING_DIRECTOR"},
+		notification.InApp{
+			Type:       "finance_journal_pending",
+			Title:      "Journal Awaiting Approval",
+			Body:       body,
+			Link:       "/finance/journals",
+			Priority:   "high",
+			EntityType: "journal",
+			EntityID:   &journalID,
+		})
 	return nil
 }
 
@@ -434,6 +460,25 @@ func (s *Service) ApproveJournal(ctx context.Context, journalID, approverID uuid
 	if tag.RowsAffected() == 0 {
 		return fmt.Errorf("finance: journal not found or not pending approval")
 	}
+
+	// Notify the journal submitter that it was approved.
+	var submitterID uuid.UUID
+	var ref string
+	_ = s.pool.QueryRow(ctx,
+		`SELECT COALESCE(submitted_by, created_by), reference FROM finance.journal_header WHERE id=$1`,
+		journalID,
+	).Scan(&submitterID, &ref)
+	if submitterID != uuid.Nil {
+		_ = notification.SendToUserByID(ctx, s.pool, submitterID, notification.InApp{
+			Type:       "finance_journal_approved",
+			Title:      "Journal Approved",
+			Body:       fmt.Sprintf("Journal %s has been approved and posted to the ledger.", ref),
+			Link:       "/finance/journals",
+			Priority:   "medium",
+			EntityType: "journal",
+			EntityID:   &journalID,
+		})
+	}
 	return nil
 }
 
@@ -454,6 +499,29 @@ func (s *Service) RejectJournal(ctx context.Context, journalID, rejectorID uuid.
 	}
 	if tag.RowsAffected() == 0 {
 		return fmt.Errorf("finance: journal not found or not pending approval")
+	}
+
+	// Notify the journal submitter that it was rejected.
+	var submitterID uuid.UUID
+	var ref string
+	_ = s.pool.QueryRow(ctx,
+		`SELECT COALESCE(submitted_by, created_by), reference FROM finance.journal_header WHERE id=$1`,
+		journalID,
+	).Scan(&submitterID, &ref)
+	if submitterID != uuid.Nil {
+		body := fmt.Sprintf("Journal %s has been rejected.", ref)
+		if note != "" {
+			body = fmt.Sprintf("Journal %s has been rejected: %s", ref, note)
+		}
+		_ = notification.SendToUserByID(ctx, s.pool, submitterID, notification.InApp{
+			Type:       "finance_journal_rejected",
+			Title:      "Journal Rejected",
+			Body:       body,
+			Link:       "/finance/journals",
+			Priority:   "urgent",
+			EntityType: "journal",
+			EntityID:   &journalID,
+		})
 	}
 	return nil
 }

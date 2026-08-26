@@ -423,6 +423,20 @@ func (s *Service) SubmitCase(ctx context.Context, caseID, userID uuid.UUID) (dom
 		ResourceType: "onboarding_case", ResourceID: c.ID.String(),
 	})
 
+	// Notify compliance officers that a new case needs review (best-effort).
+	cID := c.ID
+	_ = notification.SendToRole(ctx, s.store.Pool(), c.SubsidiaryID,
+		[]string{"COMPLIANCE_MANAGER", "COMPLIANCE_OFFICER", "MANAGING_DIRECTOR"},
+		notification.InApp{
+			Type:       "onboarding_submitted",
+			Title:      "New Client Onboarding Submitted",
+			Body:       fmt.Sprintf("A new client account opening application has been submitted and is awaiting compliance review."),
+			Link:       fmt.Sprintf("/investments/onboarding/%s", cID),
+			Priority:   "high",
+			EntityType: "case",
+			EntityID:   &cID,
+		})
+
 	// Create the approval request if the approval service is wired.
 	if s.approvalSvc != nil && s.orgSvc != nil {
 		steps, err := s.resolveApprovalSteps(ctx, c)
@@ -496,7 +510,16 @@ func (s *Service) HandleApprovalEvent(ctx context.Context, e approval.TerminalEv
 	if e.ResourceType != "onboarding_case" {
 		return nil
 	}
-	return s.store.ExecTx(ctx, func(q *onboardingdb.Queries, tx pgx.Tx) error {
+
+	// Capture data needed for post-commit in-app notifications.
+	type notifCtx struct {
+		clientName string
+		subID      uuid.UUID
+		rmPersonID uuid.UUID // may be uuid.Nil if no RM assigned
+	}
+	var nc notifCtx
+
+	err := s.store.ExecTx(ctx, func(q *onboardingdb.Queries, tx pgx.Tx) error {
 		switch e.Outcome {
 		case "approved":
 			// Case approved → active client
@@ -504,6 +527,7 @@ func (s *Service) HandleApprovalEvent(ctx context.Context, e approval.TerminalEv
 			if err != nil {
 				return err
 			}
+			nc.subID = caseRow.SubsidiaryID
 			if _, err := q.UpdateCaseState(ctx, onboardingdb.UpdateCaseStateParams{
 				ID: e.ResourceID, State: "approved",
 			}); err != nil {
@@ -521,6 +545,7 @@ func (s *Service) HandleApprovalEvent(ctx context.Context, e approval.TerminalEv
 				ResourceType: "onboarding_case", ResourceID: e.ResourceID.String(),
 			})
 			if emailInfo, err := q.GetClientEmailByCase(ctx, e.ResourceID); err == nil && emailInfo.Email != "" {
+				nc.clientName = emailInfo.DisplayName
 				_ = notification.Shared().Enqueue(ctx, tx, notification.Message{
 					EventType:     "onboarding.case.approved",
 					TargetAddress: emailInfo.Email,
@@ -528,6 +553,12 @@ func (s *Service) HandleApprovalEvent(ctx context.Context, e approval.TerminalEv
 					BodyText:      fmt.Sprintf("Dear %s,\n\nYour account has been successfully opened.", emailInfo.DisplayName),
 				})
 			}
+			// Resolve RM for this client so we can notify them.
+			_ = s.store.Pool().QueryRow(ctx,
+				`SELECT rm_person_id FROM onboarding.rm_client WHERE client_id=$1 AND ended_at IS NULL LIMIT 1`,
+				caseRow.ClientID,
+			).Scan(&nc.rmPersonID)
+
 		case "rejected":
 			if _, err := q.UpdateCaseState(ctx, onboardingdb.UpdateCaseStateParams{
 				ID: e.ResourceID, State: "rejected",
@@ -535,6 +566,7 @@ func (s *Service) HandleApprovalEvent(ctx context.Context, e approval.TerminalEv
 				return err
 			}
 			if emailInfo, err := q.GetClientEmailByCase(ctx, e.ResourceID); err == nil && emailInfo.Email != "" {
+				nc.clientName = emailInfo.DisplayName
 				_ = notification.Shared().Enqueue(ctx, tx, notification.Message{
 					EventType:     "onboarding.case.rejected",
 					TargetAddress: emailInfo.Email,
@@ -542,6 +574,13 @@ func (s *Service) HandleApprovalEvent(ctx context.Context, e approval.TerminalEv
 					BodyText:      fmt.Sprintf("Dear %s,\n\nUnfortunately, we are unable to open your account at this time.", emailInfo.DisplayName),
 				})
 			}
+			caseRow, _ := q.GetCase(ctx, e.ResourceID)
+			nc.subID = caseRow.SubsidiaryID
+			_ = s.store.Pool().QueryRow(ctx,
+				`SELECT rm_person_id FROM onboarding.rm_client WHERE client_id=$1 AND ended_at IS NULL LIMIT 1`,
+				caseRow.ClientID,
+			).Scan(&nc.rmPersonID)
+
 		case "returned":
 			if _, err := q.ReturnCase(ctx, onboardingdb.ReturnCaseParams{
 				ID: e.ResourceID, ReturnNotes: e.Notes,
@@ -551,6 +590,54 @@ func (s *Service) HandleApprovalEvent(ctx context.Context, e approval.TerminalEv
 		}
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+
+	// Post-commit in-app notifications (best-effort — never fail the request).
+	pool := s.store.Pool()
+	caseID := e.ResourceID
+	switch e.Outcome {
+	case "approved":
+		// Finance and MD: a new active client they may need to action.
+		_ = notification.SendToRole(ctx, pool, nc.subID,
+			[]string{"FINANCE_MANAGER", "FINANCE_CONTROLLER", "CFO", "MANAGING_DIRECTOR"},
+			notification.InApp{
+				Type:       "onboarding_approved",
+				Title:      "Client Account Opened",
+				Body:       fmt.Sprintf("%s's account opening has been approved and the client is now active.", nc.clientName),
+				Link:       fmt.Sprintf("/investments/onboarding/%s", caseID),
+				Priority:   "high",
+				EntityType: "case",
+				EntityID:   &caseID,
+			})
+		// RM: their client is active.
+		if nc.rmPersonID != uuid.Nil {
+			_ = notification.SendToUser(ctx, pool, nc.rmPersonID, notification.InApp{
+				Type:       "onboarding_approved",
+				Title:      "Your Client Is Now Active",
+				Body:       fmt.Sprintf("%s's account has been approved. You can now proceed with their investment portfolio.", nc.clientName),
+				Link:       fmt.Sprintf("/investments/onboarding/%s", caseID),
+				Priority:   "high",
+				EntityType: "case",
+				EntityID:   &caseID,
+			})
+		}
+	case "rejected":
+		// RM: their client application was declined.
+		if nc.rmPersonID != uuid.Nil {
+			_ = notification.SendToUser(ctx, pool, nc.rmPersonID, notification.InApp{
+				Type:       "onboarding_rejected",
+				Title:      "Client Application Declined",
+				Body:       fmt.Sprintf("%s's account application has been rejected. Please review the case notes and advise the client.", nc.clientName),
+				Link:       fmt.Sprintf("/investments/onboarding/%s", caseID),
+				Priority:   "urgent",
+				EntityType: "case",
+				EntityID:   &caseID,
+			})
+		}
+	}
+	return nil
 }
 
 // ── Compliance ────────────────────────────────────────────────────────────────
