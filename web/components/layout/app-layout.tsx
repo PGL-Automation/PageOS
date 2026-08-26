@@ -11,7 +11,7 @@ import {
   ShoppingCart, FolderOpen, Zap, BarChart, PieChart, Settings,
   Bell, Command, ChevronDown, Check, Building2, LogOut, Loader2,
   PanelLeft, ChevronRight, Inbox, Sun, Moon, X, Clock,
-  CheckCircle2, AlertCircle, Info, FileBarChart,
+  CheckCircle2, AlertCircle, Info, FileBarChart, CalendarDays,
   Star, User, ClipboardList, Lock, Package,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -48,6 +48,7 @@ const WM_NAV: NavGroup[] = [
     { href: "/wm/commission",           label: "My Commission",       icon: DollarSign },
     { href: "/approval",                label: "Approvals",           icon: CheckSquare },
     { href: "/appraisal",               label: "My Appraisal",        icon: ClipboardList },
+    { href: "/leave",                   label: "My Leave",            icon: CalendarDays },
     { href: "/hr/documents/my",         label: "My Documents",        icon: FileText },
     { href: "/documents",               label: "Shared Documents",    icon: FolderOpen },
     { href: "/vault",                   label: "My Vault",            icon: Lock },
@@ -70,6 +71,7 @@ const MD_NAV: NavGroup[] = [
   { id: "ops", label: "Operations", items: [
     { href: "/investments/onboarding",label: "Onboarding",       icon: UserPlus },
     { href: "/approval",              label: "Approvals",         icon: CheckSquare },
+    { href: "/leave",                 label: "My Leave",          icon: CalendarDays },
     { href: "/hr/documents/my",       label: "My Documents",      icon: FileText },
     { href: "/reports",               label: "Reports",           icon: FileBarChart },
     { href: "/vault",                 label: "My Vault",          icon: Lock },
@@ -96,6 +98,7 @@ const COMPLIANCE_NAV: NavGroup[] = [
   ]},
   { id: "actions", label: "Actions", items: [
     { href: "/approval",              label: "Approvals",      icon: CheckSquare },
+    { href: "/leave",                 label: "My Leave",       icon: CalendarDays },
     { href: "/hr/documents/my",       label: "My Documents",   icon: FileText },
     { href: "/documents",             label: "Documents",      icon: FolderOpen },
     { href: "/vault",                 label: "My Vault",       icon: Lock },
@@ -120,6 +123,11 @@ const FINANCE_NAV: NavGroup[] = [
     { href: "/finance/receivables",   label: "Receivables",    icon: Wallet },
     { href: "/finance/assets",        label: "Fixed Assets",   icon: Package },
   ]},
+  { id: "actions", label: "Actions", items: [
+    { href: "/approval",              label: "Approvals",      icon: CheckSquare },
+    { href: "/leave",                 label: "My Leave",       icon: CalendarDays },
+    { href: "/vault",                 label: "My Vault",       icon: Lock },
+  ]},
   { id: "reporting", label: "Reporting", items: [
     { href: "/finance/budget",                    label: "Budget vs Actual", icon: Target },
     { href: "/finance/reports/pl",                label: "P&L Statement",    icon: TrendingUp },
@@ -142,6 +150,7 @@ const HR_NAV: NavGroup[] = [
     { href: "/hr/records",        label: "Employee Directory", icon: Users },
     { href: "/hr/org-chart",      label: "Org Chart",          icon: Building2 },
     { href: "/hr/admin",          label: "User Management",    icon: UserSearch },
+    { href: "/leave",             label: "Leave Management",   icon: CalendarDays },
     { href: "/hr/documents",      label: "Document Requests",  icon: FolderOpen },
     { href: "/recruitment",       label: "Recruitment",        icon: UserPlus },
   ]},
@@ -155,6 +164,7 @@ const HR_NAV: NavGroup[] = [
   ]},
   { id: "actions", label: "Actions", items: [
     { href: "/approval",              label: "Approvals",       icon: CheckSquare },
+    { href: "/leave",                 label: "My Leave",        icon: CalendarDays },
     { href: "/hr/documents/my",       label: "My Documents",    icon: FileText },
     { href: "/vault",                 label: "My Vault",        icon: Lock },
   ]},
@@ -187,6 +197,7 @@ const ADMIN_NAV: NavGroup[] = [
   ]},
   { id: "governance", label: "Governance", items: [
     { href: "/approval",               label: "Approvals",        icon: CheckSquare },
+    { href: "/leave",                  label: "My Leave",         icon: CalendarDays },
     { href: "/compliance",             label: "Compliance",       icon: Shield },
     { href: "/risk",                   label: "Risk",             icon: AlertTriangle },
     { href: "/vault",                  label: "My Vault",         icon: Lock },
@@ -211,6 +222,7 @@ const DEFAULT_NAV: NavGroup[] = [
   { id: "personal", label: "My Work", items: [
     { href: "/appraisal",             label: "My Appraisal",   icon: ClipboardList },
     { href: "/approval",              label: "Approvals",      icon: CheckSquare },
+    { href: "/leave",                 label: "My Leave",       icon: CalendarDays },
     { href: "/hr/documents/my",       label: "My Documents",   icon: FileText },
     { href: "/vault",                 label: "My Vault",       icon: Lock },
   ]},
