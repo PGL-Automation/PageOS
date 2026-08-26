@@ -52,6 +52,9 @@ func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	r.Get("/me/subsidiaries", h.mySubsidiaries)
 	// HR user-management: list all users with their current org assignments.
 	r.Get("/users", h.listUsers)
+	// Staff directory: lightweight person list accessible to all authenticated users.
+	// Used by reliever/assignee search throughout the app.
+	r.Get("/staff", h.listStaff)
 	return r
 }
 
@@ -343,6 +346,23 @@ func (h *Handler) listUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.JSON(w, http.StatusOK, users)
+}
+
+// listStaff returns a lightweight list of all persons.
+// Accessible to every authenticated user — used for reliever/assignee lookups.
+// Supports ?search=name to filter server-side.
+func (h *Handler) listStaff(w http.ResponseWriter, r *http.Request) {
+	if _, ok := identityhttp.UserFrom(r.Context()); !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated")
+		return
+	}
+	search := r.URL.Query().Get("search")
+	staff, err := h.svc.ListStaff(r.Context(), search)
+	if err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		return
+	}
+	httpx.JSON(w, http.StatusOK, staff)
 }
 
 // decode reads a JSON body into v, writing a 400 and returning false on error.

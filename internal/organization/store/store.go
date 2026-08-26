@@ -568,3 +568,44 @@ func (s *Store) GetUserPositionsInSubsidiary(ctx context.Context, userID, subsid
 	}
 	return out, rows.Err()
 }
+
+// StaffRow is the minimal person record returned by ListStaff.
+type StaffRow struct {
+	PersonID string `json:"person_id"`
+	FullName string `json:"full_name"`
+	Email    string `json:"email"`
+}
+
+// ListStaff returns all persons matching the optional search term.
+// It is intentionally lightweight and open to all authenticated callers.
+func (s *Store) ListStaff(ctx context.Context, search string) ([]StaffRow, error) {
+	const q = `
+		SELECT p.id::text,
+		       COALESCE(u.display_name, p.first_name || ' ' || p.last_name) AS full_name,
+		       COALESCE(p.email, '') AS email
+		FROM   organization.person p
+		LEFT   JOIN identity.users u ON u.id = p.user_id
+		WHERE  ($1 = ''
+		        OR lower(COALESCE(u.display_name, p.first_name || ' ' || p.last_name))
+		               LIKE lower('%' || $1 || '%')
+		        OR lower(COALESCE(p.email,'')) LIKE lower('%' || $1 || '%'))
+		ORDER  BY full_name
+		LIMIT  60`
+	rows, err := s.pool.Query(ctx, q, search)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []StaffRow
+	for rows.Next() {
+		var r StaffRow
+		if err := rows.Scan(&r.PersonID, &r.FullName, &r.Email); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	if out == nil {
+		out = []StaffRow{}
+	}
+	return out, rows.Err()
+}

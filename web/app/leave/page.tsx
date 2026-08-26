@@ -36,9 +36,10 @@ type LeaveRequest = {
   reliever_name?: string; handover_document_id?: string;
 };
 
-type OrgUser = {
-  user_id: string; email: string; display_name: string;
-  user_status: string; person_id?: string;
+type StaffMember = {
+  person_id: string;
+  full_name: string;
+  email: string;
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -163,19 +164,20 @@ function ApplyModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const { data: orgUsers = [] } = useQuery<OrgUser[]>({
-    queryKey: ["org-users"],
+  const [relieverFocused, setRelieverFocused] = useState(false);
+
+  // Server-side filtered staff list — always returns results, accessible to all roles.
+  const { data: staffResults = [] } = useQuery<StaffMember[]>({
+    queryKey: ["staff-search", relieverSearch],
     queryFn: async () => {
-      const res = await fetch(`${BASE}/api/v1/org/users`, { credentials: "include" });
-      return res.ok ? (((await res.json()) ?? []) as OrgUser[]) : [];
+      const params = relieverSearch ? `?search=${encodeURIComponent(relieverSearch)}` : "";
+      const res = await fetch(`${BASE}/api/v1/org/staff${params}`, { credentials: "include" });
+      return res.ok ? (((await res.json()) ?? []) as StaffMember[]) : [];
     },
+    staleTime: 10_000,
   });
 
-  const employees = orgUsers.filter(u => u.person_id);
-  const filteredRelievers = employees.filter(u =>
-    !relieverSearch || u.display_name.toLowerCase().includes(relieverSearch.toLowerCase())
-  );
-  const selectedReliever = employees.find(u => u.person_id === relieverPersonId);
+  const [selectedReliever, setSelectedReliever] = useState<StaffMember | null>(null);
 
   function handleDateChange(field: "start" | "end", value: string) {
     const ns = field === "start" ? value : startDate;
@@ -357,35 +359,49 @@ function ApplyModal({
                 <div className="flex items-center gap-2">
                   <UserCircle className="w-4 h-4 shrink-0" style={{ color: "var(--pg-text-3)" }} />
                   <div>
-                    <p className="text-[12px] font-medium" style={{ color: "var(--pg-text-1)" }}>{selectedReliever.display_name}</p>
+                    <p className="text-[12px] font-medium" style={{ color: "var(--pg-text-1)" }}>{selectedReliever.full_name}</p>
                     <p className="text-[10px]" style={{ color: "var(--pg-text-3)" }}>{selectedReliever.email}</p>
                   </div>
                 </div>
                 <button type="button" className="text-[11px] font-medium" style={{ color: "var(--pg-text-3)" }}
-                        onClick={() => { setRelieverPersonId(""); setRelieverSearch(""); }}>
+                        onClick={() => { setSelectedReliever(null); setRelieverPersonId(""); setRelieverSearch(""); }}>
                   Remove
                 </button>
               </div>
             ) : (
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: "var(--pg-text-3)" }} />
-                <input value={relieverSearch} onChange={e => setRelieverSearch(e.target.value)}
-                       placeholder="Search colleague…"
-                       className="w-full h-10 pl-9 pr-3 rounded-xl text-[13px] outline-none"
-                       style={{ background: "var(--pg-input)", border: "1px solid var(--pg-input-border)", color: "var(--pg-text-1)" }} />
-                {relieverSearch && filteredRelievers.length > 0 && (
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none"
+                        style={{ color: "var(--pg-text-3)" }} />
+                <input
+                  value={relieverSearch}
+                  onChange={e => setRelieverSearch(e.target.value)}
+                  onFocus={() => setRelieverFocused(true)}
+                  onBlur={() => setTimeout(() => setRelieverFocused(false), 150)}
+                  placeholder="Type a name or click to browse all staff…"
+                  className="w-full h-10 pl-9 pr-3 rounded-xl text-[13px] outline-none"
+                  style={{ background: "var(--pg-input)", border: "1px solid var(--pg-input-border)", color: "var(--pg-text-1)" }} />
+                {relieverFocused && staffResults.length > 0 && (
                   <div className="absolute z-10 w-full mt-1 rounded-xl overflow-hidden shadow-lg"
-                       style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)", maxHeight: 180, overflowY: "auto" }}>
-                    {filteredRelievers.map(u => (
+                       style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)", maxHeight: 200, overflowY: "auto" }}>
+                    {staffResults.map(u => (
                       <button key={u.person_id} type="button"
-                              className="w-full text-left px-3 py-2.5 flex items-center gap-2 transition-colors"
+                              className="w-full text-left px-3 py-2.5 flex items-center gap-2.5 transition-colors"
+                              onMouseDown={e => e.preventDefault()}
                               onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--pg-row-hover)"}
                               onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}
-                              onClick={() => { setRelieverPersonId(u.person_id!); setRelieverSearch(""); }}>
-                        <UserCircle className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--pg-text-3)" }} />
-                        <div>
-                          <p className="text-[12px] font-medium" style={{ color: "var(--pg-text-1)" }}>{u.display_name}</p>
-                          <p className="text-[10px]" style={{ color: "var(--pg-text-3)" }}>{u.email}</p>
+                              onClick={() => {
+                                setSelectedReliever(u);
+                                setRelieverPersonId(u.person_id);
+                                setRelieverSearch("");
+                                setRelieverFocused(false);
+                              }}>
+                        <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-[11px] font-bold text-white"
+                             style={{ background: "#2563eb" }}>
+                          {u.full_name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[12px] font-medium truncate" style={{ color: "var(--pg-text-1)" }}>{u.full_name}</p>
+                          {u.email && <p className="text-[10px] truncate" style={{ color: "var(--pg-text-3)" }}>{u.email}</p>}
                         </div>
                       </button>
                     ))}
