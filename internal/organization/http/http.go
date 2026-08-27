@@ -391,8 +391,8 @@ func (h *Handler) setPersonGender(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	if in.Gender != "M" && in.Gender != "F" && in.Gender != "other" && in.Gender != "" {
-		httpx.Error(w, http.StatusBadRequest, "bad_request", `gender must be "M", "F", "other", or ""`)
+	if in.Gender != "M" && in.Gender != "F" && in.Gender != "" {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", `gender must be "M", "F", or ""`)
 		return
 	}
 	gender := in.Gender

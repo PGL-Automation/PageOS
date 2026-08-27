@@ -979,17 +979,15 @@ function ProvisionAccountDialog({ employee, onClose }: { employee: Employee; onC
 // Affects leave eligibility: Maternity (F), Paternity (M).
 
 const GENDER_OPTIONS = [
-  { value: "",      label: "Not set" },
-  { value: "M",     label: "Male" },
-  { value: "F",     label: "Female" },
-  { value: "other", label: "Other / Prefer not to say" },
+  { value: "",  label: "Not set" },
+  { value: "M", label: "Male" },
+  { value: "F", label: "Female" },
 ] as const;
 
-const GENDER_LABEL: Record<string, string> = { M: "Male", F: "Female", other: "Other" };
+const GENDER_LABEL: Record<string, string> = { M: "Male", F: "Female" };
 const GENDER_COLOR: Record<string, { bg: string; color: string }> = {
-  M:     { bg: "#dbeafe", color: "#1d4ed8" },
-  F:     { bg: "#fce7f3", color: "#be185d" },
-  other: { bg: "#f1f5f9", color: "#475569" },
+  M: { bg: "#dbeafe", color: "#1d4ed8" },
+  F: { bg: "#fce7f3", color: "#be185d" },
 };
 
 function GenderField({ employee, onUpdate }: {
