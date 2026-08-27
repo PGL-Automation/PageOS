@@ -18,6 +18,9 @@ const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
 type LeavePolicy = {
   id: string; code: string; name: string;
   days_per_year: number; requires_approval: boolean; is_active: boolean;
+  is_unpaid: boolean;
+  minimum_tenure_months: number;
+  applicable_grades?: string[];
 };
 
 type LeaveRequest = {
@@ -359,8 +362,9 @@ function CreateRequestModal({
               <option value="">Select type…</option>
               {policies.map(p => {
                 const bal = balances.find(b => b.policy_id === p.id);
-                const label = bal ? `${p.name} (${bal.days_remaining} of ${bal.days_granted}d remaining)` : `${p.name} (${p.days_per_year}d/yr)`;
-                return <option key={p.id} value={p.id}>{label}</option>;
+                const rem = bal ? `${bal.days_remaining} of ${bal.days_granted}d remaining` : `${p.days_per_year}d max`;
+                const suffix = p.is_unpaid ? " · Unpaid" : "";
+                return <option key={p.id} value={p.id}>{p.name} ({rem}){suffix}</option>;
               })}
             </select>
           </div>
@@ -788,13 +792,22 @@ export default function LeavePage() {
       </div>
 
       {/* Policy overview */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {policies.map(p => (
-          <div key={p.id} className="rounded-xl p-3"
+          <div key={p.id} className="rounded-xl p-3 flex flex-col gap-1"
                style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}>
-            <p className="text-[10px] font-bold uppercase tracking-wide truncate" style={{ color: "var(--pg-text-3)" }}>{p.name}</p>
-            <p className="text-[20px] font-bold tabular mt-1" style={{ color: "var(--pg-text-1)" }}>{p.days_per_year}</p>
-            <p className="text-[10px]" style={{ color: "var(--pg-text-4)" }}>days / year</p>
+            <p className="text-[10px] font-bold uppercase tracking-wide leading-tight" style={{ color: "var(--pg-text-3)" }}>{p.name}</p>
+            <div className="flex items-end gap-1">
+              <p className="text-[20px] font-bold tabular leading-none" style={{ color: "var(--pg-text-1)" }}>{p.days_per_year}</p>
+              <p className="text-[10px] mb-0.5" style={{ color: "var(--pg-text-4)" }}>days</p>
+            </div>
+            {p.is_unpaid && (
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full self-start"
+                    style={{ background: "#fef3c7", color: "#b45309" }}>Unpaid</span>
+            )}
+            {p.minimum_tenure_months > 0 && (
+              <p className="text-[9px]" style={{ color: "var(--pg-text-4)" }}>{p.minimum_tenure_months}m tenure req.</p>
+            )}
           </div>
         ))}
       </div>

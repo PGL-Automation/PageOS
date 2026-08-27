@@ -18,6 +18,9 @@ const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
 type LeavePolicy = {
   id: string; code: string; name: string;
   days_per_year: number; requires_approval: boolean; is_active: boolean;
+  is_unpaid: boolean;
+  minimum_tenure_months: number;
+  applicable_grades?: string[];
 };
 
 type LeaveBalance = {
@@ -283,10 +286,43 @@ function ApplyModal({
               <option value="">Select leave type…</option>
               {policies.map(p => {
                 const bal = balances.find(b => b.policy_id === p.id);
-                const rem = bal ? `${bal.days_remaining} of ${bal.days_granted}d remaining` : `${p.days_per_year}d/year`;
-                return <option key={p.id} value={p.id}>{p.name} — {rem}</option>;
+                const bal_label = bal
+                  ? `${bal.days_remaining} of ${bal.days_granted}d remaining`
+                  : `${p.days_per_year}d max`;
+                const unpaid = p.is_unpaid ? " · Unpaid" : "";
+                return (
+                  <option key={p.id} value={p.id}>
+                    {p.name} — {bal_label}{unpaid}
+                  </option>
+                );
               })}
             </select>
+
+            {/* Unpaid / tenure notice */}
+            {policyId && (() => {
+              const pol = policies.find(p => p.id === policyId);
+              if (!pol) return null;
+              return (
+                <div className="flex flex-col gap-1.5 mt-2">
+                  {pol.is_unpaid && (
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-xl"
+                         style={{ background: "#fef3c7", border: "1px solid #fde68a" }}>
+                      <span className="text-[11px] font-semibold" style={{ color: "#b45309" }}>
+                        Unpaid leave — salary will not be paid during this period
+                      </span>
+                    </div>
+                  )}
+                  {pol.minimum_tenure_months > 0 && (
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-xl"
+                         style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)" }}>
+                      <span className="text-[11px]" style={{ color: "var(--pg-text-2)" }}>
+                        Requires at least <strong>{pol.minimum_tenure_months} months</strong> of confirmed service.
+                      </span>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Inline balance hint */}
             {selectedBalance && (

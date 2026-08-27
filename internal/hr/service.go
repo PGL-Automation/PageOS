@@ -25,12 +25,15 @@ func NewService(pool *pgxpool.Pool) *Service {
 // ── Domain types ──────────────────────────────────────────────────────────────
 
 type LeavePolicy struct {
-	ID               uuid.UUID `json:"id"`
-	Code             string    `json:"code"`
-	Name             string    `json:"name"`
-	DaysPerYear      int       `json:"days_per_year"`
-	RequiresApproval bool      `json:"requires_approval"`
-	IsActive         bool      `json:"is_active"`
+	ID                   uuid.UUID `json:"id"`
+	Code                 string    `json:"code"`
+	Name                 string    `json:"name"`
+	DaysPerYear          int       `json:"days_per_year"`
+	RequiresApproval     bool      `json:"requires_approval"`
+	IsActive             bool      `json:"is_active"`
+	IsUnpaid             bool      `json:"is_unpaid"`
+	MinimumTenureMonths  int       `json:"minimum_tenure_months"`
+	ApplicableGrades     []string  `json:"applicable_grades,omitempty"`
 }
 
 type LeaveRequest struct {
@@ -68,10 +71,32 @@ type LeaveBalance struct {
 
 // ── Policies ──────────────────────────────────────────────────────────────────
 
-func (s *Service) ListPolicies(ctx context.Context) ([]LeavePolicy, error) {
-	const q = `SELECT id, code, name, days_per_year, requires_approval, is_active
-	           FROM hr.leave_policy WHERE is_active = true ORDER BY name`
-	rows, err := s.pool.Query(ctx, q)
+// ListPolicies returns active policies. When personID is non-nil, grade-specific
+// annual leave tiers are filtered to only the tier matching that person's grade;
+// universal policies (NULL applicable_grades) are always included.
+func (s *Service) ListPolicies(ctx context.Context, personID *uuid.UUID) ([]LeavePolicy, error) {
+	const q = `
+		SELECT pol.id, pol.code, pol.name, pol.days_per_year,
+		       pol.requires_approval, pol.is_active,
+		       pol.is_unpaid, pol.minimum_tenure_months,
+		       pol.applicable_grades
+		FROM   hr.leave_policy pol
+		WHERE  pol.is_active = true
+		  AND (
+		        pol.applicable_grades IS NULL
+		        OR $1::uuid IS NULL
+		        OR EXISTS (
+		             SELECT 1
+		             FROM   organization.assignment a
+		             WHERE  a.person_id        = $1
+		               AND  a.effective_to     IS NULL
+		               AND  a.grade_level_code = ANY(pol.applicable_grades)
+		           )
+		  )
+		ORDER BY
+		    CASE WHEN pol.applicable_grades IS NOT NULL THEN 0 ELSE 1 END,
+		    pol.name`
+	rows, err := s.pool.Query(ctx, q, personID)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +104,11 @@ func (s *Service) ListPolicies(ctx context.Context) ([]LeavePolicy, error) {
 	var out []LeavePolicy
 	for rows.Next() {
 		var p LeavePolicy
-		if err := rows.Scan(&p.ID, &p.Code, &p.Name, &p.DaysPerYear, &p.RequiresApproval, &p.IsActive); err != nil {
+		if err := rows.Scan(
+			&p.ID, &p.Code, &p.Name, &p.DaysPerYear,
+			&p.RequiresApproval, &p.IsActive,
+			&p.IsUnpaid, &p.MinimumTenureMonths, &p.ApplicableGrades,
+		); err != nil {
 			return nil, err
 		}
 		out = append(out, p)

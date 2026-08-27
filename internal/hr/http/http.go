@@ -72,7 +72,18 @@ func (h *Handler) personIDFromUserID(ctx context.Context, userID uuid.UUID) (uui
 // ── Policies ──────────────────────────────────────────────────────────────────
 
 func (h *Handler) listPolicies(w http.ResponseWriter, r *http.Request) {
-	policies, err := h.svc.ListPolicies(r.Context())
+	// Resolve the caller's person ID for grade-based policy filtering.
+	// If resolution fails (no person record), all policies are returned.
+	var personID *uuid.UUID
+	if caller, ok := identityhttp.UserFrom(r.Context()); ok {
+		var pid uuid.UUID
+		if err := h.pool.QueryRow(r.Context(),
+			`SELECT id FROM organization.person WHERE user_id = $1 LIMIT 1`, caller.ID,
+		).Scan(&pid); err == nil {
+			personID = &pid
+		}
+	}
+	policies, err := h.svc.ListPolicies(r.Context(), personID)
 	if err != nil {
 		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
 		return
