@@ -123,11 +123,20 @@ interface PositionCtx {
   primaryCode:    string | null;
   /** True when running in demo mode (no real org assignments found). */
   isDemoMode:     boolean;
+  /**
+   * True when the logged-in user is a GROUP_ADMIN and has role-simulation
+   * available. In this mode the position list includes all DEMO_POSITIONS so
+   * the admin can "View As" any role without leaving the session.
+   */
+  isAdminMode:    boolean;
+  /** The real GROUP_ADMIN position — always available for admin users to return to. */
+  adminPosition:  UserPosition | null;
 }
 
 const Ctx = createContext<PositionCtx>({
   positions: [], activePosition: null, setActive: () => {}, isLoading: true,
   hasRole: () => false, primaryCode: null, isDemoMode: false,
+  isAdminMode: false, adminPosition: null,
 });
 
 // ── Provider ───────────────────────────────────────────────────────────────────
@@ -138,6 +147,8 @@ export function PositionProvider({ children }: { children: ReactNode }) {
   const [activePosition, setActivePosition] = useState<UserPosition | null>(null);
   const [isLoading, setIsLoading]           = useState(true);
   const [isDemoMode, setIsDemoMode]         = useState(false);
+  const [isAdminMode, setIsAdminMode]       = useState(false);
+  const [adminPosition, setAdminPosition]   = useState<UserPosition | null>(null);
 
   useEffect(() => {
     if (!user || !subsidiary) { setIsLoading(false); return; }
@@ -152,15 +163,35 @@ export function PositionProvider({ children }: { children: ReactNode }) {
       })
       .then((list: UserPosition[]) => {
         if (list.length > 0) {
-          // Real positions found — use them
-          setIsDemoMode(false);
-          setPositions(list);
-          const saved = localStorage.getItem(`pageos_position_${subsidiary.ID}`);
-          const found = saved ? list.find(p => p.id === saved) : null;
-          setActivePosition(found ?? list.find(p => p.is_primary) ?? list[0]);
+          const isAdmin = list.some(p => p.code === "GROUP_ADMIN");
+          if (isAdmin) {
+            // GROUP_ADMIN: inject the full DEMO_POSITIONS list so they can
+            // "View As" any role while remaining logged in as themselves.
+            const realAdminPos = list.find(p => p.code === "GROUP_ADMIN") ?? list[0];
+            const viewAsOptions: UserPosition[] = DEMO_POSITIONS.filter(d => d.code !== "GROUP_ADMIN");
+            const merged = [realAdminPos, ...list.filter(p => p.code !== "GROUP_ADMIN"), ...viewAsOptions];
+            setIsDemoMode(false);
+            setIsAdminMode(true);
+            setAdminPosition(realAdminPos);
+            setPositions(merged);
+            // Restore last "view as" selection if any
+            const savedViewAs = localStorage.getItem("pageos_view_as");
+            const viewAs = savedViewAs ? merged.find(p => p.code === savedViewAs) : null;
+            setActivePosition(viewAs ?? realAdminPos);
+          } else {
+            setIsDemoMode(false);
+            setIsAdminMode(false);
+            setAdminPosition(null);
+            setPositions(list);
+            const saved = localStorage.getItem(`pageos_position_${subsidiary.ID}`);
+            const found = saved ? list.find(p => p.id === saved) : null;
+            setActivePosition(found ?? list.find(p => p.is_primary) ?? list[0]);
+          }
         } else {
           // No real positions — activate demo mode so UI can be previewed
           setIsDemoMode(true);
+          setIsAdminMode(false);
+          setAdminPosition(null);
           setPositions(DEMO_POSITIONS);
           const savedDemo = localStorage.getItem("pageos_demo_role");
           const found = savedDemo ? DEMO_POSITIONS.find(p => p.code === savedDemo) : null;
@@ -168,8 +199,9 @@ export function PositionProvider({ children }: { children: ReactNode }) {
         }
       })
       .catch(() => {
-        // On network error, still fall back to demo mode
         setIsDemoMode(true);
+        setIsAdminMode(false);
+        setAdminPosition(null);
         setPositions(DEMO_POSITIONS);
         const savedDemo = localStorage.getItem("pageos_demo_role");
         const found = savedDemo ? DEMO_POSITIONS.find(p => p.code === savedDemo) : null;
@@ -180,18 +212,25 @@ export function PositionProvider({ children }: { children: ReactNode }) {
 
   const setActive = useCallback((p: UserPosition) => {
     setActivePosition(p);
-    if (p.isDemo) {
+    if (isAdminMode) {
+      // Admin "View As" — persist the selected simulation role separately
+      localStorage.setItem("pageos_view_as", p.code);
+    } else if (p.isDemo) {
       localStorage.setItem("pageos_demo_role", p.code);
     } else if (subsidiary) {
       localStorage.setItem(`pageos_position_${subsidiary.ID}`, p.id);
     }
-  }, [subsidiary?.ID]);
+  }, [subsidiary?.ID, isAdminMode]);
 
   const hasRole     = useCallback((code: string) => positions.some(p => p.code === code), [positions]);
   const primaryCode = activePosition?.code ?? null;
 
   return (
-    <Ctx.Provider value={{ positions, activePosition, setActive, isLoading, hasRole, primaryCode, isDemoMode }}>
+    <Ctx.Provider value={{
+      positions, activePosition, setActive, isLoading,
+      hasRole, primaryCode, isDemoMode,
+      isAdminMode, adminPosition,
+    }}>
       {children}
     </Ctx.Provider>
   );

@@ -508,7 +508,7 @@ function NotifRow({ n, isRead, onRead, onClose }: {
 export function AppLayout({ children }: { children: ReactNode }) {
   const pathname   = usePathname();
   const { user, subsidiary, subsidiaries, isLoading: authLoading, logout, setSubsidiary } = useAuth();
-  const { activePosition, positions, setActive, primaryCode, isLoading: posLoading, isDemoMode } = usePosition();
+  const { activePosition, positions, setActive, primaryCode, isLoading: posLoading, isDemoMode, isAdminMode, adminPosition } = usePosition();
   const { dark, toggle: toggleTheme } = useTheme();
 
   const [collapsed, setCollapsed]   = useState(false);
@@ -657,13 +657,59 @@ export function AppLayout({ children }: { children: ReactNode }) {
           </div>
         )}
 
-        {/* Role label — static display, no dropdown */}
+        {/* Role / View-As section */}
         {!collapsed && activePosition && (
           <div className="px-3 pb-3">
-            <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg"
-                 style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
-              <span className="flex-1 text-[12px] font-semibold text-white truncate">{activePosition.title}</span>
-            </div>
+            {isAdminMode ? (
+              /* GROUP_ADMIN: full "View As" role switcher */
+              <div>
+                <p className="text-[9px] font-bold uppercase tracking-widest mb-1.5 px-0.5"
+                   style={{ color: "rgba(148,163,184,0.4)" }}>View As</p>
+                <div className="relative">
+                  <select
+                    value={activePosition.code}
+                    onChange={e => {
+                      const p = positions.find(pos => pos.code === e.target.value);
+                      if (p) setActive(p);
+                    }}
+                    className="w-full appearance-none text-[12px] font-semibold text-white pl-2.5 pr-7 py-1.5 rounded-lg cursor-pointer outline-none"
+                    style={{
+                      background: activePosition.isDemo
+                        ? "rgba(234,88,12,0.25)"
+                        : "rgba(37,99,235,0.25)",
+                      border: `1px solid ${activePosition.isDemo ? "rgba(234,88,12,0.4)" : "rgba(37,99,235,0.4)"}`,
+                    }}
+                  >
+                    {/* Real admin role at top */}
+                    {adminPosition && (
+                      <option value={adminPosition.code} style={{ background: "#07090f" }}>
+                        👑 {adminPosition.title}
+                      </option>
+                    )}
+                    <optgroup label="── Simulate Role ──" style={{ background: "#07090f", color: "rgba(148,163,184,0.6)" }}>
+                      {positions.filter(p => p.isDemo).map(p => (
+                        <option key={p.id} value={p.code} style={{ background: "#07090f" }}>
+                          {p.title}
+                        </option>
+                      ))}
+                    </optgroup>
+                  </select>
+                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none"
+                               style={{ color: "rgba(148,163,184,0.5)" }} />
+                </div>
+                {activePosition.isDemo && (
+                  <p className="text-[9px] mt-1 px-0.5" style={{ color: "rgba(234,88,12,0.7)" }}>
+                    Preview only — API uses your real credentials
+                  </p>
+                )}
+              </div>
+            ) : (
+              /* Regular user: static role label */
+              <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg"
+                   style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                <span className="flex-1 text-[12px] font-semibold text-white truncate">{activePosition.title}</span>
+              </div>
+            )}
           </div>
         )}
 
@@ -843,6 +889,27 @@ export function AppLayout({ children }: { children: ReactNode }) {
             </Link>
           </div>
         </header>
+
+        {/* Simulation banner — shown when admin is previewing another role */}
+        {isAdminMode && activePosition?.isDemo && (
+          <div className="shrink-0 flex items-center gap-2 px-4 py-2"
+               style={{ background: "rgba(234,88,12,0.12)", borderBottom: "1px solid rgba(234,88,12,0.25)" }}>
+            <span className="text-[11px] font-semibold" style={{ color: "#ea580c" }}>
+              Previewing as: {activePosition.title}
+            </span>
+            <span className="text-[10px]" style={{ color: "rgba(234,88,12,0.6)" }}>
+              · API calls still use your admin credentials
+            </span>
+            <button
+              onClick={() => { if (adminPosition) setActive(adminPosition); }}
+              className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-md transition-colors"
+              style={{ background: "rgba(234,88,12,0.2)", color: "#ea580c" }}
+              onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "rgba(234,88,12,0.35)"}
+              onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "rgba(234,88,12,0.2)"}>
+              ← Back to Admin
+            </button>
+          </div>
+        )}
 
         <main className="flex-1 overflow-auto">
           <div className="p-6 xl:p-8">{children}</div>
