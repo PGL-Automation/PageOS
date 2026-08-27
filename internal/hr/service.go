@@ -71,28 +71,58 @@ type LeaveBalance struct {
 
 // ── Policies ──────────────────────────────────────────────────────────────────
 
-// ListPolicies returns active policies. When personID is non-nil, grade-specific
-// annual leave tiers are filtered to only the tier matching that person's grade;
-// universal policies (NULL applicable_grades) are always included.
+// ListPolicies returns active leave policies filtered to what the caller is
+// actually eligible for. When personID is nil (HR view) all policies are returned.
+//
+// Eligibility rules:
+//  1. Grade-tiered annual leave — only the tier matching the person's grade.
+//  2. Gender-restricted leave (Maternity/Paternity) — must match person.gender.
+//  3. Tenure-gated leave (Study, Leave of Absence) — person must have been
+//     employed for at least minimum_tenure_months.
 func (s *Service) ListPolicies(ctx context.Context, personID *uuid.UUID) ([]LeavePolicy, error) {
 	const q = `
 		SELECT pol.id, pol.code, pol.name, pol.days_per_year,
 		       pol.requires_approval, pol.is_active,
 		       pol.is_unpaid, pol.minimum_tenure_months,
-		       pol.applicable_grades
+		       pol.applicable_grades,
+		       COALESCE(pol.applicable_gender, '') AS applicable_gender
 		FROM   hr.leave_policy pol
 		WHERE  pol.is_active = true
+
+		  -- 1. Grade filter: annual leave tiers only visible to matching grade.
 		  AND (
 		        pol.applicable_grades IS NULL
 		        OR $1::uuid IS NULL
 		        OR EXISTS (
-		             SELECT 1
-		             FROM   organization.assignment a
+		             SELECT 1 FROM organization.assignment a
 		             WHERE  a.person_id        = $1
 		               AND  a.effective_to     IS NULL
 		               AND  a.grade_level_code = ANY(pol.applicable_grades)
 		           )
 		  )
+
+		  -- 2. Gender filter: maternity = female only, paternity = male only.
+		  AND (
+		        pol.applicable_gender IS NULL
+		        OR $1::uuid IS NULL
+		        OR EXISTS (
+		             SELECT 1 FROM organization.person p
+		             WHERE  p.id     = $1
+		               AND  p.gender = pol.applicable_gender
+		           )
+		  )
+
+		  -- 3. Tenure filter: study / absence leave requires min months employed.
+		  AND (
+		        pol.minimum_tenure_months = 0
+		        OR $1::uuid IS NULL
+		        OR (
+		             SELECT EXTRACT(EPOCH FROM (now() - MIN(a2.effective_from)))::int / 2592000
+		             FROM   organization.assignment a2
+		             WHERE  a2.person_id = $1
+		           ) >= pol.minimum_tenure_months
+		  )
+
 		ORDER BY
 		    CASE WHEN pol.applicable_grades IS NOT NULL THEN 0 ELSE 1 END,
 		    pol.name`
@@ -104,10 +134,12 @@ func (s *Service) ListPolicies(ctx context.Context, personID *uuid.UUID) ([]Leav
 	var out []LeavePolicy
 	for rows.Next() {
 		var p LeavePolicy
+		var applicableGender string
 		if err := rows.Scan(
 			&p.ID, &p.Code, &p.Name, &p.DaysPerYear,
 			&p.RequiresApproval, &p.IsActive,
 			&p.IsUnpaid, &p.MinimumTenureMonths, &p.ApplicableGrades,
+			&applicableGender,
 		); err != nil {
 			return nil, err
 		}

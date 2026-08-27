@@ -55,6 +55,8 @@ func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	// Staff directory: lightweight person list accessible to all authenticated users.
 	// Used by reliever/assignee search throughout the app.
 	r.Get("/staff", h.listStaff)
+	// Gender update — HR / admin only.
+	r.Patch("/persons/{personId}/gender", h.setPersonGender)
 	return r
 }
 
@@ -363,6 +365,50 @@ func (h *Handler) listStaff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.JSON(w, http.StatusOK, staff)
+}
+
+// setPersonGender lets HR update a person's gender — required for Maternity /
+// Paternity leave eligibility filtering.
+func (h *Handler) setPersonGender(w http.ResponseWriter, r *http.Request) {
+	caller, ok := identityhttp.UserFrom(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated")
+		return
+	}
+	hasAccess, err := h.svc.HasRole(r.Context(), caller.ID, "HR_MANAGER", "HR_OFFICER", "GROUP_ADMIN")
+	if err != nil || !hasAccess {
+		httpx.Error(w, http.StatusForbidden, "forbidden", "HR or admin access required")
+		return
+	}
+	personID, err := uuid.Parse(chi.URLParam(r, "personId"))
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid personId")
+		return
+	}
+	var in struct {
+		Gender string `json:"gender"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if in.Gender != "M" && in.Gender != "F" && in.Gender != "other" && in.Gender != "" {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", `gender must be "M", "F", "other", or ""`)
+		return
+	}
+	gender := in.Gender
+	if gender == "" {
+		// empty string clears the field
+		if err := h.svc.SetPersonGender(r.Context(), personID, ""); err != nil {
+			httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+			return
+		}
+	} else {
+		if err := h.svc.SetPersonGender(r.Context(), personID, gender); err != nil {
+			httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+			return
+		}
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 // decode reads a JSON body into v, writing a 400 and returning false on error.

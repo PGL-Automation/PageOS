@@ -127,6 +127,7 @@ type UserWithAssignments struct {
 	UserStatus       string     `json:"user_status"`
 	PersonID         *uuid.UUID `json:"person_id,omitempty"`
 	HomeOrganization string     `json:"home_organization,omitempty"`
+	Gender           string     `json:"gender,omitempty"` // "M" | "F" | "other" | ""
 	Assignments      []struct {
 		PositionCode       string     `json:"position_code"`
 		PositionTitle      string     `json:"position_title"`
@@ -167,6 +168,7 @@ func (s *Store) ListUsersWithAssignments(ctx context.Context) ([]UserWithAssignm
 			-- person
 			p.id                                                                   AS person_id,
 			COALESCE(p.home_organization, '')                                      AS home_organization,
+			COALESCE(p.gender, '')                                                 AS gender,
 			-- assignment + position
 			COALESCE(pos.code,  '')                                                AS position_code,
 			COALESCE(pos.title, '')                                                AS position_title,
@@ -202,16 +204,16 @@ func (s *Store) ListUsersWithAssignments(ctx context.Context) ([]UserWithAssignm
 
 	for rows.Next() {
 		var (
-			userID, personID                     uuid.UUID
-			email, displayName, status, homeOrg  string
-			posCode, posTitle, subName, effFrom  string
-			employmentType, gradeCode, gradeName string
-			subID                                *uuid.UUID
-			isPrimary, pendingGrade              bool
+			userID, personID                           uuid.UUID
+			email, displayName, status, homeOrg, gender string
+			posCode, posTitle, subName, effFrom        string
+			employmentType, gradeCode, gradeName       string
+			subID                                      *uuid.UUID
+			isPrimary, pendingGrade                    bool
 		)
 		if err := rows.Scan(
 			&userID, &email, &displayName, &status,
-			&personID, &homeOrg,
+			&personID, &homeOrg, &gender,
 			&posCode, &posTitle, &subID, &subName, &isPrimary, &effFrom,
 			&employmentType, &gradeCode, &gradeName, &pendingGrade,
 		); err != nil {
@@ -224,6 +226,7 @@ func (s *Store) ListUsersWithAssignments(ctx context.Context) ([]UserWithAssignm
 			u = &UserWithAssignments{
 				UserID: uid, Email: email, DisplayName: displayName,
 				UserStatus: status, PersonID: &pid, HomeOrganization: homeOrg,
+				Gender: gender,
 			}
 			byPerson[personID] = u
 			order = append(order, personID)
@@ -608,4 +611,12 @@ func (s *Store) ListStaff(ctx context.Context, search string) ([]StaffRow, error
 		out = []StaffRow{}
 	}
 	return out, rows.Err()
+}
+
+// SetPersonGender updates the gender field of a person record.
+func (s *Store) SetPersonGender(ctx context.Context, personID uuid.UUID, gender string) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE organization.person SET gender = $1 WHERE id = $2`,
+		gender, personID)
+	return err
 }

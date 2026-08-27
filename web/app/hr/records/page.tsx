@@ -31,6 +31,7 @@ type Employee = {
   user_id: string; email: string; display_name: string;
   user_status: "active" | "inactive" | "no_account"; person_id?: string;
   home_organization?: string;
+  gender?: string; // "M" | "F" | "other" | ""
   assignments: Assignment[];
 };
 
@@ -973,6 +974,126 @@ function ProvisionAccountDialog({ employee, onClose }: { employee: Employee; onC
   );
 }
 
+// ── Gender Field ──────────────────────────────────────────────────────────────
+// Inline read / edit widget shown in the employee profile panel.
+// Affects leave eligibility: Maternity (F), Paternity (M).
+
+const GENDER_OPTIONS = [
+  { value: "",      label: "Not set" },
+  { value: "M",     label: "Male" },
+  { value: "F",     label: "Female" },
+  { value: "other", label: "Other / Prefer not to say" },
+] as const;
+
+const GENDER_LABEL: Record<string, string> = { M: "Male", F: "Female", other: "Other" };
+const GENDER_COLOR: Record<string, { bg: string; color: string }> = {
+  M:     { bg: "#dbeafe", color: "#1d4ed8" },
+  F:     { bg: "#fce7f3", color: "#be185d" },
+  other: { bg: "#f1f5f9", color: "#475569" },
+};
+
+function GenderField({ employee, onUpdate }: {
+  employee: Employee;
+  onUpdate: (updated: Employee) => void;
+}) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [selected, setSelected] = useState(employee.gender ?? "");
+
+  const palette = employee.gender ? GENDER_COLOR[employee.gender] : null;
+
+  async function save() {
+    setSaving(true);
+    try {
+      const res = await fetch(
+        `${BASE}/api/v1/org/persons/${employee.person_id}/gender`,
+        {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ gender: selected }),
+        }
+      );
+      if (!res.ok) throw new Error("Failed to update");
+      toast({ title: "Gender updated" });
+      onUpdate({ ...employee, gender: selected });
+      qc.invalidateQueries({ queryKey: ["org-users"] });
+      setEditing(false);
+    } catch {
+      toast({ title: "Update failed", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="pt-3" style={{ borderTop: "1px solid var(--pg-row-border)" }}>
+      <div className="flex items-center justify-between px-1 mb-2">
+        <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--pg-text-4)" }}>
+          Gender
+        </p>
+        <button
+          className="text-[11px] font-medium"
+          style={{ color: "var(--pg-text-3)" }}
+          onClick={() => { setEditing(e => !e); setSelected(employee.gender ?? ""); }}
+        >
+          {editing ? "Cancel" : "Edit"}
+        </button>
+      </div>
+
+      {editing ? (
+        <div className="px-1 flex flex-col gap-2">
+          <div className="grid grid-cols-2 gap-1.5">
+            {GENDER_OPTIONS.map(opt => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setSelected(opt.value)}
+                className="h-8 rounded-xl text-[12px] font-medium transition-all"
+                style={{
+                  border: `1px solid ${selected === opt.value ? "#2563eb" : "var(--pg-card-border)"}`,
+                  background: selected === opt.value ? "#eff6ff" : "var(--pg-muted-bg)",
+                  color: selected === opt.value ? "#1d4ed8" : "var(--pg-text-2)",
+                }}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={save}
+            disabled={saving}
+            className="h-8 rounded-xl text-[12px] font-semibold text-white disabled:opacity-60"
+            style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
+          <p className="text-[10px] leading-snug" style={{ color: "var(--pg-text-4)" }}>
+            Controls eligibility for Maternity Leave (Female) and Paternity Leave (Male).
+          </p>
+        </div>
+      ) : (
+        <div className="px-1">
+          {employee.gender ? (
+            <span
+              className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold"
+              style={{ background: palette?.bg, color: palette?.color }}
+            >
+              {GENDER_LABEL[employee.gender] ?? employee.gender}
+            </span>
+          ) : (
+            <span className="text-[11px] italic" style={{ color: "var(--pg-text-4)" }}>
+              Not set — click Edit to configure
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function HRRecordsPage() {
@@ -1210,6 +1331,11 @@ export default function HRRecordsPage() {
                   </p>
                 )}
               </div>
+
+              {/* Gender — controls leave eligibility (Maternity / Paternity) */}
+              {selected.person_id && (
+                <GenderField employee={selected} onUpdate={emp => setSelected(emp)} />
+              )}
 
               {/* Documents */}
               <div className="pt-1" style={{ borderTop: "1px solid var(--pg-row-border)" }}>

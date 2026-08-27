@@ -376,3 +376,8 @@ func toAssignment(row orgdb.OrganizationAssignment) Assignment {
 func (s *Service) ListStaff(ctx context.Context, search string) ([]store.StaffRow, error) {
 	return s.store.ListStaff(ctx, search)
 }
+
+// SetPersonGender updates a person's gender field.
+func (s *Service) SetPersonGender(ctx context.Context, personID uuid.UUID, gender string) error {
+	return s.store.SetPersonGender(ctx, personID, gender)
+}
