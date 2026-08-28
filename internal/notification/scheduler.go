@@ -54,6 +54,7 @@ func (s *Scheduler) runAll(ctx context.Context) {
 		{"task due reminders", s.taskDueReminders},
 		{"pending leave reminders", s.pendingLeaveReminders},
 		{"pending journal reminders", s.pendingJournalReminders},
+		{"vault note reminders", s.vaultNoteReminders},
 	}
 	for _, job := range jobs {
 		if err := job.fn(ctx); err != nil {
@@ -269,4 +270,67 @@ func (s *Scheduler) pendingJournalReminders(ctx context.Context) error {
 			})
 	}
 	return rows.Err()
+}
+
+// ── Vault note reminders ──────────────────────────────────────────────────────
+// Fires when a note's notify_at is in the past and it hasn't been notified yet.
+
+func (s *Scheduler) vaultNoteReminders(ctx context.Context) error {
+	type row struct {
+		NoteID uuid.UUID
+		UserID uuid.UUID
+		Title  string
+		Body   string
+	}
+
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, user_id, title, body
+		FROM vault.note
+		WHERE notify_at <= now()
+		  AND NOT notified`)
+	if err != nil {
+		return fmt.Errorf("vaultNoteReminders query: %w", err)
+	}
+	defer rows.Close()
+
+	var pending []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.NoteID, &r.UserID, &r.Title, &r.Body); err != nil {
+			return err
+		}
+		pending = append(pending, r)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	for _, r := range pending {
+		title := r.Title
+		if title == "" {
+			title = "Untitled Note"
+		}
+		body := "Reminder: " + title
+		if len(r.Body) > 0 {
+			preview := r.Body
+			if len(preview) > 80 {
+				preview = preview[:80] + "…"
+			}
+			body = fmt.Sprintf("Reminder: %s\n%s", title, preview)
+		}
+		noteID := r.NoteID
+		_ = SendToUserByID(ctx, s.pool, r.UserID, InApp{
+			Type:       "vault_note_reminder",
+			Title:      "📌 Note Reminder: " + title,
+			Body:       body,
+			Link:       "/vault",
+			Priority:   "high",
+			EntityType: "vault_note",
+			EntityID:   &noteID,
+		})
+		// Mark as notified so it doesn't fire again.
+		_, _ = s.pool.Exec(ctx,
+			`UPDATE vault.note SET notified = true WHERE id = $1`, r.NoteID)
+	}
+	return nil
 }

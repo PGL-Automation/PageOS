@@ -1005,21 +1005,22 @@ func vaultListNotes(pool *pgxpool.Pool) http.HandlerFunc {
 		caller, ok := identityhttp.UserFrom(r.Context())
 		if !ok { httpx.Error(w, 401, "unauthorized", "not authenticated"); return }
 		rows, err := pool.Query(r.Context(),
-			`SELECT id, title, body, created_at, updated_at
+			`SELECT id, title, body, notify_at, created_at, updated_at
 			 FROM vault.note WHERE user_id = $1 ORDER BY updated_at DESC`, caller.ID)
 		if err != nil { httpx.Error(w, 500, "internal", err.Error()); return }
 		defer rows.Close()
 		type note struct {
-			ID        string    `json:"id"`
-			Title     string    `json:"title"`
-			Body      string    `json:"body"`
-			CreatedAt time.Time `json:"created_at"`
-			UpdatedAt time.Time `json:"updated_at"`
+			ID        string     `json:"id"`
+			Title     string     `json:"title"`
+			Body      string     `json:"body"`
+			NotifyAt  *time.Time `json:"notify_at,omitempty"`
+			CreatedAt time.Time  `json:"created_at"`
+			UpdatedAt time.Time  `json:"updated_at"`
 		}
 		var notes []note
 		for rows.Next() {
 			var n note
-			if err := rows.Scan(&n.ID, &n.Title, &n.Body, &n.CreatedAt, &n.UpdatedAt); err != nil {
+			if err := rows.Scan(&n.ID, &n.Title, &n.Body, &n.NotifyAt, &n.CreatedAt, &n.UpdatedAt); err != nil {
 				httpx.Error(w, 500, "internal", err.Error()); return
 			}
 			notes = append(notes, n)
@@ -1033,19 +1034,28 @@ func vaultCreateNote(pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		caller, ok := identityhttp.UserFrom(r.Context())
 		if !ok { httpx.Error(w, 401, "unauthorized", "not authenticated"); return }
-		var in struct { Title string `json:"title"`; Body string `json:"body"` }
+		var in struct {
+			Title    string  `json:"title"`
+			Body     string  `json:"body"`
+			NotifyAt *string `json:"notify_at"` // ISO-8601 string or null
+		}
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 			httpx.Error(w, 400, "bad_request", "invalid JSON"); return
+		}
+		var notifyAt *time.Time
+		if in.NotifyAt != nil && *in.NotifyAt != "" {
+			t, err := time.Parse(time.RFC3339, *in.NotifyAt)
+			if err == nil { notifyAt = &t }
 		}
 		var id string
 		var createdAt, updatedAt time.Time
 		err := pool.QueryRow(r.Context(),
-			`INSERT INTO vault.note (user_id, title, body) VALUES ($1,$2,$3)
-			 RETURNING id, created_at, updated_at`, caller.ID, in.Title, in.Body,
+			`INSERT INTO vault.note (user_id, title, body, notify_at) VALUES ($1,$2,$3,$4)
+			 RETURNING id, created_at, updated_at`, caller.ID, in.Title, in.Body, notifyAt,
 		).Scan(&id, &createdAt, &updatedAt)
 		if err != nil { httpx.Error(w, 500, "internal", err.Error()); return }
 		httpx.JSON(w, 201, map[string]any{
-			"id": id, "title": in.Title, "body": in.Body,
+			"id": id, "title": in.Title, "body": in.Body, "notify_at": notifyAt,
 			"created_at": createdAt, "updated_at": updatedAt,
 		})
 	}
@@ -1057,13 +1067,24 @@ func vaultUpdateNote(pool *pgxpool.Pool) http.HandlerFunc {
 		if !ok { httpx.Error(w, 401, "unauthorized", "not authenticated"); return }
 		noteID, err := uuid.Parse(chi.URLParam(r, "id"))
 		if err != nil { httpx.Error(w, 400, "bad_request", "invalid id"); return }
-		var in struct { Title string `json:"title"`; Body string `json:"body"` }
+		var in struct {
+			Title    string  `json:"title"`
+			Body     string  `json:"body"`
+			NotifyAt *string `json:"notify_at"`
+		}
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 			httpx.Error(w, 400, "bad_request", "invalid JSON"); return
 		}
+		var notifyAt *time.Time
+		if in.NotifyAt != nil && *in.NotifyAt != "" {
+			t, err2 := time.Parse(time.RFC3339, *in.NotifyAt)
+			if err2 == nil { notifyAt = &t }
+		}
 		tag, err := pool.Exec(r.Context(),
-			`UPDATE vault.note SET title=$1, body=$2, updated_at=now()
-			 WHERE id=$3 AND user_id=$4`, in.Title, in.Body, noteID, caller.ID)
+			`UPDATE vault.note
+			 SET title=$1, body=$2, notify_at=$3, notified=false, updated_at=now()
+			 WHERE id=$4 AND user_id=$5`,
+			in.Title, in.Body, notifyAt, noteID, caller.ID)
 		if err != nil { httpx.Error(w, 500, "internal", err.Error()); return }
 		if tag.RowsAffected() == 0 { httpx.Error(w, 404, "not_found", "note not found"); return }
 		httpx.JSON(w, 200, map[string]any{"ok": true})

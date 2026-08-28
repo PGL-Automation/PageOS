@@ -3,7 +3,7 @@
 import { ReactNode, useState, useRef, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, Brain, TrendingUp, RefreshCw, BookOpen, FileText,
   CreditCard, Wallet, Target, BarChart2, LineChart, UserPlus, Users,
@@ -472,12 +472,16 @@ function NotificationsPanel({ open, onClose }: { open: boolean; onClose: () => v
 function NotifRow({ n, isRead, onRead, onClose }: {
   n: InAppNotif; isRead: boolean; onRead: () => void; onClose: () => void;
 }) {
+  const router = useRouter();
   const { color, icon: Icon } = typeStyle(n.type);
   const dot = PDOT[n.priority] ?? "#94a3b8";
 
   function handleClick() {
     if (!isRead) onRead();
-    if (n.link) { onClose(); window.location.href = n.link; }
+    if (n.link) {
+      onClose();
+      router.push(n.link); // client-side navigation — no full-page reload
+    }
   }
 
   return (

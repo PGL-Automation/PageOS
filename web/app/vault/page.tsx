@@ -8,7 +8,7 @@ import {
   Lock, Upload, FileText, File, Image as ImageIcon,
   Download, Eye, Shield, ShieldCheck, ShieldAlert,
   Loader2, X, FolderLock, StickyNote, Plus, Pencil,
-  Trash2, Save, ChevronLeft,
+  Trash2, Save, ChevronLeft, Bell, BellOff,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +23,7 @@ type VaultDoc = {
 
 type VaultNote = {
   id: string; title: string; body: string;
+  notify_at?: string; // ISO-8601 or undefined
   created_at: string; updated_at: string;
 };
 
@@ -131,6 +132,10 @@ function NoteEditor({
 
   const [title, setTitle] = useState(note?.title ?? "");
   const [body, setBody] = useState(note?.body ?? "");
+  // notifyAt stored as local datetime-local string (YYYY-MM-DDTHH:mm)
+  const [notifyAt, setNotifyAt] = useState(
+    note?.notify_at ? new Date(note.notify_at).toISOString().slice(0, 16) : ""
+  );
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -139,13 +144,28 @@ function NoteEditor({
     titleRef.current?.focus();
   }, []);
 
-  const isDirty = title !== (note?.title ?? "") || body !== (note?.body ?? "");
+  const existingNotifyAt = note?.notify_at
+    ? new Date(note.notify_at).toISOString().slice(0, 16)
+    : "";
+  const isDirty = title !== (note?.title ?? "") ||
+    body !== (note?.body ?? "") ||
+    notifyAt !== existingNotifyAt;
 
   async function save() {
     if (!title.trim() && !body.trim()) { onClose(); return; }
     setSaving(true);
     try {
-      const payload = { title: title.trim() || "Untitled", body };
+      // Convert local datetime-local string to UTC ISO-8601 for the API
+      let notifyAtISO: string | null = null;
+      if (notifyAt) {
+        const d = new Date(notifyAt);
+        if (!isNaN(d.getTime())) notifyAtISO = d.toISOString();
+      }
+      const payload: Record<string, unknown> = {
+        title: title.trim() || "Untitled",
+        body,
+        notify_at: notifyAtISO,
+      };
       if (note) {
         await fetch(`${BASE}/api/v1/vault/notes/${note.id}`, {
           method: "PATCH", credentials: "include",
@@ -229,6 +249,33 @@ function NoteEditor({
               </button>
             </div>
           )}
+
+          {/* Reminder date-time picker */}
+          <div className="flex items-center gap-1">
+            {notifyAt ? (
+              <div className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium"
+                   style={{ background: "#fff3e0", border: "1px solid #FF6600", color: "#E05500" }}>
+                <Bell className="w-3 h-3" />
+                <span>{new Date(notifyAt).toLocaleString("en-GB", { dateStyle: "short", timeStyle: "short" })}</span>
+                <button onClick={() => setNotifyAt("")} className="ml-1 hover:opacity-70">
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ) : (
+              <label className="flex items-center gap-1 h-7 px-2.5 rounded-lg text-[11px] font-medium cursor-pointer transition-colors"
+                     style={{ color: "var(--pg-text-3)", border: "1px solid var(--pg-card-border)" }}
+                     title="Set reminder"
+                     onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--pg-muted-bg)"}
+                     onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
+                <Bell className="w-3 h-3" />
+                <span className="hidden sm:inline">Remind me</span>
+                <input type="datetime-local" className="sr-only"
+                       min={new Date().toISOString().slice(0, 16)}
+                       value={notifyAt}
+                       onChange={e => setNotifyAt(e.target.value)} />
+              </label>
+            )}
+          </div>
 
           <button onClick={save} disabled={saving || (!isDirty && !!note)}
                   className="flex items-center gap-1.5 h-7 px-3 rounded-lg text-[12px] font-semibold text-white disabled:opacity-50"
@@ -518,9 +565,18 @@ export default function VaultPage() {
                   <p className="text-[11px] leading-relaxed flex-1 overflow-hidden" style={{ color: "var(--pg-text-3)", display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical" }}>
                     {notePreview(note.body) || <span style={{ fontStyle: "italic" }}>Empty note</span>}
                   </p>
-                  <p className="text-[10px] mt-auto" style={{ color: "var(--pg-text-4)" }}>
-                    {fmtDate(note.updated_at)}
-                  </p>
+                  <div className="flex items-center justify-between mt-auto gap-2">
+                    <p className="text-[10px]" style={{ color: "var(--pg-text-4)" }}>
+                      {fmtDate(note.updated_at)}
+                    </p>
+                    {note.notify_at && new Date(note.notify_at) > new Date() && (
+                      <span className="flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-md"
+                            style={{ background: "#fff3e0", color: "#E05500" }}>
+                        <Bell className="w-2.5 h-2.5" />
+                        {new Date(note.notify_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                      </span>
+                    )}
+                  </div>
                 </button>
               ))}
             </div>
