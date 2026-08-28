@@ -141,18 +141,28 @@ function BalanceCards({ balances }: { balances: LeaveBalance[] }) {
 // ── Request Modal ──────────────────────────────────────────────────────────────
 
 function ApplyModal({
-  policies,
   balances,
   onClose,
   onSuccess,
 }: {
-  policies: LeavePolicy[];
   balances: LeaveBalance[];
   onClose: () => void;
   onSuccess: () => void;
 }) {
   const { toast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Fetch policies inside the modal so data is always fresh when it opens.
+  const { data: policies = [], isLoading: policiesLoading } = useQuery<LeavePolicy[]>({
+    queryKey: ["leave-policies-modal"],
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/v1/hr/leave/policies`, { credentials: "include" });
+      if (!res.ok) return [];
+      const json = await res.json();
+      return Array.isArray(json) ? json : [];
+    },
+    staleTime: 0,
+  });
 
   const [policyId, setPolicyId] = useState("");
   const [startDate, setStartDate] = useState("");
@@ -283,7 +293,7 @@ function ApplyModal({
             <select value={policyId} onChange={e => setPolicyId(e.target.value)} required
                     className="w-full h-10 px-3 rounded-xl text-[13px] outline-none appearance-none"
                     style={{ background: "var(--pg-input)", border: "1px solid var(--pg-input-border)", color: "var(--pg-text-1)" }}>
-              <option value="">Select leave type…</option>
+              <option value="">{policiesLoading ? "Loading leave types…" : "Select leave type…"}</option>
               {policies.map(p => {
                 const bal = balances.find(b => b.policy_id === p.id);
                 const bal_label = bal
@@ -884,7 +894,6 @@ export default function MyLeavePage() {
 
       {showApply && (
         <ApplyModal
-          policies={policies}
           balances={balances}
           onClose={() => setShowApply(false)}
           onSuccess={() => {
