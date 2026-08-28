@@ -122,8 +122,9 @@ function QuestionForm({
                  style={{ background: "var(--pg-input)", border: "1px solid var(--pg-input-border)", color: "var(--pg-text-1)" }} />
         </div>
         <div>
-          <label className="block text-[11px] font-medium mb-1" style={{ color: "var(--pg-text-2)" }}>Weight (×)</label>
-          <input type="number" min={0.1} max={5} step={0.5} value={form.weight} onChange={f("weight")}
+          <label className="block text-[11px] font-medium mb-1" style={{ color: "var(--pg-text-2)" }}>Weight (%)</label>
+          <input type="number" min={10} max={100} step={5} value={Math.round(form.weight * 100)}
+                 onChange={e => setForm(prev => ({ ...prev, weight: Number(e.target.value) / 100 }))}
                  className="w-full h-9 px-2 rounded-lg text-[12px] outline-none"
                  style={{ background: "var(--pg-input)", border: "1px solid var(--pg-input-border)", color: "var(--pg-text-1)" }} />
         </div>
@@ -465,7 +466,7 @@ export default function CycleManagePage() {
                             )}
                             <div className="flex items-center gap-3 mt-1">
                               <span className="text-[10px]" style={{ color: "var(--pg-text-4)" }}>Max: {q.max_score}</span>
-                              <span className="text-[10px]" style={{ color: "var(--pg-text-4)" }}>Weight: {q.weight}×</span>
+                              <span className="text-[10px]" style={{ color: "var(--pg-text-4)" }}>Weight: {Math.round(q.weight * 100)}%</span>
                             </div>
                           </div>
                           {(isDraft || isOpen) && (

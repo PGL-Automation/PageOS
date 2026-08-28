@@ -355,7 +355,7 @@ export default function CyclePage() {
                           <span className="text-[10px] font-medium px-2 py-0.5 rounded-full"
                                 style={{ background: "var(--pg-muted-bg)", color: "var(--pg-text-3)" }}>{q.category}</span>
                           <span className="text-[10px]" style={{ color: "var(--pg-text-4)" }}>
-                            Weight: {q.weight}x · Max: {q.max_score}
+                            Weight: {Math.round(q.weight * 100)}% · Max: {q.max_score}
                           </span>
                         </div>
                       </div>

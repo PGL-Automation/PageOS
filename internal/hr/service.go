@@ -89,9 +89,15 @@ func (s *Service) ListPolicies(ctx context.Context, personID *uuid.UUID) ([]Leav
 		FROM   hr.leave_policy pol
 		WHERE  pol.is_active = true
 
-		  -- 1. Grade filter: annual leave tiers only visible to matching grade.
-		  --    Fallback: if the person has NO grade at all, show ANNUAL_L1 so
-		  --    they are never left without any annual leave option.
+		  -- Grade filter: for annual leave tiers, show only the tier matching
+		  -- the person's grade. Universal policies (applicable_grades IS NULL)
+		  -- are always visible to all staff.
+		  -- Fallback: if no grade is assigned at all, show ANNUAL_L1 (22d) so
+		  -- the employee is never left with zero annual leave options.
+		  --
+		  -- Maternity, Paternity, Study, and Leave-of-Absence are intentionally
+		  -- shown to everyone — HR approves or rejects based on eligibility.
+		  -- This ensures employees can see and apply for all leave types.
 		  AND (
 		        pol.applicable_grades IS NULL
 		        OR $1::uuid IS NULL
@@ -110,28 +116,6 @@ func (s *Service) ListPolicies(ctx context.Context, personID *uuid.UUID) ([]Leav
 		                     AND  a.grade_level_code IS NOT NULL
 		                 )
 		           )
-		  )
-
-		  -- 2. Gender filter: maternity = female only, paternity = male only.
-		  AND (
-		        pol.applicable_gender IS NULL
-		        OR $1::uuid IS NULL
-		        OR EXISTS (
-		             SELECT 1 FROM organization.person p
-		             WHERE  p.id     = $1
-		               AND  p.gender = pol.applicable_gender
-		           )
-		  )
-
-		  -- 3. Tenure filter: study / absence leave requires min months employed.
-		  AND (
-		        pol.minimum_tenure_months = 0
-		        OR $1::uuid IS NULL
-		        OR (
-		             SELECT EXTRACT(EPOCH FROM (now() - MIN(a2.effective_from)))::int / 2592000
-		             FROM   organization.assignment a2
-		             WHERE  a2.person_id = $1
-		           ) >= pol.minimum_tenure_months
 		  )
 
 		ORDER BY
