@@ -583,27 +583,78 @@ export function AppLayout({ children }: { children: ReactNode }) {
   };
   const rb = FAMILY_BADGE[roleFamily(primaryCode)] ?? FAMILY_BADGE.default;
 
+  // Sidebar colour tokens — dark navy in dark mode, white in light mode.
+  // Orange accents (#FF6600) are shared across both.
+  const sb = dark ? {
+    bg:               "linear-gradient(180deg,#080d18 0%,#0c1222 100%)",
+    borderRight:      "none",
+    boxShadow:        "none",
+    brandBorder:      "rgba(255,255,255,0.06)",
+    itemBg:           "rgba(255,255,255,0.045)",
+    itemBorder:       "1px solid rgba(255,255,255,0.07)",
+    itemHover:        "rgba(255,255,255,0.06)",
+    hoverTint:        "rgba(255,255,255,0.06)",
+    text1:            "rgba(255,255,255,0.92)",
+    text2:            "rgba(148,163,184,0.7)",
+    text3:            "rgba(100,116,139,0.5)",
+    divider:          "rgba(255,255,255,0.07)",
+    label:            "rgba(100,116,139,0.5)",
+    iconColor:        "rgba(148,163,184,0.55)",
+    buildingIconBg:   "rgba(255,102,0,0.18)",
+    buildingIconClr:  "#ffb380",
+    popupBg:          "#07091a",
+    popupBorder:      "rgba(255,255,255,0.1)",
+    popupShadow:      "0 8px 24px rgba(0,0,0,0.55)",
+    glow:             true,
+  } : {
+    bg:               "#ffffff",
+    borderRight:      "1px solid #e8edf3",
+    boxShadow:        "2px 0 8px rgba(0,0,0,0.04)",
+    brandBorder:      "#f1f5f9",
+    itemBg:           "#f8fafc",
+    itemBorder:       "1px solid #e8edf3",
+    itemHover:        "#f1f5f9",
+    hoverTint:        "#fff3e0",
+    text1:            "#59595C",
+    text2:            "#808083",
+    text3:            "#808083",
+    divider:          "#e8edf3",
+    label:            "#808083",
+    iconColor:        "#808083",
+    buildingIconBg:   "#fff3e0",
+    buildingIconClr:  "#FF6600",
+    popupBg:          "#ffffff",
+    popupBorder:      "#e8edf3",
+    popupShadow:      "0 8px 24px rgba(0,0,0,0.12)",
+    glow:             false,
+  };
+
   return (
     <div className="flex min-h-screen w-full" style={{ background: "var(--pg-bg)" }}>
 
       {/* ═══ SIDEBAR ═════════════════════════════════════════════════════════ */}
-      <aside style={{ width: W, minWidth: W, transition: "width 0.22s cubic-bezier(0.4,0,0.2,1)", background: "#ffffff", borderRight: "1px solid #e8edf3", boxShadow: "2px 0 8px rgba(0,0,0,0.04)", position: "sticky", top: 0, height: "100vh", overflow: "visible", zIndex: 40 }}
+      <aside style={{ width: W, minWidth: W, transition: "width 0.22s cubic-bezier(0.4,0,0.2,1)", background: sb.bg, borderRight: sb.borderRight, boxShadow: sb.boxShadow, position: "sticky", top: 0, height: "100vh", overflow: "visible", zIndex: 40 }}
              className="hidden md:flex flex-col shrink-0">
 
+        {/* Dark-mode orange glow */}
+        {sb.glow && (
+          <div className="absolute top-0 inset-x-0 h-48 pointer-events-none"
+               style={{ background: "radial-gradient(ellipse at 50% -5%,rgba(255,102,0,0.2) 0%,transparent 70%)" }} />
+        )}
+
         {/* Brand */}
-        <div className={cn("flex items-center shrink-0", collapsed ? "px-3 pt-4 pb-3 justify-center" : "px-4 pt-4 pb-3")}
-             style={{ borderBottom: "1px solid #f1f5f9" }}>
+        <div className={cn("relative z-10 flex items-center shrink-0", collapsed ? "px-3 pt-4 pb-3 justify-center" : "px-4 pt-4 pb-3")}
+             style={{ borderBottom: `1px solid ${sb.brandBorder}` }}>
           {collapsed ? (
             <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
                  style={{ background: "linear-gradient(135deg,#FF6600,#E05500)", boxShadow: "0 2px 8px rgba(255,102,0,0.35)" }}>
               <div style={{ width: 13, height: 13, background: "#fff", transform: "rotate(45deg)", borderRadius: 2 }} />
             </div>
           ) : (
-            <div className="flex items-center justify-between w-full">
+            /* Logo only — no "PageOS" tag */
+            <div className="flex items-center w-full">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/page-logo.png" alt="Page Group" style={{ height: 28, objectFit: "contain" }} />
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md"
-                    style={{ background: "#fff3e0", color: "#E05500", letterSpacing: "0.06em" }}>PageOS</span>
             </div>
           )}
         </div>
@@ -615,29 +666,29 @@ export function AppLayout({ children }: { children: ReactNode }) {
               <>
                 <button onClick={() => setSubOpen(o => !o)}
                         className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left transition-all"
-                        style={{ background: "#f8fafc", border: "1px solid #e8edf3" }}
-                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#f1f5f9"}
-                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "#f8fafc"}>
-                  <div className="w-5 h-5 rounded-md flex items-center justify-center shrink-0" style={{ background: "#fff3e0" }}>
-                    <Building2 className="w-3 h-3" style={{ color: "#FF6600" }} />
+                        style={{ background: sb.itemBg, border: sb.itemBorder }}
+                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = sb.itemHover}
+                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = sb.itemBg}>
+                  <div className="w-5 h-5 rounded-md flex items-center justify-center shrink-0" style={{ background: sb.buildingIconBg }}>
+                    <Building2 className="w-3 h-3" style={{ color: sb.buildingIconClr }} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-[9px] font-bold uppercase tracking-widest leading-none mb-0.5" style={{ color: "#808083" }}>Active Subsidiary</p>
-                    <p className="text-[12px] font-semibold truncate" style={{ color: "#59595C" }}>{subsidiary.Name}</p>
+                    <p className="text-[9px] font-bold uppercase tracking-widest leading-none mb-0.5" style={{ color: sb.text2 }}>Active Subsidiary</p>
+                    <p className="text-[12px] font-semibold truncate" style={{ color: sb.text1 }}>{subsidiary.Name}</p>
                   </div>
-                  <ChevronDown className={cn("w-3.5 h-3.5 shrink-0 transition-transform", subOpen && "rotate-180")} style={{ color: "#808083" }} />
+                  <ChevronDown className={cn("w-3.5 h-3.5 shrink-0 transition-transform", subOpen && "rotate-180")} style={{ color: sb.text2 }} />
                 </button>
                 {subOpen && (
                   <div className="absolute top-full left-3 right-3 mt-1 rounded-xl overflow-hidden"
-                       style={{ background: "#fff", border: "1px solid #e8edf3", boxShadow: "0 8px 24px rgba(0,0,0,0.12)", zIndex: 100 }}>
-                    <p className="px-3 py-2 text-[9px] font-bold uppercase tracking-widest" style={{ color: "#808083", borderBottom: "1px solid #f1f5f9" }}>
+                       style={{ background: sb.popupBg, border: `1px solid ${sb.popupBorder}`, boxShadow: sb.popupShadow, zIndex: 100 }}>
+                    <p className="px-3 py-2 text-[9px] font-bold uppercase tracking-widest" style={{ color: sb.label, borderBottom: `1px solid ${sb.divider}` }}>
                       Switch Subsidiary
                     </p>
                     {subsidiaries.map(s => (
                       <button key={s.ID} onClick={() => { setSubsidiary(s); setSubOpen(false); }}
                               className="w-full flex items-center justify-between gap-2 px-3 py-2.5 transition-colors"
-                              style={{ color: s.ID === subsidiary.ID ? "#FF6600" : "#59595C" }}
-                              onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#f8fafc"}
+                              style={{ color: s.ID === subsidiary.ID ? "#FF6600" : sb.text1 }}
+                              onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = sb.itemHover}
                               onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
                         <span className="text-[13px] font-medium">{s.Name}</span>
                         {s.ID === subsidiary.ID && <Check className="w-3.5 h-3.5" style={{ color: "#FF6600" }} />}
@@ -648,13 +699,13 @@ export function AppLayout({ children }: { children: ReactNode }) {
               </>
             ) : (
               <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg"
-                   style={{ background: "#f8fafc", border: "1px solid #e8edf3" }}>
-                <div className="w-5 h-5 rounded-md flex items-center justify-center shrink-0" style={{ background: "#fff3e0" }}>
-                  <Building2 className="w-3 h-3" style={{ color: "#FF6600" }} />
+                   style={{ background: sb.itemBg, border: sb.itemBorder }}>
+                <div className="w-5 h-5 rounded-md flex items-center justify-center shrink-0" style={{ background: sb.buildingIconBg }}>
+                  <Building2 className="w-3 h-3" style={{ color: sb.buildingIconClr }} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[9px] font-bold uppercase tracking-widest leading-none mb-0.5" style={{ color: "#808083" }}>Subsidiary</p>
-                  <p className="text-[12px] font-semibold truncate" style={{ color: "#59595C" }}>{subsidiary.Name}</p>
+                  <p className="text-[9px] font-bold uppercase tracking-widest leading-none mb-0.5" style={{ color: sb.text2 }}>Subsidiary</p>
+                  <p className="text-[12px] font-semibold truncate" style={{ color: sb.text1 }}>{subsidiary.Name}</p>
                 </div>
               </div>
             )}
@@ -666,16 +717,16 @@ export function AppLayout({ children }: { children: ReactNode }) {
           <div className="px-3 pt-1 pb-2">
             {isAdminMode ? (
               <div>
-                <p className="text-[9px] font-bold uppercase tracking-widest mb-1 px-0.5" style={{ color: "#808083" }}>View As</p>
+                <p className="text-[9px] font-bold uppercase tracking-widest mb-1 px-0.5" style={{ color: sb.label }}>View As</p>
                 <div className="relative">
                   <select
                     value={activePosition.code}
                     onChange={e => { const p = positions.find(pos => pos.code === e.target.value); if (p) setActive(p); }}
                     className="w-full appearance-none text-[12px] font-semibold pl-2.5 pr-7 py-1.5 rounded-lg cursor-pointer outline-none"
                     style={{
-                      background: activePosition.isDemo ? "#fff3e0" : "#f8fafc",
-                      border: `1px solid ${activePosition.isDemo ? "#FF6600" : "#e8edf3"}`,
-                      color: activePosition.isDemo ? "#E05500" : "#59595C",
+                      background: activePosition.isDemo ? (dark ? "rgba(255,102,0,0.2)" : "#fff3e0") : sb.itemBg,
+                      border: `1px solid ${activePosition.isDemo ? "#FF6600" : sb.popupBorder}`,
+                      color: activePosition.isDemo ? "#FF6600" : sb.text1,
                     }}
                   >
                     {adminPosition && <option value={adminPosition.code}>👑 {adminPosition.title}</option>}
@@ -685,15 +736,15 @@ export function AppLayout({ children }: { children: ReactNode }) {
                       ))}
                     </optgroup>
                   </select>
-                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none" style={{ color: "#808083" }} />
+                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none" style={{ color: sb.text2 }} />
                 </div>
                 {activePosition.isDemo && (
                   <p className="text-[9px] mt-1 px-0.5" style={{ color: "#FF6600" }}>Preview only — API uses your real credentials</p>
                 )}
               </div>
             ) : (
-              <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg" style={{ background: "#f8fafc", border: "1px solid #e8edf3" }}>
-                <span className="flex-1 text-[12px] font-semibold truncate" style={{ color: "#59595C" }}>{activePosition.title}</span>
+              <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg" style={{ background: sb.itemBg, border: sb.itemBorder }}>
+                <span className="flex-1 text-[12px] font-semibold truncate" style={{ color: sb.text1 }}>{activePosition.title}</span>
               </div>
             )}
           </div>
@@ -704,24 +755,24 @@ export function AppLayout({ children }: { children: ReactNode }) {
           <div className="px-3 pb-2">
             <button onClick={() => setCmdOpen(true)}
                     className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-all"
-                    style={{ border: "1px solid #e8edf3", background: "#f8fafc" }}
-                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#f1f5f9"}
-                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "#f8fafc"}>
-              <Search className="w-3.5 h-3.5 shrink-0" style={{ color: "#808083" }} />
-              <span className="text-[12px] flex-1" style={{ color: "#808083" }}>Search…</span>
-              <kbd className="text-[9px] font-mono" style={{ color: "#808083" }}>⌘K</kbd>
+                    style={{ border: sb.itemBorder, background: sb.itemBg }}
+                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = sb.itemHover}
+                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = sb.itemBg}>
+              <Search className="w-3.5 h-3.5 shrink-0" style={{ color: sb.text2 }} />
+              <span className="text-[12px] flex-1" style={{ color: sb.text2 }}>Search…</span>
+              <kbd className="text-[9px] font-mono" style={{ color: sb.text3 }}>⌘K</kbd>
             </button>
           </div>
         )}
 
         {/* Navigation */}
-        <div className="flex-1 overflow-y-auto no-scrollbar px-2 pb-2">
+        <div className="relative z-10 flex-1 overflow-y-auto no-scrollbar px-2 pb-2">
           {navGroups.map(group => (
             <div key={group.id} className="mb-1">
               {group.label && !collapsed && (
-                <p className="px-3 pt-3 pb-1 text-[9.5px] font-bold uppercase tracking-widest" style={{ color: "#808083" }}>{group.label}</p>
+                <p className="px-3 pt-3 pb-1 text-[9.5px] font-bold uppercase tracking-widest" style={{ color: sb.label }}>{group.label}</p>
               )}
-              {group.label && collapsed && <div className="my-2 mx-2 h-px" style={{ background: "#e8edf3" }} />}
+              {group.label && collapsed && <div className="my-2 mx-2 h-px" style={{ background: sb.divider }} />}
               {group.items.map(({ href, label, icon: Icon, badge }) => {
                 const active = activeItem?.href === href;
                 return (
@@ -730,14 +781,14 @@ export function AppLayout({ children }: { children: ReactNode }) {
                                       collapsed ? "h-9 w-9 mx-auto justify-center" : "gap-2.5 px-3 py-2")}
                         style={active
                           ? { background: "#FF6600", color: "#fff", boxShadow: "0 1px 8px rgba(255,102,0,0.3)" }
-                          : { color: "#59595C" }}
-                        onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = "#fff3e0"; }}
+                          : { color: sb.text1 }}
+                        onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = sb.hoverTint; }}
                         onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = ""; }}>
-                    <Icon className="w-4 h-4 shrink-0" style={{ color: active ? "#fff" : "#808083" }} />
+                    <Icon className="w-4 h-4 shrink-0" style={{ color: active ? "#fff" : sb.iconColor }} />
                     {!collapsed && (
                       <>
                         <span className="text-[13px] font-medium flex-1 leading-none">{label}</span>
-                        {badge && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md" style={{ background: active ? "rgba(255,255,255,0.25)" : "#fff3e0", color: active ? "#fff" : "#E05500" }}>{badge}</span>}
+                        {badge && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md" style={{ background: active ? "rgba(255,255,255,0.25)" : (dark ? "rgba(255,102,0,0.25)" : "#fff3e0"), color: active ? "#fff" : "#FF6600" }}>{badge}</span>}
                       </>
                     )}
                   </Link>
@@ -748,19 +799,19 @@ export function AppLayout({ children }: { children: ReactNode }) {
         </div>
 
         {/* Settings + User footer */}
-        <div className="shrink-0" style={{ borderTop: "1px solid #e8edf3" }}>
+        <div className="relative z-10 shrink-0" style={{ borderTop: `1px solid ${sb.divider}` }}>
           <div className="px-2 pt-2 pb-1">
             <Link href="/settings" title={collapsed ? "Settings" : undefined}
                   className={cn("flex items-center rounded-lg transition-all group",
                                 collapsed ? "h-9 w-9 mx-auto justify-center" : "gap-2.5 px-3 py-2")}
-                  style={pathname.startsWith("/settings") ? { background: "#FF6600", color: "#fff" } : { color: "#59595C" }}
-                  onMouseEnter={e => { if (!pathname.startsWith("/settings")) (e.currentTarget as HTMLElement).style.background = "#fff3e0"; }}
+                  style={pathname.startsWith("/settings") ? { background: "#FF6600", color: "#fff" } : { color: sb.text1 }}
+                  onMouseEnter={e => { if (!pathname.startsWith("/settings")) (e.currentTarget as HTMLElement).style.background = sb.hoverTint; }}
                   onMouseLeave={e => { if (!pathname.startsWith("/settings")) (e.currentTarget as HTMLElement).style.background = ""; }}>
-              <Settings className="w-4 h-4 shrink-0" style={{ color: pathname.startsWith("/settings") ? "#fff" : "#808083" }} />
+              <Settings className="w-4 h-4 shrink-0" style={{ color: pathname.startsWith("/settings") ? "#fff" : sb.iconColor }} />
               {!collapsed && <span className="text-[13px] font-medium">Settings</span>}
             </Link>
           </div>
-          <div className="p-3" style={{ borderTop: "1px solid #e8edf3" }}>
+          <div className="p-3" style={{ borderTop: `1px solid ${sb.divider}` }}>
           {collapsed ? (
             <div className="relative" ref={userRef}>
               <button onClick={() => setUserMenuOpen(m => !m)}
@@ -770,25 +821,25 @@ export function AppLayout({ children }: { children: ReactNode }) {
               </button>
               {userMenuOpen && (
                 <div className="absolute bottom-full left-0 mb-2 w-48 rounded-xl overflow-hidden"
-                     style={{ background: "#fff", border: "1px solid #e8edf3", boxShadow: "0 8px 24px rgba(0,0,0,0.12)", zIndex: 100 }}>
+                     style={{ background: sb.popupBg, border: `1px solid ${sb.popupBorder}`, boxShadow: sb.popupShadow, zIndex: 100 }}>
                   <Link href="/profile" onClick={() => setUserMenuOpen(false)}
                         className="flex items-center gap-2 px-3 py-2.5 text-[13px] transition-colors"
-                        style={{ color: "#59595C" }}
-                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#f8fafc"}
+                        style={{ color: sb.text1 }}
+                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = sb.itemHover}
                         onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
                     <User className="w-3.5 h-3.5" /> My Profile
                   </Link>
                   <Link href="/settings" onClick={() => setUserMenuOpen(false)}
                         className="flex items-center gap-2 px-3 py-2.5 text-[13px] transition-colors"
-                        style={{ color: "#59595C" }}
-                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#f8fafc"}
+                        style={{ color: sb.text1 }}
+                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = sb.itemHover}
                         onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
                     <Settings className="w-3.5 h-3.5" /> Settings
                   </Link>
-                  <div className="mx-3 h-px my-1" style={{ background: "#f1f5f9" }} />
+                  <div className="mx-3 h-px my-1" style={{ background: sb.divider }} />
                   <button onClick={() => { logout(); setUserMenuOpen(false); }}
                           className="w-full flex items-center gap-2 px-3 py-2.5 text-[13px] text-red-500 transition-colors"
-                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#fef2f2"}
+                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = (dark ? "rgba(239,68,68,0.1)" : "#fef2f2")}
                           onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
                     <LogOut className="w-3.5 h-3.5" /> Sign Out
                   </button>
@@ -799,52 +850,52 @@ export function AppLayout({ children }: { children: ReactNode }) {
             <div className="relative" ref={userRef}>
               <button onClick={() => setUserMenuOpen(m => !m)}
                       className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg transition-colors"
-                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#f8fafc"}
+                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = sb.hoverTint}
                       onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
                 <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold text-white"
                      style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
                   {initials}
                 </div>
                 <div className="flex-1 min-w-0 text-left">
-                  <p className="text-[12px] font-semibold truncate leading-tight" style={{ color: "#59595C" }}>{user?.DisplayName}</p>
-                  <p className="text-[10px] truncate leading-tight" style={{ color: "#808083" }}>{user?.Email}</p>
+                  <p className="text-[12px] font-semibold truncate leading-tight" style={{ color: sb.text1 }}>{user?.DisplayName}</p>
+                  <p className="text-[10px] truncate leading-tight" style={{ color: sb.text2 }}>{user?.Email}</p>
                 </div>
                 <ChevronDown className={cn("w-3.5 h-3.5 shrink-0 transition-transform", userMenuOpen && "rotate-180")}
-                             style={{ color: "#808083" }} />
+                             style={{ color: sb.text2 }} />
               </button>
 
               {userMenuOpen && (
                 <div className="absolute bottom-full left-0 right-0 mb-1 rounded-xl overflow-hidden"
-                     style={{ background: "#fff", border: "1px solid #e8edf3", boxShadow: "0 8px 24px rgba(0,0,0,0.12)", zIndex: 100 }}>
-                  <div className="px-3 py-2" style={{ borderBottom: "1px solid #f1f5f9" }}>
-                    <p className="text-[11px] font-semibold truncate" style={{ color: "#59595C" }}>{user?.DisplayName}</p>
-                    <p className="text-[10px] truncate" style={{ color: "#808083" }}>{user?.Email}</p>
+                     style={{ background: sb.popupBg, border: `1px solid ${sb.popupBorder}`, boxShadow: sb.popupShadow, zIndex: 100 }}>
+                  <div className="px-3 py-2" style={{ borderBottom: `1px solid ${sb.divider}` }}>
+                    <p className="text-[11px] font-semibold truncate" style={{ color: sb.text1 }}>{user?.DisplayName}</p>
+                    <p className="text-[10px] truncate" style={{ color: sb.text2 }}>{user?.Email}</p>
                   </div>
                   <Link href="/profile" onClick={() => setUserMenuOpen(false)}
                         className="flex items-center gap-2 px-3 py-2.5 text-[13px] transition-colors"
-                        style={{ color: "#59595C" }}
-                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#f8fafc"}
+                        style={{ color: sb.text1 }}
+                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = sb.itemHover}
                         onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
                     <User className="w-3.5 h-3.5" /> My Profile
                   </Link>
                   <Link href="/settings" onClick={() => setUserMenuOpen(false)}
                         className="flex items-center gap-2 px-3 py-2.5 text-[13px] transition-colors"
-                        style={{ color: "#59595C" }}
-                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#f8fafc"}
+                        style={{ color: sb.text1 }}
+                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = sb.itemHover}
                         onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
                     <Settings className="w-3.5 h-3.5" /> Settings
                   </Link>
                   <button onClick={toggleSidebar}
                           className="w-full flex items-center gap-2 px-3 py-2.5 text-[13px] transition-colors"
-                          style={{ color: "#59595C" }}
-                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#f8fafc"}
+                          style={{ color: sb.text1 }}
+                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = sb.itemHover}
                           onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
                     <PanelLeft className="w-3.5 h-3.5" /> Collapse Sidebar
                   </button>
-                  <div className="mx-3 h-px my-1" style={{ background: "#f1f5f9" }} />
+                  <div className="mx-3 h-px my-1" style={{ background: sb.divider }} />
                   <button onClick={() => { logout(); setUserMenuOpen(false); }}
                           className="w-full flex items-center gap-2 px-3 py-2.5 text-[13px] text-red-500 transition-colors"
-                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#fef2f2"}
+                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = (dark ? "rgba(239,68,68,0.1)" : "#fef2f2")}
                           onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
                     <LogOut className="w-3.5 h-3.5" /> Sign Out
                   </button>
