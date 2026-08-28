@@ -346,13 +346,13 @@ type InAppNotif = {
 function typeStyle(type: string): { color: string; icon: React.ElementType } {
   if (type.includes("approved") || type.includes("_approved"))  return { color: "#059669", icon: CheckCircle2 };
   if (type.includes("rejected") || type.includes("_rejected"))  return { color: "#dc2626", icon: AlertCircle };
-  if (type.includes("approval") || type.includes("pending"))    return { color: "#2563eb", icon: CheckSquare };
+  if (type.includes("approval") || type.includes("pending"))    return { color: "#FF6600", icon: CheckSquare };
   if (type.includes("birthday"))                                 return { color: "#9333ea", icon: Star };
   if (type.includes("leave"))                                    return { color: "#0891b2", icon: Clock };
   if (type.includes("document") || type.includes("hr_"))        return { color: "#d97706", icon: FileText };
   if (type.includes("task") || type.includes("followup"))       return { color: "#ea580c", icon: ClipboardList };
   if (type.includes("journal") || type.includes("finance"))     return { color: "#6d28d9", icon: BookOpen };
-  if (type.includes("onboarding"))                              return { color: "#2563eb", icon: UserPlus };
+  if (type.includes("onboarding"))                              return { color: "#FF6600", icon: UserPlus };
   return { color: "#475569", icon: Info };
 }
 
@@ -424,7 +424,7 @@ function NotificationsPanel({ open, onClose }: { open: boolean; onClose: () => v
         <div className="flex items-center justify-between px-4 py-3.5 shrink-0" style={{ borderBottom: "1px solid var(--pg-card-border)" }}>
           <div className="flex items-center gap-2">
             <h2 className="text-[14px] font-bold" style={{ color: "var(--pg-text-1)" }}>Notifications</h2>
-            {unreadCount > 0 && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full text-white" style={{ background: "#2563eb" }}>{unreadCount}</span>}
+            {unreadCount > 0 && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full text-white" style={{ background: "#FF6600" }}>{unreadCount}</span>}
           </div>
           <div className="flex items-center gap-2">
             {unreadCount > 0 && (
@@ -574,7 +574,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
   // Role badge colour — derived from family so any new position code works automatically
   const FAMILY_BADGE: Record<string, { bg: string; text: string }> = {
-    wm:         { bg: "#eff6ff", text: "#2563eb" },
+    wm:         { bg: "#fff3e0", text: "#E05500" },
     md:         { bg: "#f5f3ff", text: "#7c3aed" },
     hr:         { bg: "#ecfeff", text: "#0891b2" },
     finance:    { bg: "#fffbeb", text: "#d97706" },
@@ -590,20 +590,28 @@ export function AppLayout({ children }: { children: ReactNode }) {
       <aside style={{ width: W, minWidth: W, transition: "width 0.22s cubic-bezier(0.4,0,0.2,1)", background: "linear-gradient(180deg,#080d18 0%,#0c1222 100%)", position: "sticky", top: 0, height: "100vh", overflow: "visible", zIndex: 40 }}
              className="hidden md:flex flex-col shrink-0">
 
-        {/* Glow */}
+        {/* Glow — Page Orange */}
         <div className="absolute top-0 inset-x-0 h-56 pointer-events-none"
-             style={{ background: "radial-gradient(ellipse at 50% -5%,rgba(37,99,235,0.28) 0%,transparent 70%)" }} />
+             style={{ background: "radial-gradient(ellipse at 50% -5%,rgba(255,102,0,0.22) 0%,transparent 70%)" }} />
 
         {/* Brand */}
-        <div className={cn("relative z-10 flex items-center gap-2.5 shrink-0", collapsed ? "px-3 pt-4 pb-3 justify-center" : "px-4 pt-5 pb-3")}>
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
-               style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)", boxShadow: "0 0 18px rgba(37,99,235,0.5)" }}>
-            <Inbox className="w-4 h-4 text-white" />
-          </div>
-          {!collapsed && (
-            <div>
-              <p className="text-[13px] font-bold text-white leading-none tracking-tight">Page Group</p>
-              <p className="text-[10px] font-medium mt-0.5" style={{ color: "rgba(148,163,184,0.45)" }}>PageOS</p>
+        <div className={cn("relative z-10 flex items-center shrink-0", collapsed ? "px-3 pt-4 pb-3 justify-center" : "px-4 pt-4 pb-3")}>
+          {collapsed ? (
+            /* Collapsed: Page hexagonal mark approximation */
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 relative"
+                 style={{ background: "linear-gradient(135deg,#FF6600,#E05500)", boxShadow: "0 0 16px rgba(255,102,0,0.45)" }}>
+              <div style={{ width: 14, height: 14, background: "rgba(255,255,255,0.9)", transform: "rotate(45deg)", borderRadius: 2 }} />
+            </div>
+          ) : (
+            /* Expanded: actual Page logo in a white-background card */
+            <div className="w-full rounded-xl overflow-hidden px-3 py-2.5"
+                 style={{ background: "rgba(255,255,255,0.96)", boxShadow: "0 2px 12px rgba(0,0,0,0.25)" }}>
+              <div className="flex items-center justify-between">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/page-logo.png" alt="Page Group" style={{ height: 26, objectFit: "contain" }} />
+                <span className="text-[10px] font-semibold tracking-wider"
+                      style={{ color: "#808083", letterSpacing: "0.08em" }}>PageOS</span>
+              </div>
             </div>
           )}
         </div>
@@ -617,8 +625,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
                 <button onClick={() => setSubOpen(o => !o)}
                         className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-left transition-all cursor-pointer hover:bg-white/[0.06]"
                         style={{ background: "rgba(255,255,255,0.045)", border: "1px solid rgba(255,255,255,0.07)" }}>
-                  <div className="w-5 h-5 rounded-md flex items-center justify-center shrink-0" style={{ background: "rgba(37,99,235,0.2)" }}>
-                    <Building2 className="w-3 h-3" style={{ color: "#93c5fd" }} />
+                  <div className="w-5 h-5 rounded-md flex items-center justify-center shrink-0" style={{ background: "rgba(255,102,0,0.18)" }}>
+                    <Building2 className="w-3 h-3" style={{ color: "#ffb380" }} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-[9px] font-bold uppercase tracking-widest leading-none mb-0.5" style={{ color: "rgba(148,163,184,0.4)" }}>Active Subsidiary</p>
@@ -645,8 +653,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
               /* Single-subsidiary user: show a static label — no switcher */
               <div className="flex items-center gap-2 px-2.5 py-2 rounded-xl"
                    style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                <div className="w-5 h-5 rounded-md flex items-center justify-center shrink-0" style={{ background: "rgba(37,99,235,0.15)" }}>
-                  <Building2 className="w-3 h-3" style={{ color: "#93c5fd" }} />
+                <div className="w-5 h-5 rounded-md flex items-center justify-center shrink-0" style={{ background: "rgba(255,102,0,0.15)" }}>
+                  <Building2 className="w-3 h-3" style={{ color: "#ffb380" }} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-[9px] font-bold uppercase tracking-widest leading-none mb-0.5" style={{ color: "rgba(148,163,184,0.35)" }}>Subsidiary</p>
@@ -676,8 +684,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
                     style={{
                       background: activePosition.isDemo
                         ? "rgba(234,88,12,0.25)"
-                        : "rgba(37,99,235,0.25)",
-                      border: `1px solid ${activePosition.isDemo ? "rgba(234,88,12,0.4)" : "rgba(37,99,235,0.4)"}`,
+                        : "rgba(255,102,0,0.25)",
+                      border: `1px solid ${activePosition.isDemo ? "rgba(234,88,12,0.4)" : "rgba(255,102,0,0.4)"}`,
                     }}
                   >
                     {/* Real admin role at top */}
@@ -741,12 +749,12 @@ export function AppLayout({ children }: { children: ReactNode }) {
                         className={cn("flex items-center rounded-lg transition-all duration-150 group mb-0.5",
                                       collapsed ? "h-9 w-9 mx-auto justify-center" : "gap-2.5 px-3 py-2",
                                       active ? "text-white" : "text-slate-400 hover:text-white")}
-                        style={active ? { background: "linear-gradient(135deg,rgba(37,99,235,0.88),rgba(29,78,216,0.88))", boxShadow: "0 1px 10px rgba(37,99,235,0.3)" } : undefined}>
+                        style={active ? { background: "linear-gradient(135deg,rgba(255,102,0,0.92),rgba(224,85,0,0.92))", boxShadow: "0 1px 10px rgba(255,102,0,0.3)" } : undefined}>
                     <Icon className={cn("w-4 h-4 shrink-0 transition-colors", active ? "text-blue-100" : "text-slate-500 group-hover:text-slate-300")} />
                     {!collapsed && (
                       <>
                         <span className="text-[13px] font-medium flex-1 leading-none">{label}</span>
-                        {badge && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md" style={{ background: "rgba(37,99,235,0.3)", color: "#93c5fd" }}>{badge}</span>}
+                        {badge && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md" style={{ background: "rgba(255,102,0,0.3)", color: "#ffb380" }}>{badge}</span>}
                       </>
                     )}
                   </Link>
@@ -763,7 +771,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
                   className={cn("flex items-center rounded-lg transition-all group",
                                 collapsed ? "h-9 w-9 mx-auto justify-center" : "gap-2.5 px-3 py-2",
                                 pathname.startsWith("/settings") ? "text-white" : "text-slate-400 hover:text-white")}
-                  style={pathname.startsWith("/settings") ? { background: "linear-gradient(135deg,rgba(37,99,235,0.88),rgba(29,78,216,0.88))" } : undefined}>
+                  style={pathname.startsWith("/settings") ? { background: "linear-gradient(135deg,rgba(255,102,0,0.92),rgba(224,85,0,0.92))" } : undefined}>
               <Settings className="w-4 h-4 shrink-0 text-slate-500 group-hover:text-slate-300" />
               {!collapsed && <span className="text-[13px] font-medium">Settings</span>}
             </Link>
@@ -773,7 +781,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
             <div className="relative" ref={userRef}>
               <button onClick={() => setUserMenuOpen(m => !m)}
                       className="w-9 h-9 mx-auto flex items-center justify-center rounded-full"
-                      style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                      style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
                 <span className="text-[10px] font-bold text-white">{initials}</span>
               </button>
               {userMenuOpen && (
@@ -798,7 +806,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
               <button onClick={() => setUserMenuOpen(m => !m)}
                       className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg transition-colors hover:bg-white/[0.06]">
                 <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold text-white"
-                     style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                     style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
                   {initials}
                 </div>
                 <div className="flex-1 min-w-0 text-left">
@@ -881,10 +889,10 @@ export function AppLayout({ children }: { children: ReactNode }) {
                     onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--pg-muted-bg)"}
                     onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
               <Bell className="w-4 h-4" />
-              {unread > 0 && <span className="absolute top-1 right-1 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold text-white" style={{ background: "#2563eb" }}>{unread}</span>}
+              {unread > 0 && <span className="absolute top-1 right-1 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold text-white" style={{ background: "#FF6600" }}>{unread}</span>}
             </button>
             <Link href="/ai" className="h-7 px-2.5 flex items-center gap-1.5 rounded-lg text-[11px] font-semibold text-white transition-all hover:opacity-90"
-                  style={{ background: "linear-gradient(135deg,#2563eb,#7c3aed)", boxShadow: "0 1px 6px rgba(37,99,235,0.35)" }}>
+                  style={{ background: "linear-gradient(135deg,#FF6600,#E05500)", boxShadow: "0 1px 6px rgba(255,102,0,0.45)" }}>
               <Brain className="w-3 h-3" /> AI
             </Link>
           </div>

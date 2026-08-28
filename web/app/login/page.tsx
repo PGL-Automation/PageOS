@@ -44,7 +44,7 @@ function Field({
           boxSizing: "border-box",
           transition: "border-color 0.15s",
         }}
-        onFocus={e => { e.currentTarget.style.borderColor = "#2563eb"; e.currentTarget.style.boxShadow = "0 0 0 3px rgba(37,99,235,0.12)"; }}
+        onFocus={e => { e.currentTarget.style.borderColor = "#FF6600"; e.currentTarget.style.boxShadow = "0 0 0 3px rgba(255,102,0,0.12)"; }}
         onBlur={e  => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.boxShadow = "none"; }}
       />
     </div>
@@ -98,7 +98,7 @@ export default function LoginPage() {
         {/* Radial glow */}
         <div style={{
           position: "absolute", top: 0, left: 0, right: 0, height: 288, pointerEvents: "none",
-          background: "radial-gradient(ellipse at 50% -5%,rgba(37,99,235,0.3) 0%,rgba(37,99,235,0.05) 40%,transparent 70%)",
+          background: "radial-gradient(ellipse at 50% -5%,rgba(255,102,0,0.28) 0%,rgba(255,102,0,0.04) 40%,transparent 70%)",
         }} />
         {/* Subtle grid */}
         <div style={{
@@ -109,13 +109,9 @@ export default function LoginPage() {
 
         {/* Logo */}
         <div style={{ position: "relative", zIndex: 10, display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{
-            width: 36, height: 36, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center",
-            background: "linear-gradient(135deg,#2563eb,#1d4ed8)", boxShadow: "0 0 20px rgba(37,99,235,0.5)",
-          }}>
-            <Briefcase style={{ width: 18, height: 18, color: "white" }} />
-          </div>
-          <span style={{ color: "white", fontWeight: 700, fontSize: 15, letterSpacing: "-0.02em" }}>PageOS</span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/page-logo.png" alt="Page Group" style={{ height: 32, objectFit: "contain" }} />
+          <span style={{ color: "rgba(255,255,255,0.4)", fontWeight: 400, fontSize: 13 }}>PageOS</span>
         </div>
 
         {/* Tagline */}
@@ -134,9 +130,9 @@ export default function LoginPage() {
                 <div style={{
                   width: 28, height: 28, borderRadius: 8, flexShrink: 0, marginTop: 2,
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  background: "rgba(37,99,235,0.15)", border: "1px solid rgba(37,99,235,0.25)",
+                  background: "rgba(255,102,0,0.15)", border: "1px solid rgba(255,102,0,0.25)",
                 }}>
-                  <Icon style={{ width: 14, height: 14, color: "#93c5fd" }} />
+                  <Icon style={{ width: 14, height: 14, color: "#ffb380" }} />
                 </div>
                 <p style={{ fontSize: 13, lineHeight: 1.7, color: "rgba(148,163,184,0.8)", margin: 0 }}>{text}</p>
               </div>
@@ -167,7 +163,7 @@ export default function LoginPage() {
             <div style={{
               width: 28, height: 28, borderRadius: 8,
               display: "flex", alignItems: "center", justifyContent: "center",
-              background: "linear-gradient(135deg,#2563eb,#1d4ed8)",
+              background: "linear-gradient(135deg,#FF6600,#E05500)",
             }}>
               <Briefcase style={{ width: 14, height: 14, color: "white" }} />
             </div>
@@ -221,7 +217,7 @@ export default function LoginPage() {
                   fontWeight: 600, fontSize: 13, color: "white",
                   display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
                   opacity: loading ? 0.7 : 1,
-                  background: "linear-gradient(135deg,#2563eb,#1d4ed8)",
+                  background: "linear-gradient(135deg,#FF6600,#E05500)",
                   boxShadow: "0 1px 4px rgba(37,99,235,0.3)",
                   transition: "opacity 0.15s",
                   marginTop: 4,
@@ -240,7 +236,7 @@ export default function LoginPage() {
             padding: "14px 16px", borderRadius: 12,
             background: "rgba(37,99,235,0.06)", border: "1px solid rgba(37,99,235,0.12)",
           }}>
-            <Lock style={{ width: 14, height: 14, color: "#3b82f6", flexShrink: 0, marginTop: 2 }} />
+            <Lock style={{ width: 14, height: 14, color: "#FF6600", flexShrink: 0, marginTop: 2 }} />
             <p style={{ fontSize: 12, lineHeight: 1.6, color: "#475569", margin: 0 }}>
               Don&apos;t have an account? Your HR team will provision your access.
               Contact <strong>hr@pagegroup.ng</strong> to get started.

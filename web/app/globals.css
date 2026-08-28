@@ -24,7 +24,7 @@
     --border:                  oklch(0.91 0.006 247);
     --input:                   oklch(0.91 0.006 247);
     --ring:                    oklch(0.50 0.22 264);
-    --primary:                 oklch(0.50 0.22 264);
+    --primary:                 oklch(0.65 0.20 40);   /* Page Orange #FF6600 */
     --primary-foreground:      oklch(0.985 0 0);
     --secondary:               oklch(0.96 0.005 247);
     --secondary-foreground:    oklch(0.2 0 0);
@@ -69,7 +69,7 @@
     --border:                  oklch(1 0 0 / 9%);
     --input:                   oklch(1 0 0 / 10%);
     --ring:                    oklch(0.50 0.22 264);
-    --primary:                 oklch(0.60 0.20 264);
+    --primary:                 oklch(0.65 0.20 40);
     --primary-foreground:      oklch(0.985 0 0);
     --secondary:               oklch(0.18 0.012 247);
     --secondary-foreground:    oklch(0.94 0 0);
