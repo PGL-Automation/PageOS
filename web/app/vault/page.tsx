@@ -113,6 +113,51 @@ function PreviewModal({ doc, onClose }: { doc: VaultDoc; onClose: () => void }) 
   );
 }
 
+// ── TimeSpinner ───────────────────────────────────────────────────────────────
+
+function TimeSpinner({ value, min, max, step = 1, label, onChange }: {
+  value: number; min: number; max: number; step?: number;
+  label: string; onChange: (v: number) => void;
+}) {
+  const display = String(value).padStart(2, "0");
+  const range   = max - min + 1;
+
+  function inc() { onChange(min + (value - min + step) % range); }
+  function dec() { onChange(min + ((value - min - step + range) % range)); }
+
+  const btnStyle: React.CSSProperties = {
+    width: 36, height: 30, borderRadius: 8, border: "none",
+    background: "var(--pg-muted-bg)", cursor: "pointer",
+    fontSize: 14, color: "var(--pg-text-2)", display: "flex",
+    alignItems: "center", justifyContent: "center",
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+      <p style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--pg-text-4)", letterSpacing: "0.06em" }}>{label}</p>
+      <button style={btnStyle} onClick={inc}
+              onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#fff3e0"}
+              onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "var(--pg-muted-bg)"}>
+        ▲
+      </button>
+      <div style={{
+        width: 56, height: 44, display: "flex", alignItems: "center", justifyContent: "center",
+        borderRadius: 10, background: "var(--pg-muted-bg)",
+        border: "1px solid var(--pg-card-border)",
+        fontSize: 22, fontWeight: 800, color: "var(--pg-text-1)",
+        fontVariantNumeric: "tabular-nums",
+      }}>
+        {display}
+      </div>
+      <button style={btnStyle} onClick={dec}
+              onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#fff3e0"}
+              onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "var(--pg-muted-bg)"}>
+        ▼
+      </button>
+    </div>
+  );
+}
+
 // ── Date-Time Picker (fixed modal — avoids overflow-hidden clipping) ──────────
 
 const MONTHS = ["January","February","March","April","May","June",
@@ -132,8 +177,8 @@ function DateTimePicker({
   const [yr,  setYr]  = useState(init.getFullYear());
   const [mo,  setMo]  = useState(init.getMonth());   // 0-based
   const [sel, setSel] = useState<Date | null>(value ? init : null);
-  const [hr,  setHr]  = useState(String(init.getHours()).padStart(2, "0"));
-  const [min, setMin] = useState(String(init.getMinutes()).padStart(2, "0"));
+  const [hr,  setHr]  = useState(init.getHours());   // 0-23 number
+  const [min, setMin] = useState(init.getMinutes()); // 0-59 number
 
   const firstWeekday = new Date(yr, mo, 1).getDay();
   const totalDays    = new Date(yr, mo + 1, 0).getDate();
@@ -152,8 +197,8 @@ function DateTimePicker({
 
   function confirm() {
     if (!sel) return;
-    const h = Math.min(23, Math.max(0, parseInt(hr, 10) || 0));
-    const m = Math.min(59, Math.max(0, parseInt(min, 10) || 0));
+    const h = hr;
+    const m = min;
     onConfirm(new Date(sel.getFullYear(), sel.getMonth(), sel.getDate(), h, m)
       .toISOString().slice(0, 16));
   }
@@ -248,20 +293,45 @@ function DateTimePicker({
           })}
         </div>
 
-        {/* ── Time ── */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "12px 16px", borderTop: "1px solid var(--pg-row-border)" }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--pg-text-3)", marginRight: 4 }}>Time</span>
-          <input
-            type="number" min={0} max={23} value={hr}
-            onChange={e => setHr(e.target.value.padStart(2, "0"))}
-            style={{ width: 52, height: 36, textAlign: "center", fontSize: 16, fontWeight: 700, borderRadius: 10, border: "1px solid var(--pg-card-border)", background: "var(--pg-muted-bg)", color: "var(--pg-text-1)", outline: "none" }}
-          />
-          <span style={{ fontSize: 18, fontWeight: 900, color: "var(--pg-text-2)" }}>:</span>
-          <input
-            type="number" min={0} max={59} value={min}
-            onChange={e => setMin(e.target.value.padStart(2, "0"))}
-            style={{ width: 52, height: 36, textAlign: "center", fontSize: 16, fontWeight: 700, borderRadius: 10, border: "1px solid var(--pg-card-border)", background: "var(--pg-muted-bg)", color: "var(--pg-text-1)", outline: "none" }}
-          />
+        {/* ── Time spinner ── */}
+        <div style={{ borderTop: "1px solid var(--pg-row-border)", padding: "12px 16px" }}>
+          <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--pg-text-3)", marginBottom: 10, textAlign: "center" }}>Time</p>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
+            {/* Hour spinner */}
+            <TimeSpinner
+              value={hr} min={0} max={23}
+              onChange={setHr}
+              label="Hour"
+            />
+            <span style={{ fontSize: 24, fontWeight: 900, color: "var(--pg-text-2)", lineHeight: 1 }}>:</span>
+            {/* Minute spinner */}
+            <TimeSpinner
+              value={min} min={0} max={59} step={5}
+              onChange={setMin}
+              label="Min"
+            />
+          </div>
+          {/* Quick-select presets */}
+          <div style={{ display: "flex", gap: 6, marginTop: 12, justifyContent: "center", flexWrap: "wrap" }}>
+            {[["Morning","09:00",[9,0]],["Noon","12:00",[12,0]],["Afternoon","14:00",[14,0]],["Evening","18:00",[18,0]]] .map(([label, , hm]) => (
+              <button
+                key={label as string}
+                onClick={() => { setHr((hm as number[])[0]); setMin((hm as number[])[1]); }}
+                style={{
+                  height: 26, padding: "0 10px", borderRadius: 20,
+                  fontSize: 11, fontWeight: 600, cursor: "pointer",
+                  border: hr === (hm as number[])[0] && min === (hm as number[])[1]
+                    ? "1px solid #FF6600" : "1px solid var(--pg-card-border)",
+                  background: hr === (hm as number[])[0] && min === (hm as number[])[1]
+                    ? "#fff3e0" : "var(--pg-muted-bg)",
+                  color: hr === (hm as number[])[0] && min === (hm as number[])[1]
+                    ? "#E05500" : "var(--pg-text-2)",
+                }}
+              >
+                {label as string}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* ── Actions ── */}
