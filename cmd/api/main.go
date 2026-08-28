@@ -1044,8 +1044,13 @@ func vaultCreateNote(pool *pgxpool.Pool) http.HandlerFunc {
 		}
 		var notifyAt *time.Time
 		if in.NotifyAt != nil && *in.NotifyAt != "" {
-			t, err := time.Parse(time.RFC3339, *in.NotifyAt)
-			if err == nil { notifyAt = &t }
+			// Try RFC3339Nano first (handles milliseconds from JS toISOString()),
+			// fall back to plain RFC3339.
+			if t, err := time.Parse(time.RFC3339Nano, *in.NotifyAt); err == nil {
+				notifyAt = &t
+			} else if t, err := time.Parse(time.RFC3339, *in.NotifyAt); err == nil {
+				notifyAt = &t
+			}
 		}
 		var id string
 		var createdAt, updatedAt time.Time
@@ -1077,8 +1082,11 @@ func vaultUpdateNote(pool *pgxpool.Pool) http.HandlerFunc {
 		}
 		var notifyAt *time.Time
 		if in.NotifyAt != nil && *in.NotifyAt != "" {
-			t, err2 := time.Parse(time.RFC3339, *in.NotifyAt)
-			if err2 == nil { notifyAt = &t }
+			if t, err2 := time.Parse(time.RFC3339Nano, *in.NotifyAt); err2 == nil {
+				notifyAt = &t
+			} else if t, err2 := time.Parse(time.RFC3339, *in.NotifyAt); err2 == nil {
+				notifyAt = &t
+			}
 		}
 		tag, err := pool.Exec(r.Context(),
 			`UPDATE vault.note

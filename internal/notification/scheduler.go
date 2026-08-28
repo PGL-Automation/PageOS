@@ -25,21 +25,36 @@ func NewScheduler(pool *pgxpool.Pool, logger *slog.Logger) *Scheduler {
 	return &Scheduler{pool: pool, logger: logger}
 }
 
-// Run fires all scheduled checks once at startup, then every hour.
-// Cancel the context to stop cleanly.
+// Run starts two loops:
+//  - Hourly: birthday/follow-up/task/leave/journal reminders
+//  - Every minute: vault note reminders (users expect these to fire on time)
+//
+// Cancel the context to stop both loops cleanly.
 func (s *Scheduler) Run(ctx context.Context) {
 	s.logger.Info("notification scheduler started")
-	s.runAll(ctx)
 
-	ticker := time.NewTicker(1 * time.Hour)
-	defer ticker.Stop()
+	// Run once immediately so reminders set before the first tick aren't missed.
+	s.runAll(ctx)
+	if err := s.vaultNoteReminders(ctx); err != nil {
+		s.logger.Warn("vault note reminders (startup)", "err", err)
+	}
+
+	hourly := time.NewTicker(1 * time.Hour)
+	minutely := time.NewTicker(1 * time.Minute)
+	defer hourly.Stop()
+	defer minutely.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			s.logger.Info("notification scheduler stopped")
 			return
-		case <-ticker.C:
+		case <-hourly.C:
 			s.runAll(ctx)
+		case <-minutely.C:
+			if err := s.vaultNoteReminders(ctx); err != nil {
+				s.logger.Warn("vault note reminders", "err", err)
+			}
 		}
 	}
 }
@@ -54,7 +69,7 @@ func (s *Scheduler) runAll(ctx context.Context) {
 		{"task due reminders", s.taskDueReminders},
 		{"pending leave reminders", s.pendingLeaveReminders},
 		{"pending journal reminders", s.pendingJournalReminders},
-		{"vault note reminders", s.vaultNoteReminders},
+		// vault note reminders run on their own 1-minute loop (see Run)
 	}
 	for _, job := range jobs {
 		if err := job.fn(ctx); err != nil {
