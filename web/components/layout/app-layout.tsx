@@ -587,78 +587,74 @@ export function AppLayout({ children }: { children: ReactNode }) {
     <div className="flex min-h-screen w-full" style={{ background: "var(--pg-bg)" }}>
 
       {/* ═══ SIDEBAR ═════════════════════════════════════════════════════════ */}
-      <aside style={{ width: W, minWidth: W, transition: "width 0.22s cubic-bezier(0.4,0,0.2,1)", background: "linear-gradient(180deg,#080d18 0%,#0c1222 100%)", position: "sticky", top: 0, height: "100vh", overflow: "visible", zIndex: 40 }}
+      <aside style={{ width: W, minWidth: W, transition: "width 0.22s cubic-bezier(0.4,0,0.2,1)", background: "#ffffff", borderRight: "1px solid #e8edf3", boxShadow: "2px 0 8px rgba(0,0,0,0.04)", position: "sticky", top: 0, height: "100vh", overflow: "visible", zIndex: 40 }}
              className="hidden md:flex flex-col shrink-0">
 
-        {/* Glow — Page Orange */}
-        <div className="absolute top-0 inset-x-0 h-56 pointer-events-none"
-             style={{ background: "radial-gradient(ellipse at 50% -5%,rgba(255,102,0,0.22) 0%,transparent 70%)" }} />
-
         {/* Brand */}
-        <div className={cn("relative z-10 flex items-center shrink-0", collapsed ? "px-3 pt-4 pb-3 justify-center" : "px-4 pt-4 pb-3")}>
+        <div className={cn("flex items-center shrink-0", collapsed ? "px-3 pt-4 pb-3 justify-center" : "px-4 pt-4 pb-3")}
+             style={{ borderBottom: "1px solid #f1f5f9" }}>
           {collapsed ? (
-            /* Collapsed: Page hexagonal mark approximation */
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 relative"
-                 style={{ background: "linear-gradient(135deg,#FF6600,#E05500)", boxShadow: "0 0 16px rgba(255,102,0,0.45)" }}>
-              <div style={{ width: 14, height: 14, background: "rgba(255,255,255,0.9)", transform: "rotate(45deg)", borderRadius: 2 }} />
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+                 style={{ background: "linear-gradient(135deg,#FF6600,#E05500)", boxShadow: "0 2px 8px rgba(255,102,0,0.35)" }}>
+              <div style={{ width: 13, height: 13, background: "#fff", transform: "rotate(45deg)", borderRadius: 2 }} />
             </div>
           ) : (
-            /* Expanded: actual Page logo in a white-background card */
-            <div className="w-full rounded-xl overflow-hidden px-3 py-2.5"
-                 style={{ background: "rgba(255,255,255,0.96)", boxShadow: "0 2px 12px rgba(0,0,0,0.25)" }}>
-              <div className="flex items-center justify-between">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/page-logo.png" alt="Page Group" style={{ height: 26, objectFit: "contain" }} />
-                <span className="text-[10px] font-semibold tracking-wider"
-                      style={{ color: "#808083", letterSpacing: "0.08em" }}>PageOS</span>
-              </div>
+            <div className="flex items-center justify-between w-full">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/page-logo.png" alt="Page Group" style={{ height: 28, objectFit: "contain" }} />
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md"
+                    style={{ background: "#fff3e0", color: "#E05500", letterSpacing: "0.06em" }}>PageOS</span>
             </div>
           )}
         </div>
 
-        {/* Subsidiary context — dropdown only when user spans multiple subsidiaries */}
+        {/* Subsidiary context */}
         {!collapsed && subsidiary && (
-          <div className="relative z-20 px-3 pb-2" ref={subRef}>
+          <div className="relative z-20 px-3 pt-2 pb-1" ref={subRef}>
             {canSwitch ? (
-              /* Multi-subsidiary user: show a switchable dropdown */
               <>
                 <button onClick={() => setSubOpen(o => !o)}
-                        className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-left transition-all cursor-pointer hover:bg-white/[0.06]"
-                        style={{ background: "rgba(255,255,255,0.045)", border: "1px solid rgba(255,255,255,0.07)" }}>
-                  <div className="w-5 h-5 rounded-md flex items-center justify-center shrink-0" style={{ background: "rgba(255,102,0,0.18)" }}>
-                    <Building2 className="w-3 h-3" style={{ color: "#ffb380" }} />
+                        className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left transition-all"
+                        style={{ background: "#f8fafc", border: "1px solid #e8edf3" }}
+                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#f1f5f9"}
+                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "#f8fafc"}>
+                  <div className="w-5 h-5 rounded-md flex items-center justify-center shrink-0" style={{ background: "#fff3e0" }}>
+                    <Building2 className="w-3 h-3" style={{ color: "#FF6600" }} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-[9px] font-bold uppercase tracking-widest leading-none mb-0.5" style={{ color: "rgba(148,163,184,0.4)" }}>Active Subsidiary</p>
-                    <p className="text-[12px] font-semibold text-white truncate">{subsidiary.Name}</p>
+                    <p className="text-[9px] font-bold uppercase tracking-widest leading-none mb-0.5" style={{ color: "#808083" }}>Active Subsidiary</p>
+                    <p className="text-[12px] font-semibold truncate" style={{ color: "#59595C" }}>{subsidiary.Name}</p>
                   </div>
-                  <ChevronDown className={cn("w-3.5 h-3.5 shrink-0 transition-transform", subOpen && "rotate-180")} style={{ color: "rgba(148,163,184,0.4)" }} />
+                  <ChevronDown className={cn("w-3.5 h-3.5 shrink-0 transition-transform", subOpen && "rotate-180")} style={{ color: "#808083" }} />
                 </button>
                 {subOpen && (
-                  <div className="absolute top-full left-3 right-3 mt-1 rounded-xl overflow-hidden" style={{ background: "#07091a", border: "1px solid rgba(255,255,255,0.1)", boxShadow: "0 16px 48px rgba(0,0,0,0.6)", zIndex: 100 }}>
-                    <p className="px-3 py-2 text-[9px] font-bold uppercase tracking-widest" style={{ color: "rgba(148,163,184,0.35)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div className="absolute top-full left-3 right-3 mt-1 rounded-xl overflow-hidden"
+                       style={{ background: "#fff", border: "1px solid #e8edf3", boxShadow: "0 8px 24px rgba(0,0,0,0.12)", zIndex: 100 }}>
+                    <p className="px-3 py-2 text-[9px] font-bold uppercase tracking-widest" style={{ color: "#808083", borderBottom: "1px solid #f1f5f9" }}>
                       Switch Subsidiary
                     </p>
                     {subsidiaries.map(s => (
                       <button key={s.ID} onClick={() => { setSubsidiary(s); setSubOpen(false); }}
-                              className="w-full flex items-center justify-between gap-2 px-3 py-2.5 transition-colors hover:bg-white/[0.05]">
-                        <span className={cn("text-[13px] font-medium", s.ID === subsidiary.ID ? "text-white" : "text-slate-400")}>{s.Name}</span>
-                        {s.ID === subsidiary.ID && <Check className="w-3.5 h-3.5 text-blue-400" />}
+                              className="w-full flex items-center justify-between gap-2 px-3 py-2.5 transition-colors"
+                              style={{ color: s.ID === subsidiary.ID ? "#FF6600" : "#59595C" }}
+                              onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#f8fafc"}
+                              onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
+                        <span className="text-[13px] font-medium">{s.Name}</span>
+                        {s.ID === subsidiary.ID && <Check className="w-3.5 h-3.5" style={{ color: "#FF6600" }} />}
                       </button>
                     ))}
                   </div>
                 )}
               </>
             ) : (
-              /* Single-subsidiary user: show a static label — no switcher */
-              <div className="flex items-center gap-2 px-2.5 py-2 rounded-xl"
-                   style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                <div className="w-5 h-5 rounded-md flex items-center justify-center shrink-0" style={{ background: "rgba(255,102,0,0.15)" }}>
-                  <Building2 className="w-3 h-3" style={{ color: "#ffb380" }} />
+              <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg"
+                   style={{ background: "#f8fafc", border: "1px solid #e8edf3" }}>
+                <div className="w-5 h-5 rounded-md flex items-center justify-center shrink-0" style={{ background: "#fff3e0" }}>
+                  <Building2 className="w-3 h-3" style={{ color: "#FF6600" }} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[9px] font-bold uppercase tracking-widest leading-none mb-0.5" style={{ color: "rgba(148,163,184,0.35)" }}>Subsidiary</p>
-                  <p className="text-[12px] font-semibold text-white truncate">{subsidiary.Name}</p>
+                  <p className="text-[9px] font-bold uppercase tracking-widest leading-none mb-0.5" style={{ color: "#808083" }}>Subsidiary</p>
+                  <p className="text-[12px] font-semibold truncate" style={{ color: "#59595C" }}>{subsidiary.Name}</p>
                 </div>
               </div>
             )}
@@ -667,55 +663,37 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
         {/* Role / View-As section */}
         {!collapsed && activePosition && (
-          <div className="px-3 pb-3">
+          <div className="px-3 pt-1 pb-2">
             {isAdminMode ? (
-              /* GROUP_ADMIN: full "View As" role switcher */
               <div>
-                <p className="text-[9px] font-bold uppercase tracking-widest mb-1.5 px-0.5"
-                   style={{ color: "rgba(148,163,184,0.4)" }}>View As</p>
+                <p className="text-[9px] font-bold uppercase tracking-widest mb-1 px-0.5" style={{ color: "#808083" }}>View As</p>
                 <div className="relative">
                   <select
                     value={activePosition.code}
-                    onChange={e => {
-                      const p = positions.find(pos => pos.code === e.target.value);
-                      if (p) setActive(p);
-                    }}
-                    className="w-full appearance-none text-[12px] font-semibold text-white pl-2.5 pr-7 py-1.5 rounded-lg cursor-pointer outline-none"
+                    onChange={e => { const p = positions.find(pos => pos.code === e.target.value); if (p) setActive(p); }}
+                    className="w-full appearance-none text-[12px] font-semibold pl-2.5 pr-7 py-1.5 rounded-lg cursor-pointer outline-none"
                     style={{
-                      background: activePosition.isDemo
-                        ? "rgba(234,88,12,0.25)"
-                        : "rgba(255,102,0,0.25)",
-                      border: `1px solid ${activePosition.isDemo ? "rgba(234,88,12,0.4)" : "rgba(255,102,0,0.4)"}`,
+                      background: activePosition.isDemo ? "#fff3e0" : "#f8fafc",
+                      border: `1px solid ${activePosition.isDemo ? "#FF6600" : "#e8edf3"}`,
+                      color: activePosition.isDemo ? "#E05500" : "#59595C",
                     }}
                   >
-                    {/* Real admin role at top */}
-                    {adminPosition && (
-                      <option value={adminPosition.code} style={{ background: "#07090f" }}>
-                        👑 {adminPosition.title}
-                      </option>
-                    )}
-                    <optgroup label="── Simulate Role ──" style={{ background: "#07090f", color: "rgba(148,163,184,0.6)" }}>
+                    {adminPosition && <option value={adminPosition.code}>👑 {adminPosition.title}</option>}
+                    <optgroup label="── Simulate Role ──">
                       {positions.filter(p => p.isDemo).map(p => (
-                        <option key={p.id} value={p.code} style={{ background: "#07090f" }}>
-                          {p.title}
-                        </option>
+                        <option key={p.id} value={p.code}>{p.title}</option>
                       ))}
                     </optgroup>
                   </select>
-                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none"
-                               style={{ color: "rgba(148,163,184,0.5)" }} />
+                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none" style={{ color: "#808083" }} />
                 </div>
                 {activePosition.isDemo && (
-                  <p className="text-[9px] mt-1 px-0.5" style={{ color: "rgba(234,88,12,0.7)" }}>
-                    Preview only — API uses your real credentials
-                  </p>
+                  <p className="text-[9px] mt-1 px-0.5" style={{ color: "#FF6600" }}>Preview only — API uses your real credentials</p>
                 )}
               </div>
             ) : (
-              /* Regular user: static role label */
-              <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg"
-                   style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                <span className="flex-1 text-[12px] font-semibold text-white truncate">{activePosition.title}</span>
+              <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg" style={{ background: "#f8fafc", border: "1px solid #e8edf3" }}>
+                <span className="flex-1 text-[12px] font-semibold truncate" style={{ color: "#59595C" }}>{activePosition.title}</span>
               </div>
             )}
           </div>
@@ -723,38 +701,43 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
         {/* Search */}
         {!collapsed && (
-          <div className="relative z-10 px-3 pb-3">
+          <div className="px-3 pb-2">
             <button onClick={() => setCmdOpen(true)}
-                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-all hover:bg-white/[0.05]"
-                    style={{ border: "1px solid rgba(255,255,255,0.07)", background: "rgba(255,255,255,0.03)" }}>
-              <Search className="w-3.5 h-3.5 shrink-0" style={{ color: "rgba(148,163,184,0.5)" }} />
-              <span className="text-[12px] flex-1" style={{ color: "rgba(148,163,184,0.5)" }}>Search…</span>
-              <kbd className="text-[9px] font-mono" style={{ color: "rgba(100,116,139,0.6)" }}>⌘K</kbd>
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-all"
+                    style={{ border: "1px solid #e8edf3", background: "#f8fafc" }}
+                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#f1f5f9"}
+                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "#f8fafc"}>
+              <Search className="w-3.5 h-3.5 shrink-0" style={{ color: "#808083" }} />
+              <span className="text-[12px] flex-1" style={{ color: "#808083" }}>Search…</span>
+              <kbd className="text-[9px] font-mono" style={{ color: "#808083" }}>⌘K</kbd>
             </button>
           </div>
         )}
 
         {/* Navigation */}
-        <div className="relative z-10 flex-1 overflow-y-auto no-scrollbar px-2 pb-2">
+        <div className="flex-1 overflow-y-auto no-scrollbar px-2 pb-2">
           {navGroups.map(group => (
             <div key={group.id} className="mb-1">
               {group.label && !collapsed && (
-                <p className="px-3 pt-3 pb-1 text-[9.5px] font-bold uppercase tracking-widest" style={{ color: "rgba(100,116,139,0.5)" }}>{group.label}</p>
+                <p className="px-3 pt-3 pb-1 text-[9.5px] font-bold uppercase tracking-widest" style={{ color: "#808083" }}>{group.label}</p>
               )}
-              {group.label && collapsed && <div className="my-2 mx-2 h-px" style={{ background: "rgba(255,255,255,0.06)" }} />}
+              {group.label && collapsed && <div className="my-2 mx-2 h-px" style={{ background: "#e8edf3" }} />}
               {group.items.map(({ href, label, icon: Icon, badge }) => {
                 const active = activeItem?.href === href;
                 return (
                   <Link key={href} href={href} title={collapsed ? label : undefined}
                         className={cn("flex items-center rounded-lg transition-all duration-150 group mb-0.5",
-                                      collapsed ? "h-9 w-9 mx-auto justify-center" : "gap-2.5 px-3 py-2",
-                                      active ? "text-white" : "text-slate-400 hover:text-white")}
-                        style={active ? { background: "linear-gradient(135deg,rgba(255,102,0,0.92),rgba(224,85,0,0.92))", boxShadow: "0 1px 10px rgba(255,102,0,0.3)" } : undefined}>
-                    <Icon className={cn("w-4 h-4 shrink-0 transition-colors", active ? "text-blue-100" : "text-slate-500 group-hover:text-slate-300")} />
+                                      collapsed ? "h-9 w-9 mx-auto justify-center" : "gap-2.5 px-3 py-2")}
+                        style={active
+                          ? { background: "#FF6600", color: "#fff", boxShadow: "0 1px 8px rgba(255,102,0,0.3)" }
+                          : { color: "#59595C" }}
+                        onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = "#fff3e0"; }}
+                        onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = ""; }}>
+                    <Icon className="w-4 h-4 shrink-0" style={{ color: active ? "#fff" : "#808083" }} />
                     {!collapsed && (
                       <>
                         <span className="text-[13px] font-medium flex-1 leading-none">{label}</span>
-                        {badge && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md" style={{ background: "rgba(255,102,0,0.3)", color: "#ffb380" }}>{badge}</span>}
+                        {badge && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md" style={{ background: active ? "rgba(255,255,255,0.25)" : "#fff3e0", color: active ? "#fff" : "#E05500" }}>{badge}</span>}
                       </>
                     )}
                   </Link>
@@ -764,19 +747,20 @@ export function AppLayout({ children }: { children: ReactNode }) {
           ))}
         </div>
 
-        {/* Settings + User footer — always visible, never scrolls */}
-        <div className="relative z-10 shrink-0" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+        {/* Settings + User footer */}
+        <div className="shrink-0" style={{ borderTop: "1px solid #e8edf3" }}>
           <div className="px-2 pt-2 pb-1">
             <Link href="/settings" title={collapsed ? "Settings" : undefined}
                   className={cn("flex items-center rounded-lg transition-all group",
-                                collapsed ? "h-9 w-9 mx-auto justify-center" : "gap-2.5 px-3 py-2",
-                                pathname.startsWith("/settings") ? "text-white" : "text-slate-400 hover:text-white")}
-                  style={pathname.startsWith("/settings") ? { background: "linear-gradient(135deg,rgba(255,102,0,0.92),rgba(224,85,0,0.92))" } : undefined}>
-              <Settings className="w-4 h-4 shrink-0 text-slate-500 group-hover:text-slate-300" />
+                                collapsed ? "h-9 w-9 mx-auto justify-center" : "gap-2.5 px-3 py-2")}
+                  style={pathname.startsWith("/settings") ? { background: "#FF6600", color: "#fff" } : { color: "#59595C" }}
+                  onMouseEnter={e => { if (!pathname.startsWith("/settings")) (e.currentTarget as HTMLElement).style.background = "#fff3e0"; }}
+                  onMouseLeave={e => { if (!pathname.startsWith("/settings")) (e.currentTarget as HTMLElement).style.background = ""; }}>
+              <Settings className="w-4 h-4 shrink-0" style={{ color: pathname.startsWith("/settings") ? "#fff" : "#808083" }} />
               {!collapsed && <span className="text-[13px] font-medium">Settings</span>}
             </Link>
           </div>
-          <div className="p-3" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+          <div className="p-3" style={{ borderTop: "1px solid #e8edf3" }}>
           {collapsed ? (
             <div className="relative" ref={userRef}>
               <button onClick={() => setUserMenuOpen(m => !m)}
@@ -786,16 +770,26 @@ export function AppLayout({ children }: { children: ReactNode }) {
               </button>
               {userMenuOpen && (
                 <div className="absolute bottom-full left-0 mb-2 w-48 rounded-xl overflow-hidden"
-                     style={{ background: "#07091a", border: "1px solid rgba(255,255,255,0.1)", boxShadow: "0 8px 24px rgba(0,0,0,0.5)", zIndex: 100 }}>
-                  <Link href="/profile" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-3 py-2.5 text-[13px] text-slate-300 hover:bg-white/[0.05] transition-colors">
+                     style={{ background: "#fff", border: "1px solid #e8edf3", boxShadow: "0 8px 24px rgba(0,0,0,0.12)", zIndex: 100 }}>
+                  <Link href="/profile" onClick={() => setUserMenuOpen(false)}
+                        className="flex items-center gap-2 px-3 py-2.5 text-[13px] transition-colors"
+                        style={{ color: "#59595C" }}
+                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#f8fafc"}
+                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
                     <User className="w-3.5 h-3.5" /> My Profile
                   </Link>
-                  <Link href="/settings" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-3 py-2.5 text-[13px] text-slate-300 hover:bg-white/[0.05] transition-colors">
+                  <Link href="/settings" onClick={() => setUserMenuOpen(false)}
+                        className="flex items-center gap-2 px-3 py-2.5 text-[13px] transition-colors"
+                        style={{ color: "#59595C" }}
+                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#f8fafc"}
+                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
                     <Settings className="w-3.5 h-3.5" /> Settings
                   </Link>
-                  <div className="mx-3 h-px my-1" style={{ background: "rgba(255,255,255,0.06)" }} />
+                  <div className="mx-3 h-px my-1" style={{ background: "#f1f5f9" }} />
                   <button onClick={() => { logout(); setUserMenuOpen(false); }}
-                          className="w-full flex items-center gap-2 px-3 py-2.5 text-[13px] text-red-400 hover:bg-red-500/10 transition-colors">
+                          className="w-full flex items-center gap-2 px-3 py-2.5 text-[13px] text-red-500 transition-colors"
+                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#fef2f2"}
+                          onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
                     <LogOut className="w-3.5 h-3.5" /> Sign Out
                   </button>
                 </div>
@@ -804,41 +798,54 @@ export function AppLayout({ children }: { children: ReactNode }) {
           ) : (
             <div className="relative" ref={userRef}>
               <button onClick={() => setUserMenuOpen(m => !m)}
-                      className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg transition-colors hover:bg-white/[0.06]">
+                      className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg transition-colors"
+                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#f8fafc"}
+                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
                 <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold text-white"
                      style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
                   {initials}
                 </div>
                 <div className="flex-1 min-w-0 text-left">
-                  <p className="text-[12px] font-semibold text-white truncate leading-tight">{user?.DisplayName}</p>
-                  <p className="text-[10px] truncate leading-tight" style={{ color: "rgba(148,163,184,0.5)" }}>{user?.Email}</p>
+                  <p className="text-[12px] font-semibold truncate leading-tight" style={{ color: "#59595C" }}>{user?.DisplayName}</p>
+                  <p className="text-[10px] truncate leading-tight" style={{ color: "#808083" }}>{user?.Email}</p>
                 </div>
                 <ChevronDown className={cn("w-3.5 h-3.5 shrink-0 transition-transform", userMenuOpen && "rotate-180")}
-                             style={{ color: "rgba(148,163,184,0.4)" }} />
+                             style={{ color: "#808083" }} />
               </button>
 
               {userMenuOpen && (
                 <div className="absolute bottom-full left-0 right-0 mb-1 rounded-xl overflow-hidden"
-                     style={{ background: "#07091a", border: "1px solid rgba(255,255,255,0.1)", boxShadow: "0 8px 24px rgba(0,0,0,0.5)", zIndex: 100 }}>
-                  <div className="px-3 py-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                    <p className="text-[11px] font-semibold text-white truncate">{user?.DisplayName}</p>
-                    <p className="text-[10px] truncate" style={{ color: "rgba(148,163,184,0.5)" }}>{user?.Email}</p>
+                     style={{ background: "#fff", border: "1px solid #e8edf3", boxShadow: "0 8px 24px rgba(0,0,0,0.12)", zIndex: 100 }}>
+                  <div className="px-3 py-2" style={{ borderBottom: "1px solid #f1f5f9" }}>
+                    <p className="text-[11px] font-semibold truncate" style={{ color: "#59595C" }}>{user?.DisplayName}</p>
+                    <p className="text-[10px] truncate" style={{ color: "#808083" }}>{user?.Email}</p>
                   </div>
                   <Link href="/profile" onClick={() => setUserMenuOpen(false)}
-                        className="flex items-center gap-2 px-3 py-2.5 text-[13px] text-slate-300 hover:bg-white/[0.05] transition-colors">
+                        className="flex items-center gap-2 px-3 py-2.5 text-[13px] transition-colors"
+                        style={{ color: "#59595C" }}
+                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#f8fafc"}
+                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
                     <User className="w-3.5 h-3.5" /> My Profile
                   </Link>
                   <Link href="/settings" onClick={() => setUserMenuOpen(false)}
-                        className="flex items-center gap-2 px-3 py-2.5 text-[13px] text-slate-300 hover:bg-white/[0.05] transition-colors">
+                        className="flex items-center gap-2 px-3 py-2.5 text-[13px] transition-colors"
+                        style={{ color: "#59595C" }}
+                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#f8fafc"}
+                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
                     <Settings className="w-3.5 h-3.5" /> Settings
                   </Link>
                   <button onClick={toggleSidebar}
-                          className="w-full flex items-center gap-2 px-3 py-2.5 text-[13px] text-slate-300 hover:bg-white/[0.05] transition-colors">
+                          className="w-full flex items-center gap-2 px-3 py-2.5 text-[13px] transition-colors"
+                          style={{ color: "#59595C" }}
+                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#f8fafc"}
+                          onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
                     <PanelLeft className="w-3.5 h-3.5" /> Collapse Sidebar
                   </button>
-                  <div className="mx-3 h-px my-1" style={{ background: "rgba(255,255,255,0.06)" }} />
+                  <div className="mx-3 h-px my-1" style={{ background: "#f1f5f9" }} />
                   <button onClick={() => { logout(); setUserMenuOpen(false); }}
-                          className="w-full flex items-center gap-2 px-3 py-2.5 text-[13px] text-red-400 hover:bg-red-500/10 transition-colors">
+                          className="w-full flex items-center gap-2 px-3 py-2.5 text-[13px] text-red-500 transition-colors"
+                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#fef2f2"}
+                          onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
                     <LogOut className="w-3.5 h-3.5" /> Sign Out
                   </button>
                 </div>
