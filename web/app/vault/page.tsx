@@ -232,23 +232,24 @@ function DateTimePicker({
   ];
   while (cells.length % 7) cells.push(null);
 
-  const todayY = now.getFullYear(), todayM = now.getMonth(), todayD = now.getDate();
+  // "Today" in Nigeria time for calendar highlighting.
+  const watNow  = nowWAT();
+  const todayY  = watNow.year, todayM = watNow.month, todayD = watNow.day;
 
   function prev() { if (mo === 0) { setYr(y => y - 1); setMo(11); } else setMo(m => m - 1); }
   function next() { if (mo === 11) { setYr(y => y + 1); setMo(0); } else setMo(m => m + 1); }
 
   function confirm() {
     if (!sel) return;
-    // Convert the Nigeria (WAT) selection to UTC ISO for storage.
+    // sel was created from calendar yr/mo/day clicks (local Date), use those
+    // year/month/day as Nigeria WAT, then convert to UTC ISO for the API.
     onConfirm(watToUtcIso(sel.getFullYear(), sel.getMonth(), sel.getDate(), hr, min));
   }
 
-  const isSameDay = (a: Date, b: Date) =>
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth()    === b.getMonth()    &&
-    a.getDate()     === b.getDate();
-
-  const todayDate = new Date(todayY, todayM, todayD);
+  // Compare calendar cells using plain year/month/day (no timezone risk).
+  function sameDayYMD(ay: number, am: number, ad: number, by: number, bm: number, bd: number) {
+    return ay === by && am === bm && ad === bd;
+  }
 
   return (
     // Fixed overlay so it's never clipped by parent overflow-hidden
@@ -302,16 +303,17 @@ function DateTimePicker({
           {cells.map((day, idx) => {
             if (!day) return <div key={idx} style={{ height: 36 }} />;
 
-            const cellDate = new Date(yr, mo, day);
-            const isPast   = cellDate < todayDate;
-            const isToday  = isSameDay(cellDate, todayDate);
-            const isSel    = sel ? isSameDay(cellDate, sel) : false;
+            // Compare purely by year/month/day — no Date objects, no timezone risk.
+            const isPast  = yr < todayY || (yr === todayY && mo < todayM) || (yr === todayY && mo === todayM && day < todayD);
+            const isToday = sameDayYMD(yr, mo, day, todayY, todayM, todayD);
+            const selWAT  = sel ? utcToWAT(sel.toISOString()) : null;
+            const isSel   = selWAT ? sameDayYMD(yr, mo, day, selWAT.year, selWAT.month, selWAT.day) : false;
 
             return (
               <button
                 key={idx}
                 disabled={isPast}
-                onClick={() => setSel(cellDate)}
+                onClick={() => setSel(new Date(yr, mo, day))}
                 style={{
                   height: 36,
                   borderRadius: 8,
