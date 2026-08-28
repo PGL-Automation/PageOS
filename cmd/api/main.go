@@ -204,6 +204,11 @@ func run() error {
 		api.Mount("/portfolio", portfolioH.Routes(identityH.Authenticator))
 		api.Mount("/crm", crmH.Routes(identityH.Authenticator))
 		api.Mount("/notifications", notifH.Routes(identityH.Authenticator))
+		// Vault notes — private personal notes scoped to the caller.
+		api.With(identityH.Authenticator).Get("/vault/notes", vaultListNotes(pool))
+		api.With(identityH.Authenticator).Post("/vault/notes", vaultCreateNote(pool))
+		api.With(identityH.Authenticator).Patch("/vault/notes/{id}", vaultUpdateNote(pool))
+		api.With(identityH.Authenticator).Delete("/vault/notes/{id}", vaultDeleteNote(pool))
 		// Admin endpoints: user lifecycle management (HR / GROUP_ADMIN).
 		api.With(identityH.Authenticator).Post("/admin/provision-user",
 			provisionUserHandler(identitySvc, orgSvc))
@@ -992,3 +997,88 @@ func (a *orgPositionAdapter) GetPositionByCode(ctx context.Context, subsidiaryID
 
 // ensure logger is used before first module call
 var _ = slog.Default
+
+// ── Vault Notes ───────────────────────────────────────────────────────────────
+
+func vaultListNotes(pool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, ok := identityhttp.UserFrom(r.Context())
+		if !ok { httpx.Error(w, 401, "unauthorized", "not authenticated"); return }
+		rows, err := pool.Query(r.Context(),
+			`SELECT id, title, body, created_at, updated_at
+			 FROM vault.note WHERE user_id = $1 ORDER BY updated_at DESC`, caller.ID)
+		if err != nil { httpx.Error(w, 500, "internal", err.Error()); return }
+		defer rows.Close()
+		type note struct {
+			ID        string    `json:"id"`
+			Title     string    `json:"title"`
+			Body      string    `json:"body"`
+			CreatedAt time.Time `json:"created_at"`
+			UpdatedAt time.Time `json:"updated_at"`
+		}
+		var notes []note
+		for rows.Next() {
+			var n note
+			if err := rows.Scan(&n.ID, &n.Title, &n.Body, &n.CreatedAt, &n.UpdatedAt); err != nil {
+				httpx.Error(w, 500, "internal", err.Error()); return
+			}
+			notes = append(notes, n)
+		}
+		if notes == nil { notes = []note{} }
+		httpx.JSON(w, 200, notes)
+	}
+}
+
+func vaultCreateNote(pool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, ok := identityhttp.UserFrom(r.Context())
+		if !ok { httpx.Error(w, 401, "unauthorized", "not authenticated"); return }
+		var in struct { Title string `json:"title"`; Body string `json:"body"` }
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			httpx.Error(w, 400, "bad_request", "invalid JSON"); return
+		}
+		var id string
+		var createdAt, updatedAt time.Time
+		err := pool.QueryRow(r.Context(),
+			`INSERT INTO vault.note (user_id, title, body) VALUES ($1,$2,$3)
+			 RETURNING id, created_at, updated_at`, caller.ID, in.Title, in.Body,
+		).Scan(&id, &createdAt, &updatedAt)
+		if err != nil { httpx.Error(w, 500, "internal", err.Error()); return }
+		httpx.JSON(w, 201, map[string]any{
+			"id": id, "title": in.Title, "body": in.Body,
+			"created_at": createdAt, "updated_at": updatedAt,
+		})
+	}
+}
+
+func vaultUpdateNote(pool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, ok := identityhttp.UserFrom(r.Context())
+		if !ok { httpx.Error(w, 401, "unauthorized", "not authenticated"); return }
+		noteID, err := uuid.Parse(chi.URLParam(r, "id"))
+		if err != nil { httpx.Error(w, 400, "bad_request", "invalid id"); return }
+		var in struct { Title string `json:"title"`; Body string `json:"body"` }
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			httpx.Error(w, 400, "bad_request", "invalid JSON"); return
+		}
+		tag, err := pool.Exec(r.Context(),
+			`UPDATE vault.note SET title=$1, body=$2, updated_at=now()
+			 WHERE id=$3 AND user_id=$4`, in.Title, in.Body, noteID, caller.ID)
+		if err != nil { httpx.Error(w, 500, "internal", err.Error()); return }
+		if tag.RowsAffected() == 0 { httpx.Error(w, 404, "not_found", "note not found"); return }
+		httpx.JSON(w, 200, map[string]any{"ok": true})
+	}
+}
+
+func vaultDeleteNote(pool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, ok := identityhttp.UserFrom(r.Context())
+		if !ok { httpx.Error(w, 401, "unauthorized", "not authenticated"); return }
+		noteID, err := uuid.Parse(chi.URLParam(r, "id"))
+		if err != nil { httpx.Error(w, 400, "bad_request", "invalid id"); return }
+		_, err = pool.Exec(r.Context(),
+			`DELETE FROM vault.note WHERE id=$1 AND user_id=$2`, noteID, caller.ID)
+		if err != nil { httpx.Error(w, 500, "internal", err.Error()); return }
+		httpx.JSON(w, 200, map[string]any{"ok": true})
+	}
+}
