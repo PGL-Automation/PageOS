@@ -229,14 +229,14 @@ export default function HRDashboard() {
   const firstName = user?.DisplayName?.split(" ")[0] ?? "there";
 
   const STATS = [
-    { label: "Total Employees", value: total,    icon: Users,      color: "#2563eb", bg: "#eff6ff" },
+    { label: "Total Employees", value: total,    icon: Users,      color: "#FF6600", bg: "#fff7f0" },
     { label: "Active",          value: active,   icon: UserCheck,  color: "#059669", bg: "#ecfdf5" },
     { label: "Inactive",        value: inactive, icon: UserX,      color: "#dc2626", bg: "#fef2f2" },
     { label: "No Assignment",   value: noAssign, icon: Clock,      color: "#d97706", bg: "#fffbeb" },
   ];
 
   const QUICK_ACTIONS = [
-    { label: "Onboard New User",     icon: UserPlus,     href: "/hr/admin",   color: "#2563eb", bg: "#eff6ff" },
+    { label: "Onboard New User",     icon: UserPlus,     href: "/hr/admin",   color: "#FF6600", bg: "#fff7f0" },
     { label: "Employee Directory",   icon: Users,        href: "/hr/records", color: "#7c3aed", bg: "#f5f3ff" },
     { label: "Leave Management",     icon: CalendarDays, href: "/hr/leave",   color: "#059669", bg: "#ecfdf5" },
     { label: "View Approvals",       icon: CheckSquare,  href: "/approval",   color: "#d97706", bg: "#fffbeb" },
@@ -269,7 +269,7 @@ export default function HRDashboard() {
               onClick={() => setSelectedSubId("all")}
               className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-[11px] font-semibold transition-all"
               style={selectedSubId === "all"
-                ? { background: "linear-gradient(135deg,#2563eb,#1d4ed8)", color: "white" }
+                ? { background: "linear-gradient(135deg,#FF6600,#E05500)", color: "white" }
                 : { background: "var(--pg-card)", border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}>
               <Building2 className="w-3 h-3" /> All
             </button>
@@ -279,7 +279,7 @@ export default function HRDashboard() {
                 onClick={() => setSelectedSubId(s.id)}
                 className="h-8 px-3 rounded-xl text-[11px] font-semibold transition-all"
                 style={selectedSubId === s.id
-                  ? { background: "linear-gradient(135deg,#2563eb,#1d4ed8)", color: "white" }
+                  ? { background: "linear-gradient(135deg,#FF6600,#E05500)", color: "white" }
                   : { background: "var(--pg-card)", border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}>
                 {s.name.replace("Page ", "")}
               </button>
@@ -355,7 +355,7 @@ export default function HRDashboard() {
               <h2 className="text-[13px] font-semibold" style={{ color: "var(--pg-text-1)" }}>
                 Recent Additions {selectedSubId !== "all" && <span className="text-[11px] font-normal" style={{ color: "var(--pg-text-3)" }}>— filtered</span>}
               </h2>
-              <Link href="/hr/records" className="text-[11px] font-medium text-blue-600 hover:underline flex items-center gap-0.5">
+              <Link href="/hr/records" className="text-[11px] font-medium text-orange-600 hover:underline flex items-center gap-0.5">
                 View all <ArrowRight className="w-3 h-3" />
               </Link>
             </div>
@@ -363,7 +363,7 @@ export default function HRDashboard() {
               <div className="py-12 flex flex-col items-center gap-2">
                 <Users className="w-8 h-8" style={{ color: "var(--pg-text-4)" }} />
                 <p className="text-[13px]" style={{ color: "var(--pg-text-3)" }}>No new employees added in the last 30 days.</p>
-                <Link href="/hr/admin" className="mt-1 text-[12px] font-semibold text-blue-600 hover:underline">
+                <Link href="/hr/admin" className="mt-1 text-[12px] font-semibold text-orange-600 hover:underline">
                   Onboard the first employee →
                 </Link>
               </div>
@@ -376,7 +376,7 @@ export default function HRDashboard() {
                   return (
                     <div key={u.user_id} className="flex items-center gap-3 px-5 py-3.5">
                       <div className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0"
-                           style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                           style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
                         {u.display_name.split(" ").slice(0,2).map(w => w[0]).join("").toUpperCase()}
                       </div>
                       <div className="flex-1 min-w-0">
@@ -405,12 +405,12 @@ export default function HRDashboard() {
             All Employees
             {selectedSubId !== "all" && (
               <span className="ml-2 text-[11px] font-normal px-2 py-0.5 rounded-full"
-                    style={{ background: "#eff6ff", color: "#2563eb" }}>
+                    style={{ background: "#fff7f0", color: "#FF6600" }}>
                 {subsidiaries.find(s => s.id === selectedSubId)?.name}
               </span>
             )}
           </h2>
-          <Link href="/hr/records" className="text-[11px] font-medium text-blue-600 hover:underline">View full directory →</Link>
+          <Link href="/hr/records" className="text-[11px] font-medium text-orange-600 hover:underline">View full directory →</Link>
         </div>
         <div className="divide-y" style={{ borderColor: "var(--pg-row-border)" }}>
           {employees.slice(0, 8).map(u => {
@@ -426,7 +426,7 @@ export default function HRDashboard() {
                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--pg-row-hover)"}
                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
                 <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
-                     style={{ background: u.user_status === "active" ? "linear-gradient(135deg,#2563eb,#1d4ed8)" : "#94a3b8" }}>
+                     style={{ background: u.user_status === "active" ? "linear-gradient(135deg,#FF6600,#E05500)" : "#94a3b8" }}>
                   {u.display_name.split(" ").slice(0,2).map(w => w[0]).join("").toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0 grid grid-cols-3 gap-2 items-center">
@@ -449,7 +449,7 @@ export default function HRDashboard() {
           })}
           {employees.length > 8 && (
             <div className="px-5 py-3">
-              <Link href="/hr/records" className="text-[12px] font-medium text-blue-600 hover:underline">
+              <Link href="/hr/records" className="text-[12px] font-medium text-orange-600 hover:underline">
                 +{employees.length - 8} more employees — view full directory
               </Link>
             </div>

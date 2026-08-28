@@ -176,7 +176,7 @@ export function DataTable<T extends Record<string, unknown> & { id: string }>({
                             className="w-full flex items-center justify-between px-3 py-2 text-[12px] transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
                             style={{ color: "var(--pg-text-2)" }}>
                       <span>{col.header}</span>
-                      {isVis ? <Eye className="w-3.5 h-3.5 text-blue-500" /> : <EyeOff className="w-3.5 h-3.5" style={{ color: "var(--pg-text-3)" }} />}
+                      {isVis ? <Eye className="w-3.5 h-3.5 text-orange-500" /> : <EyeOff className="w-3.5 h-3.5" style={{ color: "var(--pg-text-3)" }} />}
                     </button>
                   );
                 })}
@@ -202,8 +202,8 @@ export function DataTable<T extends Record<string, unknown> & { id: string }>({
               {bulkActions.length > 0 && (
                 <th className="w-10 pl-4 py-3 text-left">
                   <button onClick={toggleAll}>
-                    {allOnPage ? <CheckSquare className="w-4 h-4 text-blue-500" />
-                      : someOnPage ? <MinusSquare className="w-4 h-4 text-blue-500" />
+                    {allOnPage ? <CheckSquare className="w-4 h-4 text-orange-500" />
+                      : someOnPage ? <MinusSquare className="w-4 h-4 text-orange-500" />
                       : <Square className="w-4 h-4" style={{ color: "var(--pg-text-4)" }} />}
                   </button>
                 </th>
@@ -218,7 +218,7 @@ export function DataTable<T extends Record<string, unknown> & { id: string }>({
                        style={{ color: "var(--pg-text-3)" }}>
                     {col.header}
                     {col.sortable && (sortCol === col.id
-                      ? sortDir === "asc" ? <ChevronUp className="w-3 h-3 text-blue-500" /> : <ChevronDown className="w-3 h-3 text-blue-500" />
+                      ? sortDir === "asc" ? <ChevronUp className="w-3 h-3 text-orange-500" /> : <ChevronDown className="w-3 h-3 text-orange-500" />
                       : <ChevronsUpDown className="w-3 h-3 opacity-40" />
                     )}
                   </div>
@@ -254,7 +254,7 @@ export function DataTable<T extends Record<string, unknown> & { id: string }>({
                     className="transition-colors"
                     style={{
                       borderBottom: "1px solid var(--pg-row-border)",
-                      background: selected.has(row.id) ? "rgba(37,99,235,0.07)" : undefined,
+                      background: selected.has(row.id) ? "rgba(255,102,0,0.07)" : undefined,
                     }}
                     onMouseEnter={e => { if (!selected.has(row.id)) (e.currentTarget as HTMLElement).style.background = "var(--pg-row-hover)"; }}
                     onMouseLeave={e => { if (!selected.has(row.id)) (e.currentTarget as HTMLElement).style.background = ""; }}>
@@ -262,7 +262,7 @@ export function DataTable<T extends Record<string, unknown> & { id: string }>({
                     <td className="w-10 pl-4 py-3" onClick={e => { e.stopPropagation(); toggleRow(row.id); }}>
                       <button>
                         {selected.has(row.id)
-                          ? <CheckSquare className="w-4 h-4 text-blue-500" />
+                          ? <CheckSquare className="w-4 h-4 text-orange-500" />
                           : <Square className="w-4 h-4" style={{ color: "var(--pg-text-4)" }} />}
                       </button>
                     </td>
@@ -303,7 +303,7 @@ export function DataTable<T extends Record<string, unknown> & { id: string }>({
                 <button key={pg} onClick={() => setPage(pg)}
                         className={cn("w-7 h-7 rounded-lg text-[12px] font-medium transition-colors",
                                       pg !== page && "hover:bg-black/5 dark:hover:bg-white/10")}
-                        style={{ background: pg === page ? "#2563eb" : "transparent", color: pg === page ? "white" : "var(--pg-text-2)" }}>
+                        style={{ background: pg === page ? "#FF6600" : "transparent", color: pg === page ? "white" : "var(--pg-text-2)" }}>
                   {pg + 1}
                 </button>
               );

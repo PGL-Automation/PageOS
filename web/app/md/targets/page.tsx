@@ -52,7 +52,7 @@ export default function MDTargetsPage() {
           </select>
           <button onClick={save}
                   className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold text-white"
-                  style={{ background:saved?"#059669":"linear-gradient(135deg,#2563eb,#1d4ed8)", boxShadow:"0 1px 6px rgba(37,99,235,0.35)" }}>
+                  style={{ background:saved?"#059669":"linear-gradient(135deg,#FF6600,#E05500)", boxShadow:"0 1px 6px rgba(255,102,0,0.35)" }}>
             {saved ? <><Check className="w-3.5 h-3.5" /> Saved</> : <><Save className="w-3.5 h-3.5" /> Save Targets</>}
           </button>
         </div>
@@ -65,7 +65,7 @@ export default function MDTargetsPage() {
             <div key={wm.id} className="rounded-2xl overflow-hidden" style={{ background:"var(--pg-card)",border:"1px solid var(--pg-card-border)" }}>
               <div className="flex items-center gap-3 px-5 py-4" style={{ borderBottom:"1px solid var(--pg-row-border)" }}>
                 <div className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white"
-                     style={{ background:"linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                     style={{ background:"linear-gradient(135deg,#FF6600,#E05500)" }}>
                   {wm.name.split(" ").map(n => n[0]).join("").slice(0,2)}
                 </div>
                 <div>

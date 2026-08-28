@@ -130,7 +130,7 @@ async function apiFetch<T>(path: string, opts?: RequestInit): Promise<T> {
 const TXN_CFG: Record<ClientTransaction["txn_type"], { label: string; color: string; bg: string }> = {
   subscription:          { label: "Subscription",    color: "#065f46", bg: "#d1fae5" },
   redemption:            { label: "Redemption",      color: "#991b1b", bg: "#fee2e2" },
-  dividend_distribution: { label: "Dividend",        color: "#1e40af", bg: "#dbeafe" },
+  dividend_distribution: { label: "Dividend",        color: "#E05500", bg: "#fff0e0" },
   fee_charge:            { label: "Fee",             color: "#92400e", bg: "#fef3c7" },
   revaluation:           { label: "Revaluation",     color: "#4c1d95", bg: "#ede9fe" },
 };
@@ -327,7 +327,7 @@ function SubscriptionModal({
         {amount && nav && (
           <div
             className="px-3 py-2 rounded-xl text-[12px] font-mono"
-            style={{ background: "#eff6ff", border: "1px solid #bfdbfe", color: "#1e40af" }}
+            style={{ background: "#fff7f0", border: "1px solid #fed7aa", color: "#E05500" }}
           >
             ≈ {fmtUnits(parseFloat(amount) / parseFloat(nav))} units @ NAV {fmtNaira(parseFloat(nav))}
           </div>
@@ -521,7 +521,7 @@ function RedemptionModal({
                     style={{ background: "var(--pg-muted-bg)", color: "var(--pg-text-2)" }}>Cancel</button>
             <button type="submit" disabled={previewing}
                     className="h-9 px-5 rounded-xl text-[13px] font-semibold text-white flex items-center gap-2 disabled:opacity-60"
-                    style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                    style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
               {previewing ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Calculating…</> : "Preview Breakdown →"}
             </button>
           </div>
@@ -567,7 +567,7 @@ function RedemptionModal({
           {/* Other warnings */}
           {(preview.warnings ?? []).filter(w => !w.includes("Penalty") && !w.includes("lock-up")).map((w, i) => (
             <div key={i} className="flex items-start gap-2 px-3 py-2.5 rounded-xl text-[12px]"
-                 style={{ background: "#eff6ff", color: "#1d4ed8" }}>
+                 style={{ background: "#fff7f0", color: "#E05500" }}>
               <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" /> {w}
             </div>
           ))}
@@ -876,7 +876,7 @@ export default function ClientAccountStatementPage() {
         <Link
           href="/wm/portfolio/accounts"
           className="text-[13px] font-semibold"
-          style={{ color: "#2563eb" }}
+          style={{ color: "#FF6600" }}
         >
           Back to Accounts
         </Link>
@@ -901,7 +901,7 @@ export default function ClientAccountStatementPage() {
             href="/wm/portfolio/accounts"
             className="flex items-center gap-1.5 text-[12px] mb-2 transition-colors"
             style={{ color: "var(--pg-text-3)" }}
-            onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#2563eb"}
+            onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#FF6600"}
             onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "var(--pg-text-3)"}
           >
             <ChevronLeft className="w-3.5 h-3.5" />
@@ -980,8 +980,8 @@ export default function ClientAccountStatementPage() {
           label="Current Value"
           value={fmtNaira(account.current_value)}
           sub={`${fmtUnits(account.units_held)} units held`}
-          color="#2563eb"
-          accentBar="#2563eb"
+          color="#FF6600"
+          accentBar="#FF6600"
           icon={TrendingUp}
         />
 

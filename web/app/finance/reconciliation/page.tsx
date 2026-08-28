@@ -166,7 +166,7 @@ function AddAccountForm({ subsidiaryId, onCreated }: { subsidiaryId: string; onC
       <div className="flex justify-end">
         <button type="submit" disabled={saving}
                 className="h-9 px-5 rounded-xl text-[13px] font-semibold text-white disabled:opacity-60"
-                style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
           {saving ? "Creating…" : "Add Bank Account"}
         </button>
       </div>
@@ -213,7 +213,7 @@ function GLCodeEditor({ account, onUpdated }: { account: BankAccount; onUpdated:
         {!editing && (
           account.gl_account_code ? (
             <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full"
-                  style={{ background: "#eff6ff", color: "#2563eb" }}>{account.gl_account_code}</span>
+                  style={{ background: "#fff7f0", color: "#FF6600" }}>{account.gl_account_code}</span>
           ) : (
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
                   style={{ background: "#fef2f2", color: "#dc2626" }}>not set</span>
@@ -222,7 +222,7 @@ function GLCodeEditor({ account, onUpdated }: { account: BankAccount; onUpdated:
         {!editing && (
           <button onClick={() => setEditing(true)}
                   className="ml-auto text-[10px] font-semibold"
-                  style={{ color: "#2563eb" }}>
+                  style={{ color: "#FF6600" }}>
             {account.gl_account_code ? "Change" : "Set now"}
           </button>
         )}
@@ -237,7 +237,7 @@ function GLCodeEditor({ account, onUpdated }: { account: BankAccount; onUpdated:
           </select>
           <button onClick={save} disabled={saving}
                   className="h-8 px-3 rounded-lg text-[11px] font-semibold text-white disabled:opacity-60"
-                  style={{ background: "#2563eb" }}>
+                  style={{ background: "#FF6600" }}>
             {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save"}
           </button>
           {account.gl_account_code && (
@@ -457,7 +457,7 @@ function UploadSection({
           {pendingStatFile && !statResult && (
             <div className="flex items-center gap-2 mb-3 px-3 py-2.5 rounded-xl"
                  style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)" }}>
-              <FileText className="w-4 h-4 shrink-0" style={{ color: "#2563eb" }} />
+              <FileText className="w-4 h-4 shrink-0" style={{ color: "#FF6600" }} />
               <div className="flex-1 min-w-0">
                 <p className="text-[12px] font-medium truncate" style={{ color: "var(--pg-text-1)" }}>{pendingStatFile.name}</p>
                 <p className="text-[10px]" style={{ color: "var(--pg-text-3)" }}>
@@ -494,7 +494,7 @@ function UploadSection({
           {!pendingStatFile && !statResult && (
             <button onClick={() => statRef.current?.click()}
                     className="w-full flex items-center justify-center gap-2 h-10 rounded-xl text-[12px] font-semibold text-white"
-                    style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                    style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
               <Upload className="w-3.5 h-3.5" /> Choose Statement File (CSV or Excel)
             </button>
           )}
@@ -648,8 +648,8 @@ function UploadSection({
       {/* Step 3 prompt */}
       {(statResult || hasStatements) && syncResult && (
         <div className="flex items-center gap-3 px-5 py-4"
-             style={{ borderTop: "1px solid var(--pg-row-border)", background: "rgba(37,99,235,0.04)" }}>
-          <CheckCircle2 className="w-4 h-4 text-blue-500 shrink-0" />
+             style={{ borderTop: "1px solid var(--pg-row-border)", background: "rgba(255,102,0,0.04)" }}>
+          <CheckCircle2 className="w-4 h-4 text-orange-500 shrink-0" />
           <p className="text-[12px] font-medium" style={{ color: "var(--pg-text-2)" }}>
             Statement uploaded and GL synced. Select a date range above and click <strong>New Run</strong> to start auto-matching.
           </p>
@@ -686,11 +686,11 @@ function MatchRowContent({
 
   return (
     <tr key={m.match_id}
-        className={cn("border-b transition-colors", isUnmatched && "cursor-pointer", isSelected && "ring-2 ring-inset ring-blue-400")}
-        style={{ borderColor: "var(--pg-row-border)", background: isSelected ? "rgba(37,99,235,0.07)" : undefined }}
+        className={cn("border-b transition-colors", isUnmatched && "cursor-pointer", isSelected && "ring-2 ring-inset ring-orange-400")}
+        style={{ borderColor: "var(--pg-row-border)", background: isSelected ? "rgba(255,102,0,0.07)" : undefined }}
         onClick={onClick}
         onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = "var(--pg-row-hover)"; }}
-        onMouseLeave={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = isSelected ? "rgba(37,99,235,0.07)" : ""; }}>
+        onMouseLeave={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = isSelected ? "rgba(255,102,0,0.07)" : ""; }}>
       {/* Bank side */}
       <td className="py-3 pl-5 pr-3 w-28">
         <span className="text-[11px] font-mono" style={{ color: "var(--pg-text-3)" }}>{m.bank_date ?? "—"}</span>
@@ -730,7 +730,7 @@ function MatchRowContent({
         )}
         {/* Unmatched — click to select for manual match */}
         {isUnmatched && (
-          <p className="text-[9px] mt-1" style={{ color: isSelected ? "#2563eb" : "var(--pg-text-4)" }}>
+          <p className="text-[9px] mt-1" style={{ color: isSelected ? "#FF6600" : "var(--pg-text-4)" }}>
             {isSelected ? "✓ Selected" : "Click to select"}
           </p>
         )}
@@ -1076,7 +1076,7 @@ export default function ReconciliationPage() {
           </div>
           <button onClick={() => setShowAddAccount(true)}
                   className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold text-white"
-                  style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                  style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
             <Plus className="w-3.5 h-3.5" /> Add Bank Account
           </button>
         </div>
@@ -1147,7 +1147,7 @@ export default function ReconciliationPage() {
                 return (
                   <button key={f} onClick={() => setFilter(f)}
                           className={cn("flex items-center gap-1 h-7 px-3 rounded-lg text-[11px] font-medium transition-all capitalize", filter === f ? "text-white" : "")}
-                          style={filter === f ? { background: "linear-gradient(135deg,#2563eb,#1d4ed8)" } : { color: "var(--pg-text-2)" }}>
+                          style={filter === f ? { background: "linear-gradient(135deg,#FF6600,#E05500)" } : { color: "var(--pg-text-2)" }}>
                     {f.replace("_", " ")}
                     <span className={cn("text-[9px] font-bold px-1 py-0.5 rounded-full", filter === f ? "bg-white/20 text-white" : "")}
                           style={filter !== f ? { background: "var(--pg-muted-bg)", color: "var(--pg-text-3)" } : undefined}>
@@ -1227,9 +1227,9 @@ export default function ReconciliationPage() {
             {/* Manual match action bar */}
             {(selectedBankMatchId || selectedLedgerMatchId) && (
               <div className="flex items-center justify-between px-5 py-3 gap-4"
-                   style={{ borderTop: "1px solid var(--pg-row-border)", background: "rgba(37,99,235,0.05)" }}>
+                   style={{ borderTop: "1px solid var(--pg-row-border)", background: "rgba(255,102,0,0.05)" }}>
                 <div className="flex items-center gap-3 text-[12px]" style={{ color: "var(--pg-text-2)" }}>
-                  <span className={cn("px-2 py-0.5 rounded-full text-[11px] font-medium", selectedBankMatchId ? "text-blue-700 bg-blue-100" : "text-slate-400 bg-slate-100")}>
+                  <span className={cn("px-2 py-0.5 rounded-full text-[11px] font-medium", selectedBankMatchId ? "text-orange-700 bg-orange-100" : "text-slate-400 bg-slate-100")}>
                     {selectedBankMatchId ? "✓ Bank item selected" : "Select an unmatched bank line"}
                   </span>
                   <span style={{ color: "var(--pg-text-4)" }}>↔</span>
@@ -1246,7 +1246,7 @@ export default function ReconciliationPage() {
                   <button onClick={confirmManualMatch}
                           disabled={!selectedBankMatchId || !selectedLedgerMatchId || manualMatching}
                           className="h-8 px-4 rounded-lg text-[12px] font-semibold text-white disabled:opacity-40"
-                          style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                          style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
                     {manualMatching ? "Matching…" : "Confirm Manual Match"}
                   </button>
                 </div>
@@ -1289,7 +1289,7 @@ export default function ReconciliationPage() {
               <button key={r.id}
                       onClick={() => setSelectedRunId(r.id)}
                       className="w-full flex items-center gap-4 px-5 py-3.5 text-left transition-colors"
-                      style={{ background: selectedRunId === r.id ? "rgba(37,99,235,0.05)" : undefined }}
+                      style={{ background: selectedRunId === r.id ? "rgba(255,102,0,0.05)" : undefined }}
                       onMouseEnter={e => { if (selectedRunId !== r.id) (e.currentTarget as HTMLElement).style.background = "var(--pg-row-hover)"; }}
                       onMouseLeave={e => { if (selectedRunId !== r.id) (e.currentTarget as HTMLElement).style.background = ""; }}>
                 <RefreshCw className="w-4 h-4 shrink-0" style={{ color: r.status === "closed" ? "#059669" : "#d97706" }} />
@@ -1306,7 +1306,7 @@ export default function ReconciliationPage() {
                   {r.status}
                 </span>
                 {selectedRunId === r.id && (
-                  <span className="text-[11px] font-semibold text-blue-600 shrink-0">Viewing ▶</span>
+                  <span className="text-[11px] font-semibold text-orange-600 shrink-0">Viewing ▶</span>
                 )}
               </button>
             ))}

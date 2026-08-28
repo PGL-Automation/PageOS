@@ -35,7 +35,7 @@ function getMockResponse(prompt: string): { content: string; cards?: ResultCard[
     return {
       content: "Here's the revenue breakdown for Page Capital in Q4 2026. Total net revenue is **₦3.2B**, up 8.2% from Q3. The primary drivers are fixed income instruments and equity mandates.",
       cards: [
-        { type: "metric", label: "Fixed Income",    value: "₦1.84B", description: "57.5% of revenue · ↑9.2%",  color: "#2563eb" },
+        { type: "metric", label: "Fixed Income",    value: "₦1.84B", description: "57.5% of revenue · ↑9.2%",  color: "#FF6600" },
         { type: "metric", label: "Equity Mandates", value: "₦924M",  description: "28.9% of revenue · ↑6.1%",  color: "#7c3aed" },
         { type: "metric", label: "Money Market",    value: "₦436M",  description: "13.6% of revenue · ↑12.4%", color: "#0891b2" },
         { type: "insight", label: "AI Insight", description: "Fixed income growth is outpacing equity — consider rebalancing mandate targets to capture more equity market upside in Q1 2027." },
@@ -71,7 +71,7 @@ function getMockResponse(prompt: string): { content: string; cards?: ResultCard[
     return {
       content: "Here's a draft executive summary for the Q4 2026 board report:\n\n**Performance Overview**\nPage Capital delivered strong Q4 results with net revenue of ₦3.2B (+8.2% QoQ), driven by fixed income growth and new mandate wins. AUM reached ₦89.4B, a 12.4% year-on-year improvement.\n\n**Operational Highlights**\n- 18 new client accounts opened during the quarter\n- Bank reconciliation automation reduced manual effort by 73%\n- Compliance rate maintained at 100% with no regulatory incidents\n\n**Key Risks**\n- Cash flow pressure emerging in Q1 2027 if pipeline deals are delayed\n- 2 FRCN filings due within 14 days",
       cards: [
-        { type: "action", label: "Export as PDF",  description: "Full board-ready document", color: "#2563eb" },
+        { type: "action", label: "Export as PDF",  description: "Full board-ready document", color: "#FF6600" },
         { type: "action", label: "Share with CFO", description: "Send for review before board", color: "#7c3aed" },
       ],
     };
@@ -95,7 +95,7 @@ function MessageBubble({ msg, initials }: { msg: Message; initials: string }) {
       {/* Avatar */}
       <div className={cn("w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold mt-0.5",
                          isUser ? "text-white" : "text-white")}
-           style={{ background: isUser ? "linear-gradient(135deg,#2563eb,#1d4ed8)" : "linear-gradient(135deg,#7c3aed,#4f46e5)" }}>
+           style={{ background: isUser ? "linear-gradient(135deg,#FF6600,#E05500)" : "linear-gradient(135deg,#7c3aed,#4f46e5)" }}>
         {isUser ? initials : <Brain className="w-3.5 h-3.5" />}
       </div>
 
@@ -106,7 +106,7 @@ function MessageBubble({ msg, initials }: { msg: Message; initials: string }) {
                              ? "text-white rounded-tr-sm"
                              : "text-slate-800 rounded-tl-sm")}
              style={isUser
-               ? { background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }
+               ? { background: "linear-gradient(135deg,#FF6600,#E05500)" }
                : { background: "#ffffff", border: "1px solid #e8edf3", boxShadow: "0 1px 4px rgba(15,23,42,0.05)" }}>
           <p className="text-[13.5px] leading-relaxed whitespace-pre-wrap"
              dangerouslySetInnerHTML={{
@@ -122,9 +122,9 @@ function MessageBubble({ msg, initials }: { msg: Message; initials: string }) {
                    className={cn("rounded-xl px-4 py-3 flex-1 min-w-[180px]",
                                  card.type === "action" ? "cursor-pointer hover:opacity-90 transition-opacity" : "")}
                    style={{
-                     background: card.type === "insight" ? "#f8fafc" : card.type === "action" ? (card.color || "#2563eb") : "#ffffff",
-                     border: card.type === "insight" ? "1px solid #e8edf3" : card.type === "action" ? "none" : `2px solid ${card.color || "#2563eb"}18`,
-                     boxShadow: card.type === "metric" ? `0 0 0 1px ${card.color || "#2563eb"}20, 0 1px 4px rgba(15,23,42,0.05)` : "none",
+                     background: card.type === "insight" ? "#f8fafc" : card.type === "action" ? (card.color || "#FF6600") : "#ffffff",
+                     border: card.type === "insight" ? "1px solid #e8edf3" : card.type === "action" ? "none" : `2px solid ${card.color || "#FF6600"}18`,
+                     boxShadow: card.type === "metric" ? `0 0 0 1px ${card.color || "#FF6600"}20, 0 1px 4px rgba(15,23,42,0.05)` : "none",
                    }}>
                 <p className="text-[10px] font-bold uppercase tracking-widest mb-1"
                    style={{ color: card.type === "action" ? "rgba(255,255,255,0.7)" : "#94a3b8" }}>
@@ -198,7 +198,7 @@ export default function AIPage() {
       {empty && (
         <div className="flex-1 flex flex-col items-center justify-center text-center px-6 pb-16">
           <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-6"
-               style={{ background: "linear-gradient(135deg,#2563eb,#7c3aed)", boxShadow: "0 8px 32px rgba(37,99,235,0.35)" }}>
+               style={{ background: "linear-gradient(135deg,#FF6600,#7c3aed)", boxShadow: "0 8px 32px rgba(255,102,0,0.35)" }}>
             <Brain className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-[22px] font-bold text-slate-900 leading-tight">PageOS AI Copilot</h1>
@@ -213,8 +213,8 @@ export default function AIPage() {
                       className="flex items-start gap-3 text-left p-4 rounded-xl bg-white hover:bg-slate-50 transition-colors group"
                       style={{ border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(15,23,42,0.05)" }}>
                 <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
-                     style={{ background: "#eff6ff" }}>
-                  <s.icon className="w-3.5 h-3.5 text-blue-600" />
+                     style={{ background: "#fff7f0" }}>
+                  <s.icon className="w-3.5 h-3.5 text-orange-600" />
                 </div>
                 <div>
                   <p className="text-[12px] font-semibold text-slate-700">{s.label}</p>
@@ -278,7 +278,7 @@ export default function AIPage() {
               onClick={() => sendPrompt(input)}
               disabled={!input.trim() || loading}
               className="w-8 h-8 rounded-xl flex items-center justify-center transition-all hover:opacity-90 disabled:opacity-30"
-              style={{ background: "linear-gradient(135deg,#2563eb,#7c3aed)" }}>
+              style={{ background: "linear-gradient(135deg,#FF6600,#7c3aed)" }}>
               <Send className="w-3.5 h-3.5 text-white" />
             </button>
           </div>

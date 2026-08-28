@@ -130,7 +130,7 @@ function CreateCycleDialog({ onClose }: { onClose: () => void }) {
                     style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}>Cancel</button>
             <button type="submit" disabled={saving}
                     className="h-9 px-5 rounded-xl text-[13px] font-semibold text-white disabled:opacity-60"
-                    style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                    style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Create Cycle"}
             </button>
           </div>
@@ -192,7 +192,7 @@ export default function AppraisalDashboard() {
   const closedCycles = cycles.filter(c => c.status === "closed" || c.status === "archived");
 
   const STATS = [
-    { label: "Total Cycles",   value: cycles.length,   color: "#2563eb", bg: "#eff6ff",  icon: ClipboardList },
+    { label: "Total Cycles",   value: cycles.length,   color: "#FF6600", bg: "#fff7f0",  icon: ClipboardList },
     { label: "Open",           value: openCycles.length, color: "#059669", bg: "#ecfdf5", icon: Play },
     { label: "Draft",          value: draftCycles.length, color: "#d97706", bg: "#fffbeb", icon: Settings2 },
     { label: "Closed",         value: closedCycles.length, color: "#64748b", bg: "#f1f5f9", icon: Lock },
@@ -289,9 +289,9 @@ export default function AppraisalDashboard() {
                       <p className="text-[10px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "var(--pg-text-3)" }}>Self-submitted</p>
                       <div className="flex items-center gap-2">
                         <div className="flex-1 h-1.5 rounded-full" style={{ background: "var(--pg-muted-bg)" }}>
-                          <div className="h-1.5 rounded-full transition-all" style={{ width: `${selfPct}%`, background: "#2563eb" }} />
+                          <div className="h-1.5 rounded-full transition-all" style={{ width: `${selfPct}%`, background: "#FF6600" }} />
                         </div>
-                        <span className="text-[11px] font-bold tabular" style={{ color: "#2563eb" }}>{cycle.self_submitted_count}/{cycle.submission_count}</span>
+                        <span className="text-[11px] font-bold tabular" style={{ color: "#FF6600" }}>{cycle.self_submitted_count}/{cycle.submission_count}</span>
                       </div>
                     </div>
                     <div>
@@ -305,7 +305,7 @@ export default function AppraisalDashboard() {
                     </div>
                     <div className="flex items-center justify-end">
                       <Link href={`/appraisal/${cycle.id}/manage`}
-                            className="text-[11px] font-medium text-blue-600 hover:underline flex items-center gap-0.5">
+                            className="text-[11px] font-medium text-orange-600 hover:underline flex items-center gap-0.5">
                         View submissions <ChevronRight className="w-3 h-3" />
                       </Link>
                     </div>
@@ -331,7 +331,7 @@ export default function AppraisalDashboard() {
         </div>
         <button onClick={() => setShowCreate(true)}
                 className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold text-white"
-                style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
           <Plus className="w-3.5 h-3.5" /> New Cycle
         </button>
       </div>
@@ -367,7 +367,7 @@ export default function AppraisalDashboard() {
           <p className="text-[12px] mt-1 mb-4" style={{ color: "var(--pg-text-4)" }}>Create your first cycle to start evaluating performance.</p>
           <button onClick={() => setShowCreate(true)}
                   className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold text-white"
-                  style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                  style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
             <Plus className="w-3.5 h-3.5" /> New Cycle
           </button>
         </div>

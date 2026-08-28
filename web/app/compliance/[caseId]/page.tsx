@@ -58,7 +58,7 @@ const OUTCOME_CFG = {
 
 const STATE_CFG: Record<string, { label: string; color: string; bg: string }> = {
   submitted:         { label: "Submitted",         color: "#0369a1", bg: "#e0f2fe" },
-  in_review:         { label: "In Review",         color: "#1d4ed8", bg: "#dbeafe" },
+  in_review:         { label: "In Review",         color: "#E05500", bg: "#fff0e0" },
   compliance_review: { label: "Compliance Review", color: "#6d28d9", bg: "#ede9fe" },
   approved:          { label: "Approved",          color: "#065f46", bg: "#d1fae5" },
   rejected:          { label: "Rejected",          color: "#991b1b", bg: "#fee2e2" },
@@ -658,7 +658,7 @@ export default function ComplianceCasePage() {
         <div className="hidden md:flex items-center gap-2">
           <div className="w-28 h-2 rounded-full" style={{ background: "var(--pg-muted-bg)" }}>
             <div className="h-2 rounded-full transition-all"
-                 style={{ width: `${(done / ALL_CHECKS.length) * 100}%`, background: passedAll ? "#059669" : "linear-gradient(90deg,#6d28d9,#2563eb)" }} />
+                 style={{ width: `${(done / ALL_CHECKS.length) * 100}%`, background: passedAll ? "#059669" : "linear-gradient(90deg,#6d28d9,#FF6600)" }} />
           </div>
           <span className="text-[12px] font-bold" style={{ color: passedAll ? "#059669" : "#6d28d9" }}>
             {Math.round((done / ALL_CHECKS.length) * 100)}%

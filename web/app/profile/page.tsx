@@ -6,7 +6,7 @@ import { User, Mail, Building2, Clock, Shield, Star, CheckSquare, RefreshCw, Bar
 import { cn } from "@/lib/utils";
 
 const RECENT_ACTIVITY = [
-  { icon: CheckSquare, text: "Approved account opening — Tunde Balogun",  time: "2h ago", color: "#2563eb" },
+  { icon: CheckSquare, text: "Approved account opening — Tunde Balogun",  time: "2h ago", color: "#FF6600" },
   { icon: RefreshCw,   text: "Reviewed Nov reconciliation — GT Bank",      time: "5h ago", color: "#7c3aed" },
   { icon: BarChart2,   text: "Generated Q4 revenue report",               time: "1d ago", color: "#059669" },
   { icon: FileText,    text: "Submitted compliance check — Delta Corp",    time: "2d ago", color: "#d97706" },
@@ -40,7 +40,7 @@ export default function ProfilePage() {
         <div className="px-6 pb-6">
           <div className="flex items-end gap-4 -mt-10 mb-4">
             <div className="w-20 h-20 rounded-2xl flex items-center justify-center text-[22px] font-bold text-white ring-4 ring-white dark:ring-[#0f131d]"
-                 style={{ background:"linear-gradient(135deg,#2563eb,#1d4ed8)", boxShadow:"0 4px 16px rgba(37,99,235,0.4)" }}>
+                 style={{ background:"linear-gradient(135deg,#FF6600,#E05500)", boxShadow:"0 4px 16px rgba(255,102,0,0.4)" }}>
               {initials}
             </div>
             <div className="flex-1 mb-1">
@@ -49,7 +49,7 @@ export default function ProfilePage() {
                   <input value={name} onChange={e => setName(e.target.value)}
                          className="h-9 px-3 rounded-xl text-[15px] font-bold outline-none flex-1"
                          style={{ background:"var(--pg-input)", border:"1px solid var(--pg-input-border)", color:"var(--pg-text-1)" }} />
-                  <button onClick={() => setEditing(false)} className="h-9 px-3 rounded-xl text-[12px] font-semibold text-white" style={{ background:"#2563eb" }}>Save</button>
+                  <button onClick={() => setEditing(false)} className="h-9 px-3 rounded-xl text-[12px] font-semibold text-white" style={{ background:"#FF6600" }}>Save</button>
                 </div>
               ) : (
                 <div className="flex items-center gap-2">

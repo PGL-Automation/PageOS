@@ -959,8 +959,8 @@ export default function ConsolidatedReportsPage() {
                 title="Assets"
                 groups={consolidatedBS.assets ?? []}
                 total={consolidatedBS.total_assets}
-                color="#2563eb"
-                bg="#eff6ff"
+                color="#FF6600"
+                bg="#fff7f0"
                 amtColor="var(--pg-text-1)"
               />
               <ConsolidatedSection
@@ -988,8 +988,8 @@ export default function ConsolidatedReportsPage() {
                   subs={successfulBSSubs.map((r) => r.sub)}
                   allGroupData={successfulBSSubs.map((r) => r.report?.assets ?? null)}
                   consolidated={consolidatedBS.assets ?? []}
-                  color="#2563eb"
-                  bg="#eff6ff"
+                  color="#FF6600"
+                  bg="#fff7f0"
                   amtColor="var(--pg-text-1)"
                 />
               </div>
@@ -1024,7 +1024,7 @@ export default function ConsolidatedReportsPage() {
             style={{ background: "var(--pg-card)", border: "2px solid var(--pg-card-border)" }}
           >
             {[
-              { label: "Total Assets", value: consolidatedBS.total_assets, color: "#2563eb" },
+              { label: "Total Assets", value: consolidatedBS.total_assets, color: "#FF6600" },
               {
                 label: "Total Liabilities",
                 value: consolidatedBS.total_liabilities,

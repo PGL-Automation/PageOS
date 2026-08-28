@@ -18,7 +18,7 @@ type OnboardingCase = components["schemas"]["OnboardingCase"];
 
 const STATE_CFG: Record<string, { label: string; color: string; bg: string }> = {
   submitted:         { label: "Submitted",         color: "#0369a1", bg: "#e0f2fe" },
-  in_review:         { label: "In Review",         color: "#1d4ed8", bg: "#dbeafe" },
+  in_review:         { label: "In Review",         color: "#E05500", bg: "#fff0e0" },
   compliance_review: { label: "Compliance Review", color: "#6d28d9", bg: "#ede9fe" },
   approved:          { label: "Approved",          color: "#065f46", bg: "#d1fae5" },
   rejected:          { label: "Rejected",          color: "#991b1b", bg: "#fee2e2" },

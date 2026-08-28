@@ -19,7 +19,7 @@ type Account = {
 
 const TYPE_ORDER = ["ASSET", "LIABILITY", "EQUITY", "REVENUE", "EXPENSE"];
 const TYPE_LABELS: Record<string, { label: string; color: string; bg: string }> = {
-  ASSET:     { label: "Asset",     color: "#2563eb", bg: "#eff6ff" },
+  ASSET:     { label: "Asset",     color: "#FF6600", bg: "#fff7f0" },
   LIABILITY: { label: "Liability", color: "#dc2626", bg: "#fef2f2" },
   EQUITY:    { label: "Equity",    color: "#7c3aed", bg: "#f5f3ff" },
   REVENUE:   { label: "Revenue",   color: "#059669", bg: "#ecfdf5" },
@@ -145,7 +145,7 @@ function AccountModal({ editing, onClose }: { editing?: Account; onClose: () => 
 
           <label className="flex items-center gap-2 cursor-pointer">
             <div className={cn("w-4 h-4 rounded border flex items-center justify-center transition-all",
-                               isHeader ? "bg-blue-500 border-blue-500" : "border-slate-300")}
+                               isHeader ? "bg-orange-500 border-orange-500" : "border-slate-300")}
                  onClick={() => setHeader(v => !v)}>
               {isHeader && <Check className="w-2.5 h-2.5 text-white" />}
             </div>
@@ -174,7 +174,7 @@ function AccountModal({ editing, onClose }: { editing?: Account; onClose: () => 
                     style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}>Cancel</button>
             <button type="submit" disabled={saving}
                     className="h-9 px-5 rounded-xl text-[13px] font-semibold text-white disabled:opacity-60"
-                    style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                    style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : (editing ? "Save Changes" : "Create Account")}
             </button>
           </div>
@@ -244,7 +244,7 @@ export default function ChartOfAccountsPage() {
         </div>
         <button onClick={() => setShowCreate(true)}
                 className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold text-white"
-                style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)", boxShadow: "0 1px 6px rgba(37,99,235,0.35)" }}>
+                style={{ background: "linear-gradient(135deg,#FF6600,#E05500)", boxShadow: "0 1px 6px rgba(255,102,0,0.35)" }}>
           <Plus className="w-3.5 h-3.5" /> New Account
         </button>
       </div>
@@ -274,7 +274,7 @@ export default function ChartOfAccountsPage() {
         </div>
         <label className="flex items-center gap-2 cursor-pointer text-[12px]" style={{ color: "var(--pg-text-2)" }}>
           <div className={cn("w-4 h-4 rounded border flex items-center justify-center transition-all",
-                             showInactive ? "bg-blue-500 border-blue-500" : "border-slate-300 dark:border-slate-600")}
+                             showInactive ? "bg-orange-500 border-orange-500" : "border-slate-300 dark:border-slate-600")}
                onClick={() => setShowInactive(v => !v)}>
             {showInactive && <Check className="w-2.5 h-2.5 text-white" />}
           </div>
@@ -335,8 +335,8 @@ export default function ChartOfAccountsPage() {
 
                             {/* Normal balance */}
                             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded"
-                                  style={{ background: a.normal_balance === "DR" ? "#eff6ff" : "#fef2f2",
-                                           color: a.normal_balance === "DR" ? "#2563eb" : "#dc2626" }}>
+                                  style={{ background: a.normal_balance === "DR" ? "#fff7f0" : "#fef2f2",
+                                           color: a.normal_balance === "DR" ? "#FF6600" : "#dc2626" }}>
                               {a.normal_balance}
                             </span>
 

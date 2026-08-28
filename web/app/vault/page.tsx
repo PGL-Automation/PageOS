@@ -36,7 +36,7 @@ function ScanBadge({ status }: { status: string }) {
 }
 
 function DocIcon({ mimeType }: { mimeType: string }) {
-  if (mimeType.startsWith("image/")) return <ImageIcon className="w-5 h-5 text-blue-500" />;
+  if (mimeType.startsWith("image/")) return <ImageIcon className="w-5 h-5 text-orange-500" />;
   if (mimeType === "application/pdf") return <FileText className="w-5 h-5 text-red-500" />;
   return <File className="w-5 h-5" style={{ color: "var(--pg-text-3)" }} />;
 }
@@ -66,7 +66,7 @@ function PreviewModal({ doc, onClose }: { doc: VaultDoc; onClose: () => void }) 
           <div className="flex items-center gap-2">
             <a href={url} target="_blank" rel="noopener noreferrer"
                className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-[12px] font-semibold text-white"
-               style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+               style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
               <Download className="w-3.5 h-3.5" /> Download
             </a>
             <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-xl" style={{ color: "var(--pg-text-3)" }}>
@@ -85,7 +85,7 @@ function PreviewModal({ doc, onClose }: { doc: VaultDoc; onClose: () => void }) 
               <p className="text-[13px] mt-3" style={{ color: "var(--pg-text-2)" }}>Preview not available for this file type.</p>
               <a href={url} target="_blank" rel="noopener noreferrer"
                  className="mt-4 inline-flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold text-white"
-                 style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                 style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
                 <Download className="w-3.5 h-3.5" /> Download File
               </a>
             </div>
@@ -147,7 +147,7 @@ export default function VaultPage() {
       <div className="flex items-start justify-between">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <FolderLock className="w-5 h-5 text-blue-600" />
+            <FolderLock className="w-5 h-5 text-orange-600" />
             <h1 className="text-[20px] font-bold" style={{ color: "var(--pg-text-1)" }}>My Private Vault</h1>
           </div>
           <p className="text-[12px]" style={{ color: "var(--pg-text-3)" }}>
@@ -158,7 +158,7 @@ export default function VaultPage() {
           onClick={() => fileInputRef.current?.click()}
           disabled={uploading}
           className="flex items-center gap-2 h-9 px-4 rounded-xl text-[13px] font-semibold text-white disabled:opacity-60"
-          style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)", boxShadow: "0 1px 6px rgba(37,99,235,0.35)" }}>
+          style={{ background: "linear-gradient(135deg,#FF6600,#E05500)", boxShadow: "0 1px 6px rgba(255,102,0,0.35)" }}>
           {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
           {uploading ? "Uploading…" : "Upload File"}
         </button>
@@ -168,8 +168,8 @@ export default function VaultPage() {
 
       {/* Privacy notice */}
       <div className="flex items-center gap-3 px-4 py-3 rounded-xl"
-           style={{ background: "rgba(37,99,235,0.06)", border: "1px solid rgba(37,99,235,0.15)" }}>
-        <Lock className="w-4 h-4 text-blue-600 shrink-0" />
+           style={{ background: "rgba(255,102,0,0.06)", border: "1px solid rgba(255,102,0,0.15)" }}>
+        <Lock className="w-4 h-4 text-orange-600 shrink-0" />
         <p className="text-[12px]" style={{ color: "var(--pg-text-2)" }}>
           <strong>Fully private.</strong> These files are stored securely and are only accessible to you. No HR, manager, or admin can view them.
         </p>
@@ -203,7 +203,7 @@ export default function VaultPage() {
             </p>
             <button onClick={() => fileInputRef.current?.click()}
                     className="flex items-center gap-2 h-9 px-4 rounded-xl text-[13px] font-semibold text-white"
-                    style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                    style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
               <Upload className="w-3.5 h-3.5" /> Upload First File
             </button>
           </div>

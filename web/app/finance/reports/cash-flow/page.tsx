@@ -112,7 +112,7 @@ export default function CashFlowPage() {
 
   const SECTIONS = data ? [
     { section: data.operating, color: "#059669", bg: "#ecfdf5" },
-    { section: data.investing, color: "#2563eb", bg: "#eff6ff" },
+    { section: data.investing, color: "#FF6600", bg: "#fff7f0" },
     { section: data.financing, color: "#7c3aed", bg: "#f5f3ff" },
   ] : [];
 
@@ -162,7 +162,7 @@ export default function CashFlowPage() {
             {[
               { label: "Opening Cash", value: data.opening_cash, color: "#475569", bg: "#f1f5f9" },
               { label: "Net Change",   value: data.net_change,   color: data.net_change >= 0 ? "#059669" : "#dc2626", bg: data.net_change >= 0 ? "#ecfdf5" : "#fef2f2" },
-              { label: "Closing Cash", value: data.closing_cash, color: "#2563eb", bg: "#eff6ff" },
+              { label: "Closing Cash", value: data.closing_cash, color: "#FF6600", bg: "#fff7f0" },
             ].map(({ label, value, color, bg }) => (
               <div key={label} className="rounded-2xl p-4"
                    style={{ background: bg, border: "1px solid var(--pg-card-border)" }}>
@@ -186,7 +186,7 @@ export default function CashFlowPage() {
               <tbody>
                 {[
                   { label: "Net cash from operating activities", value: data.operating.total, color: "#059669" },
-                  { label: "Net cash from investing activities",  value: data.investing.total, color: "#2563eb" },
+                  { label: "Net cash from investing activities",  value: data.investing.total, color: "#FF6600" },
                   { label: "Net cash from financing activities",  value: data.financing.total, color: "#7c3aed" },
                 ].map(row => (
                   <tr key={row.label} style={{ borderBottom: "1px solid var(--pg-row-border)" }}>
@@ -212,9 +212,9 @@ export default function CashFlowPage() {
                   <td className="px-5 py-3" style={{ color: "var(--pg-text-2)" }}>Opening cash balance</td>
                   <td className="px-5 py-3 text-right font-mono w-44" style={{ color: "var(--pg-text-1)" }}>{fmt(data.opening_cash)}</td>
                 </tr>
-                <tr style={{ borderTop: "1px solid var(--pg-row-border)", background: "#eff6ff" }}>
-                  <td className="px-5 py-4 font-bold" style={{ color: "#1d4ed8" }}>Closing cash balance</td>
-                  <td className="px-5 py-4 text-right font-mono font-bold text-[15px] w-44" style={{ color: "#2563eb" }}>
+                <tr style={{ borderTop: "1px solid var(--pg-row-border)", background: "#fff7f0" }}>
+                  <td className="px-5 py-4 font-bold" style={{ color: "#E05500" }}>Closing cash balance</td>
+                  <td className="px-5 py-4 text-right font-mono font-bold text-[15px] w-44" style={{ color: "#FF6600" }}>
                     {fmt(data.closing_cash)}
                   </td>
                 </tr>

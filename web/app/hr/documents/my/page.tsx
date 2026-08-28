@@ -170,7 +170,7 @@ function RequestCard({ req, onRefresh }: { req: DocRequest; onRefresh: () => voi
 
           <button onClick={() => fileRef.current?.click()} disabled={uploading}
                   className="flex items-center gap-1.5 h-9 px-5 rounded-xl text-[13px] font-semibold text-white disabled:opacity-60"
-                  style={{ background: uploading ? "#94a3b8" : "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                  style={{ background: uploading ? "#94a3b8" : "linear-gradient(135deg,#FF6600,#E05500)" }}>
             {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
             {uploading ? "Uploading…" : "Upload Document"}
           </button>
@@ -277,9 +277,9 @@ export default function MyDocumentsPage() {
         {TABS.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
                   className={cn("flex-1 h-8 rounded-lg text-[12px] font-semibold transition-all",
-                    tab === t.key ? "text-blue-700 shadow-sm" : "hover:bg-white/60")}
+                    tab === t.key ? "text-orange-700 shadow-sm" : "hover:bg-white/60")}
                   style={{ background: tab === t.key ? "white" : "transparent",
-                           color: tab === t.key ? "#1d4ed8" : "var(--pg-text-3)" }}>
+                           color: tab === t.key ? "#E05500" : "var(--pg-text-3)" }}>
             {t.label}
           </button>
         ))}

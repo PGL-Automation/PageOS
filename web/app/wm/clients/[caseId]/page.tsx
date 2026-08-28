@@ -59,7 +59,7 @@ const OUTCOME_CFG = {
 const CASE_STATUS_CFG: Record<string, { label: string; color: string; bg: string }> = {
   draft:             { label: "Draft",             color: "#475569", bg: "#f1f5f9" },
   submitted:         { label: "Submitted",         color: "#0369a1", bg: "#e0f2fe" },
-  in_review:         { label: "Under Review",      color: "#1d4ed8", bg: "#dbeafe" },
+  in_review:         { label: "Under Review",      color: "#E05500", bg: "#fff0e0" },
   compliance_review: { label: "Compliance Review", color: "#6d28d9", bg: "#ede9fe" },
   approved:          { label: "Approved",          color: "#065f46", bg: "#d1fae5" },
   rejected:          { label: "Rejected",          color: "#991b1b", bg: "#fee2e2" },
@@ -106,10 +106,10 @@ function ComplianceTracker({ checks }: { checks: ComplianceCheck[] }) {
             <div className="w-32 h-2 rounded-full" style={{ background: "var(--pg-muted-bg)" }}>
               <div className="h-2 rounded-full transition-all" style={{
                 width: `${(done / ALL_CHECKS.length) * 100}%`,
-                background: done === ALL_CHECKS.length ? "#059669" : "linear-gradient(90deg,#2563eb,#7c3aed)",
+                background: done === ALL_CHECKS.length ? "#059669" : "linear-gradient(90deg,#FF6600,#7c3aed)",
               }} />
             </div>
-            <span className="text-[11px] font-bold" style={{ color: done === ALL_CHECKS.length ? "#059669" : "#2563eb" }}>
+            <span className="text-[11px] font-bold" style={{ color: done === ALL_CHECKS.length ? "#059669" : "#FF6600" }}>
               {Math.round((done / ALL_CHECKS.length) * 100)}%
             </span>
           </div>
@@ -206,7 +206,7 @@ function RequirementsPanel({ requirements }: { requirements: RequirementInstance
                     {req.status === "satisfied" && req.document_id && (
                       <a href={`${BASE}/api/v1/documents/${req.document_id}/download`}
                          target="_blank" rel="noopener noreferrer"
-                         className="flex items-center gap-1 h-7 px-2.5 rounded-lg text-[11px] font-medium text-blue-600 hover:bg-blue-50 transition-colors">
+                         className="flex items-center gap-1 h-7 px-2.5 rounded-lg text-[11px] font-medium text-orange-600 hover:bg-orange-50 transition-colors">
                         <Eye className="w-3 h-3" /> View
                       </a>
                     )}
@@ -280,7 +280,7 @@ function NotesPanel({ caseId, notes, onAdd }: {
         <div className="flex justify-end">
           <button type="submit" disabled={saving || !content.trim()}
                   className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-[12px] font-semibold text-white disabled:opacity-50"
-                  style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                  style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
             {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
             {saving ? "Saving…" : "Add Note"}
           </button>
@@ -416,14 +416,14 @@ export default function ClientDetailPage() {
           {c.State === "returned" && (
             <Link href={`/investments/onboarding?caseId=${caseId}`}
                   className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold text-white"
-                  style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                  style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
               <RefreshCw className="w-3.5 h-3.5" /> Resume Application
             </Link>
           )}
           {c.State === "draft" && (
             <Link href={`/investments/onboarding?caseId=${caseId}`}
                   className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold text-white"
-                  style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                  style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
               <ArrowRight className="w-3.5 h-3.5" /> Continue Onboarding
             </Link>
           )}
@@ -473,7 +473,7 @@ export default function ClientDetailPage() {
             <div className="p-5 space-y-4">
               {app?.email && (
                 <div className="flex items-center gap-2.5">
-                  <Mail className="w-3.5 h-3.5 shrink-0" style={{ color: "#2563eb" }} />
+                  <Mail className="w-3.5 h-3.5 shrink-0" style={{ color: "#FF6600" }} />
                   <span className="text-[12px]" style={{ color: "var(--pg-text-1)" }}>{app.email}</span>
                 </div>
               )}
@@ -588,19 +588,19 @@ function InvestmentAccountsPanel({ clientId }: { clientId: string }) {
       <div className="flex items-center justify-between px-5 py-3.5"
            style={{ borderBottom: "1px solid var(--pg-row-border)" }}>
         <div className="flex items-center gap-2">
-          <TrendingUp className="w-4 h-4" style={{ color: "#2563eb" }} />
+          <TrendingUp className="w-4 h-4" style={{ color: "#FF6600" }} />
           <p className="text-[13px] font-semibold" style={{ color: "var(--pg-text-1)" }}>
             Investment Accounts
           </p>
           {accounts.length > 0 && (
             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-                  style={{ background: "#eff6ff", color: "#2563eb" }}>
+                  style={{ background: "#fff7f0", color: "#FF6600" }}>
               {accounts.length}
             </span>
           )}
         </div>
         <Link href="/wm/portfolio/accounts"
-              className="text-[11px] font-semibold" style={{ color: "#2563eb" }}>
+              className="text-[11px] font-semibold" style={{ color: "#FF6600" }}>
           View all →
         </Link>
       </div>
@@ -613,7 +613,7 @@ function InvestmentAccountsPanel({ clientId }: { clientId: string }) {
           {/* Only show open link once client is active (compliance approved) */}
           <Link href="/wm/portfolio/accounts"
                 className="inline-flex items-center gap-1 mt-2 text-[12px] font-semibold"
-                style={{ color: "#2563eb" }}>
+                style={{ color: "#FF6600" }}>
             Open an account <ChevronRight className="w-3 h-3" />
           </Link>
         </div>
@@ -626,7 +626,7 @@ function InvestmentAccountsPanel({ clientId }: { clientId: string }) {
                     className="flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50/60 transition-colors">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">
-                    <p className="text-[12px] font-mono font-semibold" style={{ color: "#2563eb" }}>
+                    <p className="text-[12px] font-mono font-semibold" style={{ color: "#FF6600" }}>
                       {acc.account_number}
                     </p>
                     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"

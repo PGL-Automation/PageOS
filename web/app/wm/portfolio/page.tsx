@@ -58,7 +58,7 @@ const FUND_TYPE_LABEL: Record<FundType, string> = {
 };
 
 const FUND_TYPE_COLOR: Record<FundType, { bg: string; color: string }> = {
-  pooled:      { bg: "#dbeafe", color: "#1d4ed8" },
+  pooled:      { bg: "#fff0e0", color: "#E05500" },
   segregated:  { bg: "#ede9fe", color: "#6d28d9" },
   proprietary: { bg: "#d1fae5", color: "#065f46" },
 };
@@ -136,7 +136,7 @@ function EmptyState({ filter, onNew }: { filter: FilterTab; onNew: () => void })
         <button
           onClick={onNew}
           className="mt-5 flex items-center gap-2 h-9 px-5 rounded-xl text-[13px] font-semibold text-white"
-          style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+          style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
           <Plus className="w-3.5 h-3.5" /> New Fund
         </button>
       )}
@@ -149,7 +149,7 @@ function EmptyState({ filter, onNew }: { filter: FilterTab; onNew: () => void })
 function FundCard({ fund, onClick }: { fund: Fund; onClick: () => void }) {
   const typeMeta   = FUND_TYPE_COLOR[fund.fund_type]   ?? { bg: "#f1f5f9", color: "#475569" };
   const statusMeta = STATUS_PILL[fund.status]          ?? { bg: "#f1f5f9", color: "#475569", label: fund.status };
-  const accentColor = fund.fund_type === "pooled" ? "#2563eb"
+  const accentColor = fund.fund_type === "pooled" ? "#FF6600"
     : fund.fund_type === "segregated"              ? "#7c3aed"
     : "#059669";
 
@@ -484,7 +484,7 @@ function NewFundModal({ subsidiaries, defaultSubsidiaryId, onClose, onCreated }:
               type="submit"
               disabled={mutation.isPending}
               className="h-9 px-5 rounded-xl text-[13px] font-semibold text-white flex items-center gap-2 transition-opacity disabled:opacity-60"
-              style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)", boxShadow: "0 1px 8px rgba(37,99,235,0.35)" }}>
+              style={{ background: "linear-gradient(135deg,#FF6600,#E05500)", boxShadow: "0 1px 8px rgba(255,102,0,0.35)" }}>
               {mutation.isPending ? (
                 <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Creating…</>
               ) : (
@@ -550,8 +550,8 @@ export default function PortfolioPage() {
           onClick={() => setShowModal(true)}
           className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold text-white"
           style={{
-            background:  "linear-gradient(135deg,#2563eb,#1d4ed8)",
-            boxShadow:   "0 1px 8px rgba(37,99,235,0.35)",
+            background:  "linear-gradient(135deg,#FF6600,#E05500)",
+            boxShadow:   "0 1px 8px rgba(255,102,0,0.35)",
           }}>
           <Plus className="w-3.5 h-3.5" /> New Fund
         </button>
@@ -564,7 +564,7 @@ export default function PortfolioPage() {
             label: "Total Funds",
             value: funds.length.toString(),
             sub:   "All funds & mandates",
-            color: "#2563eb",
+            color: "#FF6600",
             icon:  Briefcase,
           },
           {
@@ -633,8 +633,8 @@ export default function PortfolioPage() {
               {tab}
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
                     style={{
-                      background: isActive ? "#2563eb15" : "transparent",
-                      color:      isActive ? "#2563eb"   : "var(--pg-text-3)",
+                      background: isActive ? "#FF660015" : "transparent",
+                      color:      isActive ? "#FF6600"   : "var(--pg-text-3)",
                     }}>
                 {count}
               </span>

@@ -72,7 +72,7 @@ const STATUS: Record<string, { label: string; icon: React.FC<{ className?: strin
 };
 
 const BALANCE_COLORS = [
-  { bar: "#2563eb", bg: "#eff6ff", text: "#1d4ed8" },
+  { bar: "#FF6600", bg: "#fff7f0", text: "#E05500" },
   { bar: "#7c3aed", bg: "#f5f3ff", text: "#6d28d9" },
   { bar: "#059669", bg: "#f0fdf4", text: "#047857" },
   { bar: "#d97706", bg: "#fffbeb", text: "#b45309" },
@@ -432,7 +432,7 @@ function ApplyModal({
                                 setRelieverFocused(false);
                               }}>
                         <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-[11px] font-bold text-white"
-                             style={{ background: "#2563eb" }}>
+                             style={{ background: "#FF6600" }}>
                           {u.full_name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase()}
                         </div>
                         <div className="min-w-0">
@@ -490,7 +490,7 @@ function ApplyModal({
             </button>
             <button type="submit" disabled={saving}
                     className="h-9 px-5 rounded-xl text-[13px] font-semibold text-white disabled:opacity-60 flex items-center gap-2"
-                    style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)", boxShadow: "0 1px 6px rgba(37,99,235,0.3)" }}>
+                    style={{ background: "linear-gradient(135deg,#FF6600,#E05500)", boxShadow: "0 1px 6px rgba(255,102,0,0.3)" }}>
               {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
               {saving ? "Submitting…" : "Submit Request"}
             </button>
@@ -713,7 +713,7 @@ export default function MyLeavePage() {
         <button
           onClick={() => setShowApply(true)}
           className="flex items-center gap-2 h-9 px-5 rounded-xl text-[13px] font-semibold text-white"
-          style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)", boxShadow: "0 1px 6px rgba(37,99,235,0.3)" }}>
+          style={{ background: "linear-gradient(135deg,#FF6600,#E05500)", boxShadow: "0 1px 6px rgba(255,102,0,0.3)" }}>
           <Plus className="w-3.5 h-3.5" />
           Apply for Leave
         </button>
@@ -753,7 +753,7 @@ export default function MyLeavePage() {
             <button key={t} onClick={() => setTab(t)}
                     className={cn("h-7 px-3 rounded-lg text-[11px] font-medium capitalize transition-all")}
                     style={tab === t
-                      ? { background: "linear-gradient(135deg,#2563eb,#1d4ed8)", color: "white" }
+                      ? { background: "linear-gradient(135deg,#FF6600,#E05500)", color: "white" }
                       : { color: "var(--pg-text-2)" }}>
               {t}
               {t === "pending" && pendingCount > 0 && (

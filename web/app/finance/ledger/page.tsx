@@ -30,7 +30,7 @@ function fmtDate(d: string) {
 }
 
 const TYPE_LABELS: Record<string, { color: string }> = {
-  ASSET:     { color: "#2563eb" }, LIABILITY: { color: "#dc2626" },
+  ASSET:     { color: "#FF6600" }, LIABILITY: { color: "#dc2626" },
   EQUITY:    { color: "#7c3aed" }, REVENUE:   { color: "#059669" },
   EXPENSE:   { color: "#d97706" },
 };
@@ -130,7 +130,7 @@ export default function LedgerPage() {
                       <button key={a.code}
                               onClick={() => setSelectedCode(a.code)}
                               className="w-full flex items-center gap-2.5 px-4 py-2.5 text-left transition-colors"
-                              style={{ background: selectedCode === a.code ? "rgba(37,99,235,0.06)" : undefined }}
+                              style={{ background: selectedCode === a.code ? "rgba(255,102,0,0.06)" : undefined }}
                               onMouseEnter={e => { if (selectedCode !== a.code) (e.currentTarget as HTMLElement).style.background = "var(--pg-row-hover)"; }}
                               onMouseLeave={e => { if (selectedCode !== a.code) (e.currentTarget as HTMLElement).style.background = ""; }}>
                         <code className="text-[11px] font-mono shrink-0 w-11" style={{ color: "var(--pg-text-4)" }}>{a.code}</code>
@@ -162,8 +162,8 @@ export default function LedgerPage() {
                   {selectedAccount.account_type}
                 </span>
                 <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
-                      style={{ background: selectedAccount.normal_balance === "DR" ? "#eff6ff" : "#fef2f2",
-                               color: selectedAccount.normal_balance === "DR" ? "#2563eb" : "#dc2626" }}>
+                      style={{ background: selectedAccount.normal_balance === "DR" ? "#fff7f0" : "#fef2f2",
+                               color: selectedAccount.normal_balance === "DR" ? "#FF6600" : "#dc2626" }}>
                   {selectedAccount.normal_balance} normal
                 </span>
               </div>

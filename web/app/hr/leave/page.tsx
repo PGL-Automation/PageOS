@@ -505,7 +505,7 @@ function CreateRequestModal({
             </button>
             <button type="submit" disabled={saving}
                     className="h-9 px-5 rounded-xl text-[13px] font-semibold text-white disabled:opacity-60"
-                    style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                    style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
               {saving ? "Submitting…" : "Submit Request"}
             </button>
           </div>
@@ -786,7 +786,7 @@ export default function LeavePage() {
         <button
           onClick={() => setShowCreate(true)}
           className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold text-white"
-          style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)", boxShadow: "0 1px 6px rgba(37,99,235,0.35)" }}>
+          style={{ background: "linear-gradient(135deg,#FF6600,#E05500)", boxShadow: "0 1px 6px rgba(255,102,0,0.35)" }}>
           <Plus className="w-3.5 h-3.5" /> New Request
         </button>
       </div>
@@ -826,7 +826,7 @@ export default function LeavePage() {
             <button key={t} onClick={() => setTab(t)}
                     className={cn("h-7 px-3 rounded-lg text-[11px] font-medium capitalize transition-all")}
                     style={tab === t
-                      ? { background: "linear-gradient(135deg,#2563eb,#1d4ed8)", color: "white" }
+                      ? { background: "linear-gradient(135deg,#FF6600,#E05500)", color: "white" }
                       : { color: "var(--pg-text-2)" }}>
               {t}
               {t === "pending" && pendingCount > 0 && (

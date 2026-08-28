@@ -126,7 +126,7 @@ function PlaceholderKpiCard({ label, linkHref }: { label: string; linkHref: stri
           <p className="text-[22px] font-bold text-slate-300 leading-none tabular">—</p>
           <Link
             href={linkHref}
-            className="text-[10px] text-blue-500 hover:underline mt-1.5 inline-block"
+            className="text-[10px] text-orange-500 hover:underline mt-1.5 inline-block"
           >
             View Reports →
           </Link>
@@ -257,7 +257,7 @@ export default function FinanceDashboard() {
 
   const QUICK_LINKS = [
     { href: "/finance/journals",       icon: FileText,      label: "Journals",        color: "#0891b2", bg: "#ecfeff" },
-    { href: "/finance/ledger",         icon: BookOpen,      label: "General Ledger",  color: "#2563eb", bg: "#eff6ff" },
+    { href: "/finance/ledger",         icon: BookOpen,      label: "General Ledger",  color: "#FF6600", bg: "#fff7f0" },
     { href: "/finance/reports/pl",             icon: TrendingUp,    label: "Income Statement", color: "#059669", bg: "#ecfdf5" },
     { href: "/finance/reports/balance-sheet", icon: BarChart2,     label: "Balance Sheet",    color: "#7c3aed", bg: "#f5f3ff" },
     { href: "/finance/reports/cash-flow",     icon: RefreshCw,     label: "Cash Flow",        color: "#0891b2", bg: "#ecfeff" },
@@ -294,7 +294,7 @@ export default function FinanceDashboard() {
         <div className="flex gap-2">
           <Link href="/ai"
             className="flex items-center gap-2 h-9 px-4 rounded-xl text-[13px] font-semibold text-white"
-            style={{ background: "linear-gradient(135deg,#2563eb,#7c3aed)", boxShadow: "0 2px 12px rgba(37,99,235,0.35)" }}>
+            style={{ background: "linear-gradient(135deg,#FF6600,#7c3aed)", boxShadow: "0 2px 12px rgba(255,102,0,0.35)" }}>
             <Brain className="w-3.5 h-3.5" /> Ask AI
           </Link>
           <Link href="/finance/reconciliation"
@@ -317,7 +317,7 @@ export default function FinanceDashboard() {
       <div className="flex flex-wrap gap-3">
         <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl"
           style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}>
-          <Building2 className="w-3.5 h-3.5 text-blue-500" />
+          <Building2 className="w-3.5 h-3.5 text-orange-500" />
           <span className="text-[13px] font-semibold" style={{ color: "var(--pg-text-1)" }}>
             {accsLoading ? "—" : accounts.length}
           </span>
@@ -367,7 +367,7 @@ export default function FinanceDashboard() {
                 <h2 className="text-[13px] font-semibold text-slate-800">Bank Reconciliation Status</h2>
               </div>
               <Link href="/finance/reconciliation"
-                className="text-[11px] font-medium text-blue-600 hover:underline flex items-center gap-0.5">
+                className="text-[11px] font-medium text-orange-600 hover:underline flex items-center gap-0.5">
                 Open full view <ChevronRight className="w-3 h-3" />
               </Link>
             </div>
@@ -381,7 +381,7 @@ export default function FinanceDashboard() {
                 <Building2 className="w-8 h-8 text-slate-200 mb-2" />
                 <p className="text-[13px] text-slate-400">No bank accounts found for this subsidiary.</p>
                 <Link href="/finance/reconciliation"
-                  className="mt-3 text-[12px] font-semibold text-blue-600 hover:underline">
+                  className="mt-3 text-[12px] font-semibold text-orange-600 hover:underline">
                   Set up bank accounts →
                 </Link>
               </div>
@@ -395,8 +395,8 @@ export default function FinanceDashboard() {
                     <div key={acc.id}
                       className="flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50/60 transition-colors">
                       <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-                        style={{ background: "#eff6ff" }}>
-                        <Building2 className="w-4 h-4 text-blue-500" />
+                        style={{ background: "#fff7f0" }}>
+                        <Building2 className="w-4 h-4 text-orange-500" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-[13px] font-semibold text-slate-800 truncate">{acc.bank_name}</p>
@@ -413,7 +413,7 @@ export default function FinanceDashboard() {
                         {pill.label}
                       </span>
                       <Link href="/finance/reconciliation"
-                        className="text-[11px] font-medium text-blue-600 hover:underline shrink-0">
+                        className="text-[11px] font-medium text-orange-600 hover:underline shrink-0">
                         {status === "open" ? "Continue →" : "Start run →"}
                       </Link>
                     </div>
@@ -443,7 +443,7 @@ export default function FinanceDashboard() {
                 <FileText className="w-8 h-8 text-slate-200 mb-2" />
                 <p className="text-[13px] text-slate-400">No posted journals for today yet.</p>
                 <Link href="/finance/journals"
-                  className="mt-3 text-[12px] font-semibold text-blue-600 hover:underline">
+                  className="mt-3 text-[12px] font-semibold text-orange-600 hover:underline">
                   Go to Journals →
                 </Link>
               </div>
@@ -518,7 +518,7 @@ export default function FinanceDashboard() {
                   </span>
                 )}
               </div>
-              <Link href="/approval" className="text-[11px] font-medium text-blue-600 hover:underline">
+              <Link href="/approval" className="text-[11px] font-medium text-orange-600 hover:underline">
                 View all
               </Link>
             </div>
@@ -548,7 +548,7 @@ export default function FinanceDashboard() {
                 {queue.length > 5 && (
                   <div className="px-4 py-3" style={{ borderTop: "1px solid #f1f5f9" }}>
                     <Link href="/approval"
-                      className="flex items-center justify-center gap-1 text-[12px] font-semibold text-blue-600 hover:underline">
+                      className="flex items-center justify-center gap-1 text-[12px] font-semibold text-orange-600 hover:underline">
                       See all {queue.length} pending <ChevronRight className="w-3 h-3" />
                     </Link>
                   </div>

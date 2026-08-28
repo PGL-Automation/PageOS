@@ -90,7 +90,7 @@ function isUpcoming(task: Task): boolean {
 const PRIORITY_DOT: Record<string, string> = {
   urgent: "#ef4444",
   high: "#f97316",
-  medium: "#3b82f6",
+  medium: "#FF6600",
   low: "#94a3b8",
 };
 
@@ -106,7 +106,7 @@ const TYPE_LABEL: Record<string, string> = {
 };
 
 const STATUS_PILL: Record<string, { bg: string; color: string; label: string }> = {
-  open: { bg: "#dbeafe", color: "#1d4ed8", label: "Open" },
+  open: { bg: "#fff0e0", color: "#E05500", label: "Open" },
   in_progress: { bg: "#fef3c7", color: "#d97706", label: "In Progress" },
   completed: { bg: "#d1fae5", color: "#065f46", label: "Completed" },
 };
@@ -1213,8 +1213,8 @@ export default function CRMTasksPage() {
         {
           key: "upcoming",
           label: "📅 Upcoming",
-          bg: "#dbeafe",
-          color: "#1d4ed8",
+          bg: "#fff0e0",
+          color: "#E05500",
           defaultCollapsed: false,
           tasks: displayed.filter(t => isUpcoming(t)),
         },
@@ -1332,8 +1332,8 @@ export default function CRMTasksPage() {
           {
             label: "Open",
             value: openCount,
-            color: "#2563eb",
-            bg: "#eff6ff",
+            color: "#FF6600",
+            bg: "#fff7f0",
             icon: Circle,
             highlight: false,
           },

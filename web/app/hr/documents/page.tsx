@@ -234,7 +234,7 @@ function NewRequestModal({ onClose }: { onClose: () => void }) {
                 </label>
                 {selectedIds.size > 0 && (
                   <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full"
-                        style={{ background: "#eff6ff", color: "#2563eb" }}>
+                        style={{ background: "#fff7f0", color: "#FF6600" }}>
                     {selectedIds.size} selected
                   </span>
                 )}
@@ -265,16 +265,16 @@ function NewRequestModal({ onClose }: { onClose: () => void }) {
                       key={p.id}
                       className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-slate-50/60 transition-colors"
                       style={{ borderBottom: i < filteredPersons.length - 1 ? "1px solid var(--pg-row-border)" : "none",
-                               background: checked ? "#eff6ff" : undefined }}
+                               background: checked ? "#fff7f0" : undefined }}
                       onClick={() => togglePerson(p.id)}
                     >
                       <div className={cn("w-4 h-4 rounded flex items-center justify-center shrink-0 border transition-colors",
-                        checked ? "border-blue-500 bg-blue-500" : "border-slate-300")}
-                           style={{ borderColor: checked ? "#2563eb" : undefined }}>
+                        checked ? "border-orange-500 bg-orange-500" : "border-slate-300")}
+                           style={{ borderColor: checked ? "#FF6600" : undefined }}>
                         {checked && <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 10 10"><path d="M2 5l2.5 2.5 3.5-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
                       </div>
                       <div className="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-bold text-white shrink-0"
-                           style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                           style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
                         {initials(`${p.first_name} ${p.last_name}`)}
                       </div>
                       <div className="flex-1 min-w-0">
@@ -290,7 +290,7 @@ function NewRequestModal({ onClose }: { onClose: () => void }) {
               {filteredPersons.length > 0 && (
                 <div className="flex gap-3 mt-1.5">
                   <button type="button" onClick={() => setSelectedIds(new Set(filteredPersons.map(p => p.id)))}
-                          className="text-[11px] font-semibold" style={{ color: "#2563eb" }}>
+                          className="text-[11px] font-semibold" style={{ color: "#FF6600" }}>
                     Select all {filteredPersons.length > persons.length ? "visible" : ""}
                   </button>
                   {selectedIds.size > 0 && (
@@ -360,7 +360,7 @@ function NewRequestModal({ onClose }: { onClose: () => void }) {
             </button>
             <button type="submit" disabled={sending}
                     className="h-9 px-5 rounded-xl text-[13px] font-semibold text-white disabled:opacity-60 flex items-center gap-1.5"
-                    style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                    style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
               {sending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
               {sending ? "Sending…" : `Send to ${selectedIds.size || ""} Employee${selectedIds.size !== 1 ? "s" : ""}`}
             </button>
@@ -404,7 +404,7 @@ function DocumentViewModal({ docId, onClose }: { docId: string; onClose: () => v
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-[12px] font-semibold text-white"
-              style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}
+              style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}
             >
               Open / Download
             </a>
@@ -523,8 +523,8 @@ export default function HRDocumentsPage() {
           onClick={() => setNewModal(true)}
           className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold text-white shrink-0"
           style={{
-            background: "linear-gradient(135deg,#2563eb,#1d4ed8)",
-            boxShadow: "0 1px 6px rgba(37,99,235,0.35)",
+            background: "linear-gradient(135deg,#FF6600,#E05500)",
+            boxShadow: "0 1px 6px rgba(255,102,0,0.35)",
           }}
         >
           <Plus className="w-3.5 h-3.5" /> New Request
@@ -548,7 +548,7 @@ export default function HRDocumentsPage() {
               )}
               style={
                 isActive
-                  ? { background: "linear-gradient(135deg,#2563eb,#1d4ed8)", color: "white" }
+                  ? { background: "linear-gradient(135deg,#FF6600,#E05500)", color: "white" }
                   : { color: "var(--pg-text-2)" }
               }
             >
@@ -737,7 +737,7 @@ function RequestRow({ req, onRemind, remindingId, onViewDoc }: RequestRowProps) 
             title="View uploaded document"
             className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors"
             style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}
-            onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = "#eff6ff")}
+            onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = "#fff7f0")}
             onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = "")}
           >
             <Eye className="w-3.5 h-3.5" />
@@ -779,7 +779,7 @@ function EmptyState({ tab, onNewRequest }: { tab: StatusFilter; onNewRequest: ()
         <button
           onClick={onNewRequest}
           className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold text-white"
-          style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}
+          style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}
         >
           <Plus className="w-3.5 h-3.5" /> Create First Request
         </button>

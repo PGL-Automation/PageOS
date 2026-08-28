@@ -35,7 +35,7 @@ export default function MDTeamPage() {
           <p className="text-[12px] mt-0.5" style={{ color: "var(--pg-text-3)" }}>Page Capital Asset Management · {TEAM.length} Wealth Managers</p>
         </div>
         <Link href="/md/targets" className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold text-white"
-              style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)", boxShadow: "0 1px 6px rgba(37,99,235,0.35)" }}>
+              style={{ background: "linear-gradient(135deg,#FF6600,#E05500)", boxShadow: "0 1px 6px rgba(255,102,0,0.35)" }}>
           <Target className="w-3.5 h-3.5" /> Set Targets
         </Link>
       </div>
@@ -43,7 +43,7 @@ export default function MDTeamPage() {
       {/* Team totals */}
       <div className="grid grid-cols-3 gap-4">
         {[
-          { label:"Total Team AUM", value:shortM(totalAUM),               color:"#2563eb",bg:"#eff6ff",icon:TrendingUp },
+          { label:"Total Team AUM", value:shortM(totalAUM),               color:"#FF6600",bg:"#fff7f0",icon:TrendingUp },
           { label:"YTD Commission Paid",value:shortM(totalComm),         color:"#059669",bg:"#ecfdf5",icon:DollarSign },
           { label:"Total Clients",  value:totalClients.toString(),         color:"#7c3aed",bg:"#f5f3ff",icon:Users },
         ].map(s => (
@@ -86,7 +86,7 @@ export default function MDTeamPage() {
                   <td className="px-4 py-3.5">
                     <div className="flex items-center gap-2.5">
                       <div className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0"
-                           style={{ background:"linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                           style={{ background:"linear-gradient(135deg,#FF6600,#E05500)" }}>
                         {w.name.split(" ").map(n => n[0]).join("").slice(0,2)}
                       </div>
                       <div>
@@ -106,7 +106,7 @@ export default function MDTeamPage() {
                   <td className="px-4 py-3.5 text-[12px] font-semibold tabular" style={{ color:"#059669" }}>{shortM(w.q_earned)}</td>
                   <td className="px-4 py-3.5 w-28">
                     <div className="h-2 rounded-full overflow-hidden" style={{ background:"var(--pg-muted-bg)" }}>
-                      <div className="h-full rounded-full" style={{ width:`${commPct}%`, background:commPct>=100?"#059669":commPct>=75?"#2563eb":"#f59e0b", minWidth:4 }} />
+                      <div className="h-full rounded-full" style={{ width:`${commPct}%`, background:commPct>=100?"#059669":commPct>=75?"#FF6600":"#f59e0b", minWidth:4 }} />
                     </div>
                     <p className="text-[10px] mt-0.5 tabular" style={{ color:"var(--pg-text-3)" }}>{commPct.toFixed(0)}%</p>
                   </td>

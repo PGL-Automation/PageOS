@@ -113,7 +113,7 @@ const INTERACTION_ICONS: Record<string, React.ReactNode> = {
 
 const STAGE_COLORS: Record<string, { bg: string; text: string; bar: string }> = {
   new: { bg: "#f1f5f9", text: "#475569", bar: "#94a3b8" },
-  contacted: { bg: "#eff6ff", text: "#1d4ed8", bar: "#3b82f6" },
+  contacted: { bg: "#fff7f0", text: "#E05500", bar: "#FF6600" },
   qualified: { bg: "#f5f3ff", text: "#6d28d9", bar: "#7c3aed" },
   proposal_sent: { bg: "#fffbeb", text: "#b45309", bar: "#f59e0b" },
   negotiation: { bg: "#fff7ed", text: "#c2410c", bar: "#f97316" },
@@ -124,7 +124,7 @@ const STAGE_COLORS: Record<string, { bg: string; text: string; bar: string }> = 
 
 const PRIORITY_COLORS: Record<string, string> = {
   low: "#94a3b8",
-  medium: "#3b82f6",
+  medium: "#FF6600",
   high: "#f59e0b",
   vip: "#a855f7",
 };

@@ -100,7 +100,7 @@ function BudgetCell({ code, value, onChange }: {
         onBlur={commit}
         onKeyDown={e => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false); }}
         className="w-full text-right font-mono text-[12px] outline-none px-1 rounded"
-        style={{ background: "#eff6ff", border: "1px solid #93c5fd", color: "#1d4ed8" }}
+        style={{ background: "#fff7f0", border: "1px solid #ffb380", color: "#E05500" }}
       />
     );
   }
@@ -444,7 +444,7 @@ export default function BudgetPage() {
               </p>
               <button onClick={() => setEditMode(true)}
                       className="mt-3 text-[12px] font-semibold"
-                      style={{ color: "#2563eb" }}>
+                      style={{ color: "#FF6600" }}>
                 Set budgets for this period →
               </button>
             </div>

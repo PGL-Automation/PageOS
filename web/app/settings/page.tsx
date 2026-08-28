@@ -48,7 +48,7 @@ function Field({ label, description, children, validated }: { label: string; des
 function Input({ value, onChange, type="text", placeholder="" }: { value: string; onChange: (v: string) => void; type?: string; placeholder?: string }) {
   return (
     <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-           className="flex-1 h-10 px-3 rounded-xl text-[13px] outline-none transition-all focus:ring-2 ring-blue-500/20 focus:border-blue-500"
+           className="flex-1 h-10 px-3 rounded-xl text-[13px] outline-none transition-all focus:ring-2 ring-orange-500/20 focus:border-orange-500"
            style={{ background:"var(--pg-input)", border:"1px solid var(--pg-input-border)", color:"var(--pg-text-1)" }} />
   );
 }
@@ -58,7 +58,7 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: 
     <div className="flex items-center gap-3">
       <button onClick={() => onChange(!checked)}
               className="w-11 h-6 rounded-full relative transition-colors"
-              style={{ background: checked ? "#2563eb" : "var(--pg-muted-bg)" }}>
+              style={{ background: checked ? "#FF6600" : "var(--pg-muted-bg)" }}>
         <span className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform"
               style={{ transform: checked ? "translateX(20px)" : "translateX(0)" }} />
       </button>
@@ -100,7 +100,7 @@ export default function SettingsPage() {
         </div>
         <button onClick={save} disabled={saving}
                 className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold text-white disabled:opacity-70 transition-all"
-                style={{ background:"linear-gradient(135deg,#2563eb,#1d4ed8)", boxShadow:"0 1px 6px rgba(37,99,235,0.35)" }}>
+                style={{ background:"linear-gradient(135deg,#FF6600,#E05500)", boxShadow:"0 1px 6px rgba(255,102,0,0.35)" }}>
           <Save className="w-3.5 h-3.5" />
           {saving ? "Saving…" : saved ? "Saved ✓" : "Save Changes"}
         </button>
@@ -114,7 +114,7 @@ export default function SettingsPage() {
             <button key={t.key} onClick={() => setTab(t.key)}
                     className={cn("w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-left text-[13px] font-medium transition-all",
                                   tab === t.key ? "text-white" : "hover:bg-black/5 dark:hover:bg-white/10")}
-                    style={tab === t.key ? { background:"linear-gradient(135deg,rgba(37,99,235,0.9),rgba(29,78,216,0.9))" } : { color:"var(--pg-text-2)" }}>
+                    style={tab === t.key ? { background:"linear-gradient(135deg,rgba(255,102,0,0.9),rgba(224,85,0,0.9))" } : { color:"var(--pg-text-2)" }}>
               <t.icon className={cn("w-4 h-4 shrink-0", tab === t.key ? "text-blue-100" : "")} style={tab !== t.key ? { color:"var(--pg-text-3)" } : undefined} />
               {t.label}
             </button>
@@ -139,12 +139,12 @@ export default function SettingsPage() {
                 <Field label="Theme" description="Choose between light and dark mode.">
                   <div className="flex gap-2">
                     <button onClick={() => !dark && toggleTheme()}
-                            className={cn("flex items-center gap-2 h-9 px-4 rounded-xl text-[12px] font-medium transition-all", !dark && "ring-2 ring-blue-500")}
+                            className={cn("flex items-center gap-2 h-9 px-4 rounded-xl text-[12px] font-medium transition-all", !dark && "ring-2 ring-orange-500")}
                             style={{ background:"var(--pg-input)", border:"1px solid var(--pg-input-border)", color:"var(--pg-text-1)" }}>
                       <Sun className="w-3.5 h-3.5" /> Light
                     </button>
                     <button onClick={() => dark && toggleTheme()}
-                            className={cn("flex items-center gap-2 h-9 px-4 rounded-xl text-[12px] font-medium transition-all", dark && "ring-2 ring-blue-500")}
+                            className={cn("flex items-center gap-2 h-9 px-4 rounded-xl text-[12px] font-medium transition-all", dark && "ring-2 ring-orange-500")}
                             style={{ background:"var(--pg-input)", border:"1px solid var(--pg-input-border)", color:"var(--pg-text-1)" }}>
                       <Moon className="w-3.5 h-3.5" /> Dark
                     </button>
@@ -227,7 +227,7 @@ export default function SettingsPage() {
                   <Input value="" onChange={() => {}} type="password" placeholder="Repeat new password" />
                 </Field>
                 <div className="flex justify-end">
-                  <button className="h-9 px-4 rounded-xl text-[13px] font-semibold text-white" style={{ background:"#2563eb" }}>
+                  <button className="h-9 px-4 rounded-xl text-[13px] font-semibold text-white" style={{ background:"#FF6600" }}>
                     Update Password
                   </button>
                 </div>

@@ -111,9 +111,9 @@ function Section({
       >
         <div
           className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
-          style={{ background: "linear-gradient(135deg,#eff6ff,#dbeafe)", border: "1px solid #bfdbfe" }}
+          style={{ background: "linear-gradient(135deg,#fff7f0,#fff0e0)", border: "1px solid #fed7aa" }}
         >
-          <Icon className="w-3.5 h-3.5" style={{ color: "#2563eb" }} />
+          <Icon className="w-3.5 h-3.5" style={{ color: "#FF6600" }} />
         </div>
         <div>
           <h3 className="text-[13px] font-bold leading-none" style={{ color: "var(--pg-text-1)" }}>
@@ -660,7 +660,7 @@ export function ApplicationForm({ caseId, initialData, readOnly, onSaveSuccess }
               type="submit"
               disabled={saveMutation.isPending}
               className="h-9 px-5 text-[13px] rounded-xl font-semibold"
-              style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}
+              style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}
             >
               {saveMutation.isPending ? (
                 <><Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> Saving…</>

@@ -82,7 +82,7 @@ const AI_INSIGHTS = [
 
 const ACTIVITY = [
   { icon: CheckSquare, text: "Account opening approved for Tunde Balogun",          time: "4m",  color: "#10b981" },
-  { icon: RefreshCw,   text: "Auto-reconciliation completed — Nov GT Bank statement", time: "18m", color: "#2563eb" },
+  { icon: RefreshCw,   text: "Auto-reconciliation completed — Nov GT Bank statement", time: "18m", color: "#FF6600" },
   { icon: DollarSign,  text: "₦3.5M payment processed to Stanbic IBTC",             time: "1h",  color: "#f59e0b" },
   { icon: Users,       text: "New RM onboarded: Chiamaka Eze (Page Capital)",        time: "3h",  color: "#7c3aed" },
   { icon: AlertTriangle, text: "Risk alert raised on Petrolex Group exposure",       time: "5h",  color: "#dc2626" },
@@ -90,14 +90,14 @@ const ACTIVITY = [
 ];
 
 const MODULES = [
-  { label: "Finance",          href: "/finance",                icon: LineChart,   color: "#2563eb", bg: "#eff6ff" },
+  { label: "Finance",          href: "/finance",                icon: LineChart,   color: "#FF6600", bg: "#fff7f0" },
   { label: "Reconciliation",   href: "/finance/reconciliation", icon: RefreshCw,   color: "#7c3aed", bg: "#f5f3ff" },
   { label: "Approvals",        href: "/approval",               icon: CheckSquare, color: "#059669", bg: "#ecfdf5" },
   { label: "Compliance",       href: "/compliance",             icon: Shield,      color: "#d97706", bg: "#fffbeb" },
   { label: "HR",               href: "/hr",                     icon: Users,       color: "#0891b2", bg: "#ecfeff" },
   { label: "AI Copilot",       href: "/ai",                     icon: Brain,       color: "#7c3aed", bg: "#f5f3ff" },
   { label: "Risk",             href: "/risk",                   icon: AlertTriangle,color:"#dc2626", bg: "#fef2f2" },
-  { label: "Analytics",        href: "/analytics",              icon: BarChart2,   color: "#2563eb", bg: "#eff6ff" },
+  { label: "Analytics",        href: "/analytics",              icon: BarChart2,   color: "#FF6600", bg: "#fff7f0" },
 ];
 
 const PRIORITY_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
@@ -334,7 +334,7 @@ export default function DashboardPage() {
         <div className="flex gap-2">
           <Link href="/ai"
                 className="flex items-center gap-2 h-9 px-4 rounded-xl text-[13px] font-semibold text-white transition-all hover:opacity-90"
-                style={{ background: "linear-gradient(135deg,#2563eb,#7c3aed)", boxShadow: "0 2px 12px rgba(37,99,235,0.35)" }}>
+                style={{ background: "linear-gradient(135deg,#FF6600,#7c3aed)", boxShadow: "0 2px 12px rgba(255,102,0,0.35)" }}>
             <Brain className="w-3.5 h-3.5" /> Ask AI
           </Link>
           <Link href="/workflows"
@@ -365,7 +365,7 @@ export default function DashboardPage() {
                     {!isUnavailable && change && (
                       <span className={cn("text-[11px] font-semibold", up ? "text-emerald-600" : "text-red-600")}>{change}</span>
                     )}
-                    <span className={cn("text-[10px]", isUnavailable ? "text-blue-500 underline" : "text-slate-400")}>
+                    <span className={cn("text-[10px]", isUnavailable ? "text-orange-500 underline" : "text-slate-400")}>
                       {unit}
                     </span>
                   </div>
@@ -397,13 +397,13 @@ export default function DashboardPage() {
                  style={{ borderBottom: "1px solid #f1f5f9" }}>
               <div className="flex items-center gap-2">
                 <div className="w-6 h-6 rounded-lg flex items-center justify-center"
-                     style={{ background: "linear-gradient(135deg,#2563eb,#7c3aed)" }}>
+                     style={{ background: "linear-gradient(135deg,#FF6600,#7c3aed)" }}>
                   <Brain className="w-3.5 h-3.5 text-white" />
                 </div>
                 <h2 className="text-[13px] font-semibold text-slate-800">AI Insights</h2>
                 <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-400">Sample</span>
               </div>
-              <Link href="/ai" className="text-[11px] font-medium text-blue-600 hover:underline flex items-center gap-0.5">
+              <Link href="/ai" className="text-[11px] font-medium text-orange-600 hover:underline flex items-center gap-0.5">
                 Ask AI <ChevronRight className="w-3 h-3" />
               </Link>
             </div>
@@ -414,7 +414,7 @@ export default function DashboardPage() {
                                      ins.type === "warning" ? "bg-amber-400" : ins.type === "success" ? "bg-emerald-400" : "bg-blue-400")} />
                   <p className="text-[13px] text-slate-600 flex-1 leading-relaxed">{ins.text}</p>
                   {ins.action && ins.href && (
-                    <Link href={ins.href} className="text-[12px] font-semibold text-blue-600 hover:underline whitespace-nowrap">
+                    <Link href={ins.href} className="text-[12px] font-semibold text-orange-600 hover:underline whitespace-nowrap">
                       {ins.action} →
                     </Link>
                   )}
@@ -486,7 +486,7 @@ export default function DashboardPage() {
                   </span>
                 )}
               </div>
-              <Link href="/approval" className="text-[11px] font-medium text-blue-600 hover:underline">View all</Link>
+              <Link href="/approval" className="text-[11px] font-medium text-orange-600 hover:underline">View all</Link>
             </div>
 
             {queue.length === 0 ? (
@@ -525,7 +525,7 @@ export default function DashboardPage() {
 
             <div className="px-4 py-3" style={{ borderTop: "1px solid #f1f5f9" }}>
               <Link href="/approval"
-                    className="w-full flex items-center justify-center gap-1.5 h-8 rounded-lg text-[12px] font-semibold text-blue-600 hover:bg-blue-50 transition-colors">
+                    className="w-full flex items-center justify-center gap-1.5 h-8 rounded-lg text-[12px] font-semibold text-orange-600 hover:bg-orange-50 transition-colors">
                 {queue.length > 0
                   ? <>See all {queue.length} pending <ChevronRight className="w-3 h-3" /></>
                   : <>Open approvals <ChevronRight className="w-3 h-3" /></>}
@@ -542,7 +542,7 @@ export default function DashboardPage() {
                 <RefreshCw className="w-3.5 h-3.5 text-violet-500" />
                 <h2 className="text-[13px] font-semibold text-slate-800">Reconciliation</h2>
               </div>
-              <Link href="/finance/reconciliation" className="text-[11px] font-medium text-blue-600 hover:underline">Open</Link>
+              <Link href="/finance/reconciliation" className="text-[11px] font-medium text-orange-600 hover:underline">Open</Link>
             </div>
 
             {!hasReconData ? (
@@ -554,7 +554,7 @@ export default function DashboardPage() {
                 ) : (
                   <p className="text-[12px] text-slate-400">Loading reconciliation data…</p>
                 )}
-                <Link href="/finance/reconciliation" className="text-[12px] font-medium text-blue-600 hover:underline">
+                <Link href="/finance/reconciliation" className="text-[12px] font-medium text-orange-600 hover:underline">
                   Go to reconciliation →
                 </Link>
               </div>

@@ -16,7 +16,7 @@ type Subsidiary = { id: string; code: string; name: string };
 
 const TYPE_ORDER = ["ASSET", "LIABILITY", "EQUITY", "REVENUE", "EXPENSE"];
 const TYPE_LABELS: Record<string, { label: string; color: string; bg: string }> = {
-  ASSET:     { label: "Assets",      color: "#2563eb", bg: "#eff6ff" },
+  ASSET:     { label: "Assets",      color: "#FF6600", bg: "#fff7f0" },
   LIABILITY: { label: "Liabilities", color: "#dc2626", bg: "#fef2f2" },
   EQUITY:    { label: "Equity",      color: "#7c3aed", bg: "#f5f3ff" },
   REVENUE:   { label: "Revenue",     color: "#059669", bg: "#ecfdf5" },

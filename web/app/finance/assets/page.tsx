@@ -252,7 +252,7 @@ function RegisterAssetModal({ subsidiaryId, onClose }: { subsidiaryId: string; o
             </button>
             <button type="submit" disabled={saving}
                     className="flex-1 h-9 rounded-xl text-[13px] font-semibold text-white flex items-center justify-center gap-2"
-                    style={{ background: saving ? "#94a3b8" : "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                    style={{ background: saving ? "#94a3b8" : "linear-gradient(135deg,#FF6600,#E05500)" }}>
               {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
               Register Asset
             </button>
@@ -324,7 +324,7 @@ function DepreciateModal({ asset, onClose }: { asset: Asset; onClose: () => void
             </button>
             <button type="submit" disabled={saving}
                     className="flex-1 h-9 rounded-xl text-[13px] font-semibold text-white flex items-center justify-center gap-2"
-                    style={{ background: saving ? "#94a3b8" : "#2563eb" }}>
+                    style={{ background: saving ? "#94a3b8" : "#FF6600" }}>
               {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
               Run
             </button>
@@ -573,11 +573,11 @@ function AssetDetail({ assetId, onClose, onDepreciate, onDispose }: {
                 { label: "Salvage Value", value: fmt(data.salvage_value) },
               ].map(({ label, value, highlight }) => (
                 <div key={label} className="p-3 rounded-xl"
-                     style={{ background: highlight ? "#eff6ff" : "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)" }}>
+                     style={{ background: highlight ? "#fff7f0" : "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)" }}>
                   <p className="text-[10px] uppercase tracking-wider font-semibold mb-1"
-                     style={{ color: highlight ? "#2563eb" : "var(--pg-text-3)" }}>{label}</p>
+                     style={{ color: highlight ? "#FF6600" : "var(--pg-text-3)" }}>{label}</p>
                   <p className="text-[14px] font-bold"
-                     style={{ color: highlight ? "#1d4ed8" : "var(--pg-text-1)" }}>{value}</p>
+                     style={{ color: highlight ? "#E05500" : "var(--pg-text-1)" }}>{value}</p>
                 </div>
               ))}
             </div>
@@ -605,7 +605,7 @@ function AssetDetail({ assetId, onClose, onDepreciate, onDispose }: {
               <div className="flex gap-2">
                 <button onClick={() => onDepreciate(data)}
                         className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-xl text-[12px] font-semibold text-white"
-                        style={{ background: "#2563eb" }}>
+                        style={{ background: "#FF6600" }}>
                   <TrendingDown className="w-3.5 h-3.5" /> Depreciate
                 </button>
                 <button onClick={() => onDispose(data)}
@@ -673,8 +673,8 @@ function AssetRow({ asset, onView, onDepreciate, onDispose }: {
     <div className="flex items-center gap-4 px-5 py-4 hover:bg-slate-50/60 transition-colors cursor-pointer group"
          onClick={onView}>
       <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-           style={{ background: "#eff6ff" }}>
-        <Package className="w-4 h-4 text-blue-500" />
+           style={{ background: "#fff7f0" }}>
+        <Package className="w-4 h-4 text-orange-500" />
       </div>
 
       <div className="flex-1 min-w-0">
@@ -691,7 +691,7 @@ function AssetRow({ asset, onView, onDepreciate, onDispose }: {
         <div className="mt-1.5 flex items-center gap-2">
           <div className="flex-1 h-1 rounded-full" style={{ background: "var(--pg-row-border)" }}>
             <div className="h-full rounded-full transition-all"
-                 style={{ width: `${depPct}%`, background: depPct >= 100 ? "#475569" : "#2563eb" }} />
+                 style={{ width: `${depPct}%`, background: depPct >= 100 ? "#475569" : "#FF6600" }} />
           </div>
           <span className="text-[10px] font-medium shrink-0" style={{ color: "var(--pg-text-3)" }}>{depPct}% dep.</span>
         </div>
@@ -709,9 +709,9 @@ function AssetRow({ asset, onView, onDepreciate, onDispose }: {
         {asset.status === "active" && (
           <>
             <button title="Depreciate" onClick={onDepreciate}
-                    className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors hover:bg-blue-50"
-                    style={{ border: "1px solid #bfdbfe" }}>
-              <TrendingDown className="w-3.5 h-3.5 text-blue-500" />
+                    className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors hover:bg-orange-50"
+                    style={{ border: "1px solid #fed7aa" }}>
+              <TrendingDown className="w-3.5 h-3.5 text-orange-500" />
             </button>
             <button title="Dispose" onClick={onDispose}
                     className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors hover:bg-red-50"
@@ -790,7 +790,7 @@ export default function FixedAssetsPage() {
           </button>
           <button onClick={() => setShowRegister(true)}
                   className="flex items-center gap-1.5 h-8 px-4 rounded-xl text-[12px] font-semibold text-white"
-                  style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                  style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
             <Plus className="w-3.5 h-3.5" /> Register Asset
           </button>
         </div>
@@ -799,7 +799,7 @@ export default function FixedAssetsPage() {
       {/* ── Summary Cards ──────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: "Active Assets", value: active,                   sub: "in service",        color: "#2563eb", bg: "#eff6ff" },
+          { label: "Active Assets", value: active,                   sub: "in service",        color: "#FF6600", bg: "#fff7f0" },
           { label: "Total Cost",    value: fmt(totalCost),           sub: "acquisition value", color: "#7c3aed", bg: "#f5f3ff" },
           { label: "Net Book Value", value: fmt(totalNBV),           sub: "current NBV",       color: "#059669", bg: "#ecfdf5" },
           { label: "Closed Out",    value: `${disposed + fullyDep}`, sub: `${disposed} disposed · ${fullyDep} fully dep.`, color: "#475569", bg: "#f1f5f9" },
@@ -825,9 +825,9 @@ export default function FixedAssetsPage() {
                     onClick={() => setStatusFilter(tab.key)}
                     className={cn("px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-colors",
                       statusFilter === tab.key
-                        ? "text-blue-700 bg-blue-50"
+                        ? "text-orange-700 bg-orange-50"
                         : "hover:bg-slate-100")}
-                    style={{ color: statusFilter === tab.key ? "#1d4ed8" : "var(--pg-text-3)" }}>
+                    style={{ color: statusFilter === tab.key ? "#E05500" : "var(--pg-text-3)" }}>
               {tab.label}
             </button>
           ))}
@@ -853,7 +853,7 @@ export default function FixedAssetsPage() {
             {!statusFilter && (
               <button onClick={() => setShowRegister(true)}
                       className="mt-4 flex items-center gap-1.5 h-8 px-4 rounded-xl text-[12px] font-semibold text-white"
-                      style={{ background: "#2563eb" }}>
+                      style={{ background: "#FF6600" }}>
                 <Plus className="w-3.5 h-3.5" /> Register Asset
               </button>
             )}

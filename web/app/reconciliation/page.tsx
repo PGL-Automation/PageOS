@@ -248,7 +248,7 @@ export default function ReconciliationPage() {
                       <TableRow
                         key={a.id}
                         className="cursor-pointer"
-                        style={isActive ? { background: "rgba(37,99,235,0.06)", borderLeft: "3px solid #2563eb" } : undefined}
+                        style={isActive ? { background: "rgba(255,102,0,0.06)", borderLeft: "3px solid #FF6600" } : undefined}
                         onClick={() => setSelectedAccountId(a.id)}
                       >
                         <TableCell className="font-medium">{a.bank_name}</TableCell>

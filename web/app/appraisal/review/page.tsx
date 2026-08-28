@@ -14,7 +14,7 @@ type PendingReview = {
 
 function statusLabel(s: string) {
   if (s === "manager_scoring") return { label: "In progress", color: "#7c3aed", bg: "#f5f3ff" };
-  return { label: "Ready to review", color: "#2563eb", bg: "#eff6ff" };
+  return { label: "Ready to review", color: "#FF6600", bg: "#fff7f0" };
 }
 
 export default function ReviewListPage() {
@@ -70,7 +70,7 @@ export default function ReviewListPage() {
                   {r.self_score != null && (
                     <div className="text-right">
                       <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--pg-text-3)" }}>Self Score</p>
-                      <p className="text-[15px] font-bold" style={{ color: "#2563eb" }}>{r.self_score.toFixed(1)}%</p>
+                      <p className="text-[15px] font-bold" style={{ color: "#FF6600" }}>{r.self_score.toFixed(1)}%</p>
                     </div>
                   )}
                   <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full"

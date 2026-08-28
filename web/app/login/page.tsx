@@ -218,7 +218,7 @@ export default function LoginPage() {
                   display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
                   opacity: loading ? 0.7 : 1,
                   background: "linear-gradient(135deg,#FF6600,#E05500)",
-                  boxShadow: "0 1px 4px rgba(37,99,235,0.3)",
+                  boxShadow: "0 1px 4px rgba(255,102,0,0.3)",
                   transition: "opacity 0.15s",
                   marginTop: 4,
                 }}
@@ -234,7 +234,7 @@ export default function LoginPage() {
             marginTop: 20,
             display: "flex", alignItems: "flex-start", gap: 10,
             padding: "14px 16px", borderRadius: 12,
-            background: "rgba(37,99,235,0.06)", border: "1px solid rgba(37,99,235,0.12)",
+            background: "rgba(255,102,0,0.06)", border: "1px solid rgba(255,102,0,0.12)",
           }}>
             <Lock style={{ width: 14, height: 14, color: "#FF6600", flexShrink: 0, marginTop: 2 }} />
             <p style={{ fontSize: 12, lineHeight: 1.6, color: "#475569", margin: 0 }}>

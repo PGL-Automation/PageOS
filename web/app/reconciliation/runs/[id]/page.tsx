@@ -283,7 +283,7 @@ export default function RunPage() {
                     : (bankLines as Array<{ id: string; txn_date: string; narration: string; debit_kobo: number; credit_kobo: number }>).map(line => (
                       <TableRow
                         key={line.id}
-                        className={`cursor-pointer ${selectedBankLine === line.id ? "bg-blue-50 ring-1 ring-blue-400 ring-inset" : "hover:bg-slate-50"}`}
+                        className={`cursor-pointer ${selectedBankLine === line.id ? "bg-orange-50 ring-1 ring-orange-400 ring-inset" : "hover:bg-slate-50"}`}
                         onClick={() => setSelectedBankLine(selectedBankLine === line.id ? null : line.id)}
                       >
                         <TableCell className="text-xs text-slate-500">{fmt(line.txn_date)}</TableCell>
@@ -326,7 +326,7 @@ export default function RunPage() {
                     : (internalTxns as Array<{ id: string; txn_date: string; type: string; direction: string; amount_kobo: number; reference: string }>).map(txn => (
                       <TableRow
                         key={txn.id}
-                        className={`cursor-pointer ${selectedInternalTxn === txn.id ? "bg-blue-50 ring-1 ring-blue-400 ring-inset" : "hover:bg-slate-50"}`}
+                        className={`cursor-pointer ${selectedInternalTxn === txn.id ? "bg-orange-50 ring-1 ring-orange-400 ring-inset" : "hover:bg-slate-50"}`}
                         onClick={() => setSelectedInternalTxn(selectedInternalTxn === txn.id ? null : txn.id)}
                       >
                         <TableCell className="text-xs text-slate-500">{fmt(txn.txn_date)}</TableCell>
@@ -355,19 +355,19 @@ export default function RunPage() {
 
       {/* Manual match controls */}
       {!isClosed && (selectedBankLine || selectedInternalTxn) && (
-        <Card className="border-blue-200 bg-blue-50">
+        <Card className="border-blue-200 bg-orange-50">
           <CardContent className="pt-4 flex items-end gap-4">
             <div className="flex-1 space-y-1">
               <p className="text-sm font-medium text-blue-800 flex items-center gap-2">
                 <Link2 className="w-4 h-4" /> Manual Match
               </p>
-              <p className="text-xs text-blue-600">
+              <p className="text-xs text-orange-600">
                 {selectedBankLine ? "✓ Bank line selected" : "Select a bank line"} ·{" "}
                 {selectedInternalTxn ? "✓ Internal txn selected" : "Select an internal transaction"}
               </p>
             </div>
             <div className="w-48">
-              <Label className="text-xs text-blue-700">Notes (optional)</Label>
+              <Label className="text-xs text-orange-700">Notes (optional)</Label>
               <Input value={matchNotes} onChange={e => setMatchNotes(e.target.value)}
                 placeholder="Reason…" className="mt-1 h-8 text-sm" />
             </div>

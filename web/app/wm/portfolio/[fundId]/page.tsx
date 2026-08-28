@@ -117,7 +117,7 @@ function fmtNum(n: number, dp = 2): string {
 }
 
 const ALLOCATION_COLORS: Record<string, string> = {
-  "Equities":         "#2563eb",
+  "Equities":         "#FF6600",
   "Fixed Income":     "#059669",
   "Money Market":     "#d97706",
   "Real Estate":      "#7c3aed",
@@ -130,7 +130,7 @@ function allocationColor(cls: string): string {
 }
 
 const TXN_TYPE_CFG: Record<string, { label: string; color: string; bg: string }> = {
-  buy:       { label: "Buy",      color: "#1d4ed8", bg: "#dbeafe" },
+  buy:       { label: "Buy",      color: "#E05500", bg: "#fff0e0" },
   sell:      { label: "Sell",     color: "#b45309", bg: "#fef3c7" },
   dividend:  { label: "Dividend", color: "#059669", bg: "#d1fae5" },
   coupon:    { label: "Coupon",   color: "#047857", bg: "#d1fae5" },
@@ -211,8 +211,8 @@ function OverviewTab({
             value: summary ? fmtCompact(summary.total_market_value) : "—",
             sub: summary ? fmtFull(summary.total_market_value) : "",
             icon: DollarSign,
-            color: "#2563eb",
-            bg: "#dbeafe",
+            color: "#FF6600",
+            bg: "#fff0e0",
           },
           {
             label: "Unrealised P&L",
@@ -577,7 +577,7 @@ function TradeTab({
       <div className="rounded-2xl overflow-hidden"
            style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}>
         <div className="px-5 py-4 flex items-center gap-2" style={{ borderBottom: "1px solid var(--pg-row-border)" }}>
-          <Plus className="w-4 h-4" style={{ color: "#2563eb" }} />
+          <Plus className="w-4 h-4" style={{ color: "#FF6600" }} />
           <h2 className="text-[13px] font-semibold" style={{ color: "var(--pg-text-1)" }}>Book Trade</h2>
         </div>
 
@@ -614,10 +614,10 @@ function TradeTab({
             )}
             {selectedInstr && (
               <div className="flex items-center gap-2 px-3 py-2 rounded-xl"
-                   style={{ background: "#eff6ff", border: "1px solid #bfdbfe" }}>
-                <code className="text-[11px] font-bold text-blue-700">{selectedInstr.ticker}</code>
+                   style={{ background: "#fff7f0", border: "1px solid #fed7aa" }}>
+                <code className="text-[11px] font-bold text-orange-700">{selectedInstr.ticker}</code>
                 <span className="text-[12px] text-blue-800 flex-1">{selectedInstr.name}</span>
-                <span className="text-[9px] font-bold text-blue-600">{selectedInstr.exchange}</span>
+                <span className="text-[9px] font-bold text-orange-600">{selectedInstr.exchange}</span>
               </div>
             )}
           </div>
@@ -631,7 +631,7 @@ function TradeTab({
                         className="flex-1 h-9 rounded-xl text-[13px] font-semibold capitalize transition-all"
                         style={tradeSide === side
                           ? side === "buy"
-                            ? { background: "#dbeafe", color: "#1d4ed8", border: "2px solid #93c5fd" }
+                            ? { background: "#fff0e0", color: "#E05500", border: "2px solid #ffb380" }
                             : { background: "#fef3c7", color: "#b45309", border: "2px solid #fcd34d" }
                           : { border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}>
                   {side}
@@ -707,7 +707,7 @@ function TradeTab({
                   disabled={tradeMutation.isPending || !tradeInstrumentId}
                   className="w-full h-10 rounded-xl text-[13px] font-semibold text-white disabled:opacity-60 flex items-center justify-center gap-2"
                   style={{ background: tradeSide === "buy"
-                    ? "linear-gradient(135deg,#2563eb,#1d4ed8)"
+                    ? "linear-gradient(135deg,#FF6600,#E05500)"
                     : "linear-gradient(135deg,#d97706,#b45309)" }}>
             {tradeMutation.isPending
               ? <><Loader2 className="w-4 h-4 animate-spin" /> Booking…</>
@@ -1019,7 +1019,7 @@ export default function FundDetailPage() {
         </p>
         <Link href="/wm/portfolio"
               className="text-[13px] font-semibold"
-              style={{ color: "#2563eb" }}>
+              style={{ color: "#FF6600" }}>
           Back to Portfolios
         </Link>
       </div>
@@ -1037,7 +1037,7 @@ export default function FundDetailPage() {
           <Link href="/wm/portfolio"
                 className="flex items-center gap-1.5 text-[12px] mb-2 transition-colors"
                 style={{ color: "var(--pg-text-3)" }}
-                onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#2563eb"}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#FF6600"}
                 onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "var(--pg-text-3)"}>
             <ChevronLeft className="w-3.5 h-3.5" />
             Back to Portfolios
@@ -1097,7 +1097,7 @@ export default function FundDetailPage() {
                   onClick={() => setActiveTab(tab.id)}
                   className="h-8 px-4 rounded-lg text-[12px] font-medium transition-all"
                   style={activeTab === tab.id
-                    ? { background: "linear-gradient(135deg,#2563eb,#1d4ed8)", color: "white" }
+                    ? { background: "linear-gradient(135deg,#FF6600,#E05500)", color: "white" }
                     : { color: "var(--pg-text-2)" }}>
             {tab.label}
           </button>

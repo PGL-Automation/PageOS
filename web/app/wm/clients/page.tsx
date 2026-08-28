@@ -15,7 +15,7 @@ type CaseDetails    = components["schemas"]["CaseDetails"];
 const STATUS_CFG: Record<string, { label: string; bg: string; color: string }> = {
   draft:            { label: "Draft",       bg: "#f1f5f9", color: "#475569" },
   submitted:        { label: "Submitted",   bg: "#e0f2fe", color: "#0369a1" },
-  in_review:        { label: "In Review",   bg: "#dbeafe", color: "#1d4ed8" },
+  in_review:        { label: "In Review",   bg: "#fff0e0", color: "#E05500" },
   compliance_review:{ label: "Compliance",  bg: "#ede9fe", color: "#6d28d9" },
   approved:         { label: "Approved",    bg: "#d1fae5", color: "#065f46" },
   rejected:         { label: "Rejected",    bg: "#fee2e2", color: "#991b1b" },
@@ -98,7 +98,7 @@ export default function WMClientsPage() {
         </div>
         <Link href="/investments/onboarding"
               className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold text-white"
-              style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)", boxShadow: "0 1px 6px rgba(37,99,235,0.35)" }}>
+              style={{ background: "linear-gradient(135deg,#FF6600,#E05500)", boxShadow: "0 1px 6px rgba(255,102,0,0.35)" }}>
           <Plus className="w-3.5 h-3.5" /> New Client
         </Link>
       </div>
@@ -115,7 +115,7 @@ export default function WMClientsPage() {
           {([["all","All"],["individual","Individuals"],["corporate","Corporate"],["attention","Needs Attention"]] as [typeof filter, string][]).map(([k, label]) => (
             <button key={k} onClick={() => setFilter(k)}
                     className={cn("h-7 px-3 rounded-lg text-[12px] font-medium transition-all")}
-                    style={filter === k ? { background: "linear-gradient(135deg,#2563eb,#1d4ed8)", color: "white" } : { color: "var(--pg-text-2)" }}>
+                    style={filter === k ? { background: "linear-gradient(135deg,#FF6600,#E05500)", color: "white" } : { color: "var(--pg-text-2)" }}>
               {label}
             </button>
           ))}
@@ -130,7 +130,7 @@ export default function WMClientsPage() {
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <Users className="w-12 h-12 mb-4" style={{ color: "var(--pg-text-4)" }} />
           <p className="text-[14px] font-semibold" style={{ color: "var(--pg-text-2)" }}>No clients yet</p>
-          <Link href="/investments/onboarding" className="mt-3 text-[13px] font-semibold text-blue-600 hover:underline">
+          <Link href="/investments/onboarding" className="mt-3 text-[13px] font-semibold text-orange-600 hover:underline">
             Start a new onboarding →
           </Link>
         </div>
@@ -147,12 +147,12 @@ export default function WMClientsPage() {
                 return (
                   <div key={c.id}
                        className="flex items-center gap-3 px-5 py-3.5 cursor-pointer transition-colors"
-                       style={{ background: selected === c.id ? "rgba(37,99,235,0.06)" : undefined }}
+                       style={{ background: selected === c.id ? "rgba(255,102,0,0.06)" : undefined }}
                        onClick={() => setSelected(c.id === selected ? null : c.id)}
                        onMouseEnter={e => { if (selected !== c.id) (e.currentTarget as HTMLElement).style.background = "var(--pg-row-hover)"; }}
                        onMouseLeave={e => { if (selected !== c.id) (e.currentTarget as HTMLElement).style.background = ""; }}>
                     <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-[11px] font-bold text-white"
-                         style={{ background: c.riskFlag ? "linear-gradient(135deg,#dc2626,#b91c1c)" : c.type === "corporate" ? "linear-gradient(135deg,#7c3aed,#4f46e5)" : "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                         style={{ background: c.riskFlag ? "linear-gradient(135deg,#dc2626,#b91c1c)" : c.type === "corporate" ? "linear-gradient(135deg,#7c3aed,#4f46e5)" : "linear-gradient(135deg,#FF6600,#E05500)" }}>
                       {c.name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -183,7 +183,7 @@ export default function WMClientsPage() {
               <div className="px-5 py-4" style={{ borderBottom: "1px solid var(--pg-row-border)" }}>
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full flex items-center justify-center text-[13px] font-bold text-white"
-                       style={{ background: activeClient.riskFlag ? "linear-gradient(135deg,#dc2626,#b91c1c)" : "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                       style={{ background: activeClient.riskFlag ? "linear-gradient(135deg,#dc2626,#b91c1c)" : "linear-gradient(135deg,#FF6600,#E05500)" }}>
                     {activeClient.name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -211,7 +211,7 @@ export default function WMClientsPage() {
                 {/* Status grid */}
                 <div className="grid grid-cols-2 gap-2">
                   <div className="rounded-xl p-3" style={{ background: "var(--pg-muted-bg)" }}>
-                    <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "#2563eb" }}>Status</p>
+                    <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "#FF6600" }}>Status</p>
                     <p className="text-[13px] font-bold mt-1" style={{ color: "var(--pg-text-1)" }}>
                       {STATUS_CFG[activeClient.state]?.label ?? activeClient.state}
                     </p>
@@ -237,7 +237,7 @@ export default function WMClientsPage() {
                 {/* Deep link to full detail */}
                 <Link href={`/wm/clients/${activeClient.id}`}
                       className="flex items-center justify-center gap-2 h-9 rounded-xl text-[13px] font-semibold text-white w-full"
-                      style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                      style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
                   <Eye className="w-3.5 h-3.5" /> View Compliance & Notes
                 </Link>
               </div>

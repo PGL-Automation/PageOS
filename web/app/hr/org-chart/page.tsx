@@ -41,7 +41,7 @@ function OrgTreeNode({ node, depth = 0 }: { node: TreeNode; depth?: number }) {
   const noHolder = node.holder_names.length === 0;
 
   const DEPTH_COLORS = [
-    { bg: "#eff6ff", border: "#bfdbfe", text: "#1d4ed8" },
+    { bg: "#fff7f0", border: "#fed7aa", text: "#E05500" },
     { bg: "#f5f3ff", border: "#c4b5fd", text: "#6d28d9" },
     { bg: "#ecfdf5", border: "#a7f3d0", text: "#065f46" },
     { bg: "#fffbeb", border: "#fde68a", text: "#92400e" },
@@ -186,7 +186,7 @@ export default function OrgChartPage() {
       <div className="grid grid-cols-4 gap-4">
         {[
           { label: "Total Staff",      value: staffInView,     sub: "active employees",         color: "#7c3aed", bg: "#f5f3ff", icon: Users },
-          { label: "Total Positions",  value: totalPositions,  sub: "defined roles",             color: "#2563eb", bg: "#eff6ff", icon: Building2 },
+          { label: "Total Positions",  value: totalPositions,  sub: "defined roles",             color: "#FF6600", bg: "#fff7f0", icon: Building2 },
           { label: "Filled",           value: filledPositions, sub: `${staffInChart} names shown`, color: "#059669", bg: "#ecfdf5", icon: User },
           { label: "Vacant",           value: vacantPositions, sub: "open positions",            color: "#d97706", bg: "#fffbeb", icon: Users },
         ].map(s => (
@@ -207,7 +207,7 @@ export default function OrgChartPage() {
       {/* Legend */}
       <div className="flex items-center gap-4 text-[11px]" style={{ color: "var(--pg-text-3)" }}>
         <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-sm" style={{ background: "#eff6ff", border: "1.5px solid #bfdbfe" }} />
+          <span className="w-3 h-3 rounded-sm" style={{ background: "#fff7f0", border: "1.5px solid #fed7aa" }} />
           Level 1 (MD / Head)
         </span>
         <span className="flex items-center gap-1.5">
@@ -228,7 +228,7 @@ export default function OrgChartPage() {
            style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)", minHeight: 300 }}>
         {isLoading ? (
           <div className="flex justify-center py-16">
-            <div className="w-5 h-5 border-2 rounded-full animate-spin" style={{ borderColor: "var(--pg-text-4)", borderTopColor: "#2563eb" }} />
+            <div className="w-5 h-5 border-2 rounded-full animate-spin" style={{ borderColor: "var(--pg-text-4)", borderTopColor: "#FF6600" }} />
           </div>
         ) : tree.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 gap-3">

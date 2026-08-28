@@ -37,8 +37,8 @@ export default function ExchangeRatesPage() {
 
       {/* Notice */}
       <div className="flex items-start gap-3 px-4 py-3.5 rounded-xl"
-           style={{ background: "rgba(37,99,235,0.07)", border: "1px solid rgba(37,99,235,0.15)" }}>
-        <AlertCircle className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+           style={{ background: "rgba(255,102,0,0.07)", border: "1px solid rgba(255,102,0,0.15)" }}>
+        <AlertCircle className="w-4 h-4 text-orange-500 shrink-0 mt-0.5" />
         <p className="text-[12px]" style={{ color: "var(--pg-text-2)" }}>
           The exchange rate set here is used to convert USD-denominated commissions to NGN for quarterly payout calculations. It applies to all Wealth Managers under Page Capital for the selected quarter. <strong>This is not a live market rate</strong> — it is a fixed rate set by management for fairness and predictability.
         </p>
@@ -83,7 +83,7 @@ export default function ExchangeRatesPage() {
                 </div>
                 <div className="flex justify-between pt-2" style={{ borderTop: "1px solid var(--pg-card-border)" }}>
                   <span className="text-[12px] font-bold" style={{ color: "var(--pg-text-1)" }}>$1 USD =</span>
-                  <span className="text-[14px] font-bold" style={{ color: "#2563eb" }}>₦{parsedRate.toLocaleString()}</span>
+                  <span className="text-[14px] font-bold" style={{ color: "#FF6600" }}>₦{parsedRate.toLocaleString()}</span>
                 </div>
               </div>
             </div>
@@ -92,7 +92,7 @@ export default function ExchangeRatesPage() {
           <div className="flex justify-end">
             <button onClick={save} disabled={saving}
                     className="flex items-center gap-1.5 h-10 px-6 rounded-xl text-[13px] font-semibold text-white disabled:opacity-70 transition-all"
-                    style={{ background: saved ? "#059669" : "linear-gradient(135deg,#2563eb,#1d4ed8)", boxShadow: "0 1px 6px rgba(37,99,235,0.35)" }}>
+                    style={{ background: saved ? "#059669" : "linear-gradient(135deg,#FF6600,#E05500)", boxShadow: "0 1px 6px rgba(255,102,0,0.35)" }}>
               {saved ? <><Check className="w-4 h-4" /> Rate Saved</> : saving ? "Saving…" : <><Save className="w-4 h-4" /> Set Q4 2026 Rate</>}
             </button>
           </div>
@@ -119,7 +119,7 @@ export default function ExchangeRatesPage() {
                   onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--pg-row-hover)"}
                   onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
                 <td className="px-5 py-3 text-[13px] font-semibold" style={{ color: "var(--pg-text-1)" }}>{r.quarter}</td>
-                <td className="px-5 py-3 text-[14px] font-bold tabular" style={{ color: "#2563eb" }}>₦{r.rate.toLocaleString()}</td>
+                <td className="px-5 py-3 text-[14px] font-bold tabular" style={{ color: "#FF6600" }}>₦{r.rate.toLocaleString()}</td>
                 <td className="px-5 py-3 text-[12px]" style={{ color: "var(--pg-text-2)" }}>{r.setOn}</td>
                 <td className="px-5 py-3 text-[12px]" style={{ color: "var(--pg-text-2)" }}>{r.setBy}</td>
                 <td className="px-5 py-3">

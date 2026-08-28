@@ -187,7 +187,7 @@ export default function ManagerReviewPage() {
         {detail.self_score != null && (
           <div className="text-right">
             <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--pg-text-3)" }}>Self Score</p>
-            <p className="text-[18px] font-bold" style={{ color: "#2563eb" }}>{detail.self_score.toFixed(1)}%</p>
+            <p className="text-[18px] font-bold" style={{ color: "#FF6600" }}>{detail.self_score.toFixed(1)}%</p>
           </div>
         )}
       </div>
@@ -211,7 +211,7 @@ export default function ManagerReviewPage() {
           </div>
           <div className="h-2 rounded-full" style={{ background: "var(--pg-muted-bg)" }}>
             <div className="h-2 rounded-full transition-all duration-500"
-                 style={{ width: `${completionPct}%`, background: completionPct === 100 ? "#059669" : "linear-gradient(90deg,#7c3aed,#2563eb)" }} />
+                 style={{ width: `${completionPct}%`, background: completionPct === 100 ? "#059669" : "linear-gradient(90deg,#7c3aed,#FF6600)" }} />
           </div>
         </div>
       )}
@@ -278,14 +278,14 @@ export default function ManagerReviewPage() {
 
                   {/* Employee's self-score (read-only reference) */}
                   {selfResp && (
-                    <div className="px-5 py-3" style={{ background: "#eff6ff", borderBottom: "1px solid #bfdbfe" }}>
-                      <p className="text-[10px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "#2563eb" }}>
+                    <div className="px-5 py-3" style={{ background: "#fff7f0", borderBottom: "1px solid #fed7aa" }}>
+                      <p className="text-[10px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "#FF6600" }}>
                         Employee Self-Score
                       </p>
                       <div className="flex items-center gap-3">
                         <ScoreSelector value={selfResp.score} max={q.max_score} onChange={() => {}} disabled={true} />
                         {selfResp.comment && (
-                          <p className="text-[11px] italic flex-1" style={{ color: "#1d4ed8" }}>&ldquo;{selfResp.comment}&rdquo;</p>
+                          <p className="text-[11px] italic flex-1" style={{ color: "#E05500" }}>&ldquo;{selfResp.comment}&rdquo;</p>
                         )}
                       </div>
                     </div>

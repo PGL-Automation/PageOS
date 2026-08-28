@@ -254,7 +254,7 @@ function OpenAccountModal({ funds, onClose }: { funds: Fund[]; onClose: () => vo
                     style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}>Cancel</button>
             <button type="submit" disabled={saving || !selectedClient}
                     className="flex-1 h-9 rounded-xl text-[13px] font-semibold text-white flex items-center justify-center gap-2"
-                    style={{ background: saving || !selectedClient ? "#94a3b8" : "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                    style={{ background: saving || !selectedClient ? "#94a3b8" : "linear-gradient(135deg,#FF6600,#E05500)" }}>
               {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
               Open Account
             </button>
@@ -308,7 +308,7 @@ export default function ClientAccountsPage() {
         </div>
         <button onClick={() => setShowOpen(true)}
                 className="flex items-center gap-1.5 h-8 px-4 rounded-xl text-[12px] font-semibold text-white"
-                style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
           <Plus className="w-3.5 h-3.5" /> Open Account
         </button>
       </div>
@@ -316,7 +316,7 @@ export default function ClientAccountsPage() {
       {/* Summary */}
       <div className="grid grid-cols-3 gap-3">
         {[
-          { label: "Unique Clients", value: String(uniqueClientCount), color: "#2563eb", bg: "#eff6ff" },
+          { label: "Unique Clients", value: String(uniqueClientCount), color: "#FF6600", bg: "#fff7f0" },
           { label: "Total AUM", value: fmtNGN(totalAUM), color: "#7c3aed", bg: "#f5f3ff" },
           { label: "Total P&L", value: fmtNGN(totalPnL), color: totalPnL >= 0 ? "#059669" : "#dc2626", bg: totalPnL >= 0 ? "#ecfdf5" : "#fef2f2" },
         ].map(({ label, value, color, bg }) => (
@@ -348,7 +348,7 @@ export default function ClientAccountsPage() {
             <p className="text-[12px] mt-1" style={{ color: "var(--pg-text-3)" }}>Open an account to start tracking client investments.</p>
             <button onClick={() => setShowOpen(true)}
                     className="mt-4 flex items-center gap-1.5 h-8 px-4 rounded-xl text-[12px] font-semibold text-white"
-                    style={{ background: "#2563eb" }}>
+                    style={{ background: "#FF6600" }}>
               <Plus className="w-3.5 h-3.5" /> Open Account
             </button>
           </div>
@@ -371,14 +371,14 @@ export default function ClientAccountsPage() {
                         className="hover:bg-slate-50/60 transition-colors cursor-pointer"
                         style={{ borderBottom: i < filtered.length - 1 ? "1px solid var(--pg-row-border)" : "none" }}
                         onClick={() => window.location.href = `/wm/portfolio/accounts/${acc.id}`}>
-                      <td className="px-4 py-3 font-mono font-semibold" style={{ color: "#2563eb" }}>{acc.account_number}</td>
+                      <td className="px-4 py-3 font-mono font-semibold" style={{ color: "#FF6600" }}>{acc.account_number}</td>
                       <td className="px-4 py-3 font-medium" style={{ color: "var(--pg-text-1)" }}>{acc.client_name}</td>
                       <td className="px-4 py-3">
                         <div style={{ color: "var(--pg-text-2)" }}>{acc.fund_name}</div>
                         <div className="text-[10px]" style={{ color: "var(--pg-text-4)" }}>{acc.fund_type}</div>
                       </td>
                       <td className="px-4 py-3 font-mono" style={{ color: "var(--pg-text-1)" }}>{fmtNGN(acc.invested_amount)}</td>
-                      <td className="px-4 py-3 font-mono font-semibold" style={{ color: "#2563eb" }}>{fmtNGN(acc.current_value)}</td>
+                      <td className="px-4 py-3 font-mono font-semibold" style={{ color: "#FF6600" }}>{fmtNGN(acc.current_value)}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
                           {pnlPos

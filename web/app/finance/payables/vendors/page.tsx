@@ -152,7 +152,7 @@ function VendorModal({ editing, onClose }: { editing?: Vendor; onClose: () => vo
                     style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}>Cancel</button>
             <button type="submit" disabled={saving}
                     className="h-9 px-5 rounded-xl text-[13px] font-semibold text-white disabled:opacity-60"
-                    style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                    style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : (editing ? "Save Changes" : "Create Vendor")}
             </button>
           </div>
@@ -196,7 +196,7 @@ export default function VendorsPage() {
         </div>
         <button onClick={() => setShowCreate(true)}
                 className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold text-white"
-                style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
           <Plus className="w-3.5 h-3.5" /> New Vendor
         </button>
       </div>

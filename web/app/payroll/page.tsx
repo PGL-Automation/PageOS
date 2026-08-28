@@ -57,7 +57,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
 const STATUS_CFG = {
   draft:    { label: "Draft",    bg: "#f1f5f9", color: "#475569" },
   approved: { label: "Approved", bg: "#d1fae5", color: "#065f46" },
-  paid:     { label: "Paid",     bg: "#dbeafe", color: "#1e40af" },
+  paid:     { label: "Paid",     bg: "#fff0e0", color: "#E05500" },
 };
 
 const MONTHS = ["","January","February","March","April","May","June",
@@ -165,7 +165,7 @@ function PayslipPanel({ payslip, periodName }: { payslip: Payslip; periodName: s
   );
   return (
     <div className="rounded-2xl overflow-hidden" style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}>
-      <div className="px-5 py-4" style={{ borderBottom: "1px solid var(--pg-row-border)", background: "linear-gradient(135deg,#2563eb18,#7c3aed12)" }}>
+      <div className="px-5 py-4" style={{ borderBottom: "1px solid var(--pg-row-border)", background: "linear-gradient(135deg,#FF660018,#7c3aed12)" }}>
         <p className="text-[14px] font-bold" style={{ color: "var(--pg-text-1)" }}>{payslip.employee_name}</p>
         <p className="text-[11px] mt-0.5" style={{ color: "var(--pg-text-3)" }}>{payslip.position_title} · {payslip.grade_name}</p>
         <p className="text-[11px]" style={{ color: "var(--pg-text-3)" }}>{periodName}</p>
@@ -264,7 +264,7 @@ export default function Page() {
       {latestRun && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
-            { label: "Gross Payroll",        value: fmt(latestRun.total_gross), icon: DollarSign, color: "#2563eb", bg: "#eff6ff", sub: latestRun.period_name },
+            { label: "Gross Payroll",        value: fmt(latestRun.total_gross), icon: DollarSign, color: "#FF6600", bg: "#fff7f0", sub: latestRun.period_name },
             { label: "PAYE Liability",        value: fmt(latestRun.total_paye),  icon: Shield, color: "#dc2626", bg: "#fef2f2", sub: "To FIRS" },
             { label: "Pension Contributions", value: fmt(latestRun.total_emp_pension + latestRun.total_employer_pension), icon: Landmark, color: "#d97706", bg: "#fffbeb", sub: "Emp 8% + Employer 10%" },
             { label: "Net Salaries",          value: fmt(latestRun.total_net),   icon: TrendingUp, color: "#059669", bg: "#d1fae5", sub: `${latestRun.employee_count} employees` },
@@ -322,7 +322,7 @@ export default function Page() {
                   return (
                     <div key={run.id}
                          className="grid items-center gap-3 px-5 py-3.5 cursor-pointer transition-colors"
-                         style={{ gridTemplateColumns: "1fr 70px 110px 80px 100px", background: isSel ? "rgba(37,99,235,0.05)" : undefined }}
+                         style={{ gridTemplateColumns: "1fr 70px 110px 80px 100px", background: isSel ? "rgba(255,102,0,0.05)" : undefined }}
                          onClick={() => { setSelectedRun(isSel ? null : run); setSelectedPayslip(null); }}
                          onMouseEnter={e => { if (!isSel) (e.currentTarget as HTMLElement).style.background = "var(--pg-row-hover)"; }}
                          onMouseLeave={e => { if (!isSel) (e.currentTarget as HTMLElement).style.background = ""; }}>
@@ -343,8 +343,8 @@ export default function Page() {
                         )}
                         {run.status !== "draft" && (
                           <button onClick={() => window.open(`${BASE}/api/v1/payroll/runs/${run.id}/paye-schedule`, "_blank")}
-                                  className="w-7 h-7 flex items-center justify-center rounded-lg" style={{ color: "#2563eb" }}
-                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#eff6ff"}
+                                  className="w-7 h-7 flex items-center justify-center rounded-lg" style={{ color: "#FF6600" }}
+                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#fff7f0"}
                                   onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
                             <Download className="w-3.5 h-3.5" />
                           </button>
@@ -410,7 +410,7 @@ export default function Page() {
                   <div key={p.id}
                        className="grid items-center gap-2 px-5 py-2.5 cursor-pointer transition-colors"
                        style={{ gridTemplateColumns: "2fr 1fr 90px 80px 80px 90px",
-                                background: selectedPayslip?.id === p.id ? "rgba(37,99,235,0.05)" : undefined }}
+                                background: selectedPayslip?.id === p.id ? "rgba(255,102,0,0.05)" : undefined }}
                        onClick={() => setSelectedPayslip(selectedPayslip?.id === p.id ? null : p)}
                        onMouseEnter={e => { if (selectedPayslip?.id !== p.id) (e.currentTarget as HTMLElement).style.background = "var(--pg-row-hover)"; }}
                        onMouseLeave={e => { if (selectedPayslip?.id !== p.id) (e.currentTarget as HTMLElement).style.background = ""; }}>

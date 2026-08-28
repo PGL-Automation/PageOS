@@ -134,7 +134,7 @@ function RecordModal({ run, defaultType, onClose }: {
                       className={cn("h-10 rounded-xl text-[12px] font-bold uppercase tracking-wide transition-colors",
                         type === t ? "text-white" : "")}
                       style={{
-                        background: type === t ? (t === "paye" ? "#2563eb" : "#7c3aed") : "var(--pg-muted-bg)",
+                        background: type === t ? (t === "paye" ? "#FF6600" : "#7c3aed") : "var(--pg-muted-bg)",
                         border: `1px solid ${type === t ? "transparent" : "var(--pg-card-border)"}`,
                         color: type === t ? "white" : "var(--pg-text-2)",
                       }}>
@@ -217,7 +217,7 @@ function RecordModal({ run, defaultType, onClose }: {
             </button>
             <button type="submit" disabled={saving}
                     className="flex-1 h-9 rounded-xl text-[13px] font-semibold text-white flex items-center justify-center gap-2"
-                    style={{ background: saving ? "#94a3b8" : type === "paye" ? "#2563eb" : "#7c3aed" }}>
+                    style={{ background: saving ? "#94a3b8" : type === "paye" ? "#FF6600" : "#7c3aed" }}>
               {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
               Record & Post Journal
             </button>
@@ -294,9 +294,9 @@ function RunRow({ row, onRecord }: {
 
             {/* PAYE */}
             <div className="rounded-xl p-3 space-y-2"
-                 style={{ background: "#eff6ff", border: "1px solid #bfdbfe" }}>
+                 style={{ background: "#fff7f0", border: "1px solid #fed7aa" }}>
               <div className="flex items-center gap-1.5 mb-1">
-                <Shield className="w-3.5 h-3.5 text-blue-500" />
+                <Shield className="w-3.5 h-3.5 text-orange-500" />
                 <p className="text-[11px] font-bold text-blue-800">PAYE → FIRS</p>
               </div>
               {[
@@ -305,14 +305,14 @@ function RunRow({ row, onRecord }: {
                 { label: "Outstanding",  value: row.paye_outstanding  },
               ].map(({ label, value }) => (
                 <div key={label} className="flex justify-between">
-                  <span className="text-[11px] text-blue-700">{label}</span>
+                  <span className="text-[11px] text-orange-700">{label}</span>
                   <span className="text-[11px] font-mono font-semibold text-blue-900">{fmt(value)}</span>
                 </div>
               ))}
               {row.paye_outstanding > 0 && (
                 <button onClick={() => onRecord(row, "paye")}
                         className="w-full mt-1 h-8 rounded-lg text-[11px] font-bold text-white"
-                        style={{ background: "#2563eb" }}>
+                        style={{ background: "#FF6600" }}>
                   Record PAYE Payment
                 </button>
               )}
@@ -359,8 +359,8 @@ function RunRow({ row, onRecord }: {
                        className="flex items-center gap-3 px-4 py-3"
                        style={{ borderBottom: i < row.remittances.length - 1 ? "1px solid var(--pg-row-border)" : "none" }}>
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase shrink-0"
-                          style={{ background: rem.type === "paye" ? "#eff6ff" : "#f5f3ff",
-                                   color: rem.type === "paye" ? "#2563eb" : "#7c3aed" }}>
+                          style={{ background: rem.type === "paye" ? "#fff7f0" : "#f5f3ff",
+                                   color: rem.type === "paye" ? "#FF6600" : "#7c3aed" }}>
                       {rem.type}
                     </span>
                     <div className="flex-1 min-w-0">
@@ -383,7 +383,7 @@ function RunRow({ row, onRecord }: {
           <div className="px-5 pb-4 flex gap-3">
             <Link href={`/payroll?run=${row.id}&schedule=paye`}
                   className="text-[11px] font-semibold"
-                  style={{ color: "#2563eb" }}>
+                  style={{ color: "#FF6600" }}>
               View PAYE Schedule →
             </Link>
             <Link href={`/payroll?run=${row.id}&schedule=pension`}
@@ -445,7 +445,7 @@ export default function RemittancePage() {
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: "PAYE Due",           value: totalPAYEDue,         color: "#2563eb", bg: "#eff6ff" },
+          { label: "PAYE Due",           value: totalPAYEDue,         color: "#FF6600", bg: "#fff7f0" },
           { label: "PAYE Outstanding",   value: totalPAYEOutstanding, color: totalPAYEOutstanding > 0 ? "#dc2626" : "#059669", bg: totalPAYEOutstanding > 0 ? "#fef2f2" : "#ecfdf5" },
           { label: "Pension Due",        value: totalPensionDue,      color: "#7c3aed", bg: "#f5f3ff" },
           { label: "Pension Outstanding",value: totalPensionOutstanding, color: totalPensionOutstanding > 0 ? "#dc2626" : "#059669", bg: totalPensionOutstanding > 0 ? "#fef2f2" : "#ecfdf5" },

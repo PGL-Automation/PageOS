@@ -51,8 +51,8 @@ function ScoreSelector({
                 className={cn(
                   "w-9 h-9 rounded-xl text-[13px] font-bold border-2 transition-all disabled:cursor-not-allowed",
                   value === n
-                    ? "border-blue-500 bg-blue-500 text-white scale-110"
-                    : "border-slate-200 dark:border-slate-600 hover:border-blue-300 hover:bg-blue-50"
+                    ? "border-orange-500 bg-orange-500 text-white scale-110"
+                    : "border-slate-200 dark:border-slate-600 hover:border-blue-300 hover:bg-orange-50"
                 )}
                 style={value === n ? {} : { color: "var(--pg-text-2)" }}>
           {n}
@@ -197,13 +197,13 @@ export default function CyclePage() {
         </Link>
         {cycle && (
           <div className="rounded-2xl p-8 text-center" style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}>
-            <Settings2 className="w-10 h-10 mx-auto mb-3" style={{ color: "#2563eb" }} />
+            <Settings2 className="w-10 h-10 mx-auto mb-3" style={{ color: "#FF6600" }} />
             <h2 className="text-[16px] font-bold mb-1" style={{ color: "var(--pg-text-1)" }}>{cycle.title}</h2>
             <p className="text-[13px] mb-5" style={{ color: "var(--pg-text-3)" }}>You have HR access. Manage this cycle below.</p>
             <div className="flex items-center justify-center gap-3">
               <Link href={`/appraisal/${cycleId}/manage`}
                     className="flex items-center gap-1.5 h-9 px-5 rounded-xl text-[13px] font-semibold text-white"
-                    style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                    style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
                 <Settings2 className="w-3.5 h-3.5" /> Manage Cycle
               </Link>
             </div>
@@ -249,7 +249,7 @@ export default function CyclePage() {
         {isSubmitted && submission?.self_score != null && (
           <div className="text-right">
             <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--pg-text-3)" }}>Your Score</p>
-            <p className="text-[28px] font-bold" style={{ color: "#2563eb" }}>{submission.self_score.toFixed(1)}%</p>
+            <p className="text-[28px] font-bold" style={{ color: "#FF6600" }}>{submission.self_score.toFixed(1)}%</p>
             {submission.manager_score != null && (
               <>
                 <p className="text-[10px] font-bold uppercase tracking-wider mt-1" style={{ color: "var(--pg-text-3)" }}>Manager Score</p>
@@ -263,11 +263,11 @@ export default function CyclePage() {
       {/* Status banner */}
       {isSubmitted && (
         <div className="flex items-center gap-3 px-4 py-3.5 rounded-xl"
-             style={{ background: submission?.status === "completed" ? "#ecfdf5" : "#eff6ff",
-                      border: `1px solid ${submission?.status === "completed" ? "#a7f3d0" : "#bfdbfe"}` }}>
+             style={{ background: submission?.status === "completed" ? "#ecfdf5" : "#fff7f0",
+                      border: `1px solid ${submission?.status === "completed" ? "#a7f3d0" : "#fed7aa"}` }}>
           {submission?.status === "completed"
             ? <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-            : <Clock className="w-5 h-5 text-blue-600 shrink-0" />}
+            : <Clock className="w-5 h-5 text-orange-600 shrink-0" />}
           <div>
             <p className="text-[13px] font-semibold" style={{ color: "var(--pg-text-1)" }}>
               {submission?.status === "completed" ? "Appraisal complete — both scores are in." :
@@ -288,11 +288,11 @@ export default function CyclePage() {
         <div className="px-5 py-3 rounded-xl" style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}>
           <div className="flex items-center justify-between mb-2">
             <p className="text-[12px] font-medium" style={{ color: "var(--pg-text-2)" }}>Progress</p>
-            <p className="text-[12px] font-bold" style={{ color: completionPct === 100 ? "#059669" : "#2563eb" }}>{completionPct}%</p>
+            <p className="text-[12px] font-bold" style={{ color: completionPct === 100 ? "#059669" : "#FF6600" }}>{completionPct}%</p>
           </div>
           <div className="h-2 rounded-full" style={{ background: "var(--pg-muted-bg)" }}>
             <div className="h-2 rounded-full transition-all duration-500"
-                 style={{ width: `${completionPct}%`, background: completionPct === 100 ? "#059669" : "linear-gradient(90deg,#2563eb,#7c3aed)" }} />
+                 style={{ width: `${completionPct}%`, background: completionPct === 100 ? "#059669" : "linear-gradient(90deg,#FF6600,#7c3aed)" }} />
           </div>
         </div>
       )}
@@ -315,7 +315,7 @@ export default function CyclePage() {
                     <button key={cat} onClick={() => setActiveCategory(cat)}
                             className="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl text-left transition-all"
                             style={activeCategory === cat
-                              ? { background: "linear-gradient(135deg,rgba(37,99,235,0.12),rgba(37,99,235,0.06))", color: "#2563eb" }
+                              ? { background: "linear-gradient(135deg,rgba(255,102,0,0.12),rgba(255,102,0,0.06))", color: "#FF6600" }
                               : { color: "var(--pg-text-2)" }}>
                       <span className="text-[12px] font-medium truncate">{cat}</span>
                       <span className={cn("text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0",
@@ -414,7 +414,7 @@ export default function CyclePage() {
                 </button>
                 <button onClick={submitSelf} disabled={submitting || answeredCount < questions.length}
                         className="flex items-center gap-1.5 h-9 px-5 rounded-xl text-[13px] font-semibold text-white disabled:opacity-50"
-                        style={{ background: answeredCount === questions.length ? "linear-gradient(135deg,#059669,#047857)" : "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                        style={{ background: answeredCount === questions.length ? "linear-gradient(135deg,#059669,#047857)" : "linear-gradient(135deg,#FF6600,#E05500)" }}>
                   {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
                   Submit Assessment
                 </button>

@@ -44,8 +44,8 @@ export default function CommissionRatesPage() {
       </div>
 
       <div className="flex items-start gap-3 px-4 py-3.5 rounded-xl"
-           style={{ background: "rgba(37,99,235,0.07)", border: "1px solid rgba(37,99,235,0.15)" }}>
-        <Info className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+           style={{ background: "rgba(255,102,0,0.07)", border: "1px solid rgba(255,102,0,0.15)" }}>
+        <Info className="w-4 h-4 text-orange-500 shrink-0 mt-0.5" />
         <p className="text-[12px]" style={{ color: "var(--pg-text-2)" }}>
           <strong>Management Fee</strong> is the total fee charged to clients annually (in bps, 100 bps = 1% p.a.). The <strong>WM Portion</strong> is the percentage of that fee paid to the Wealth Manager as commission. Commission is calculated quarterly (90/365 days). Changes take effect from the next quarter.
         </p>
@@ -55,7 +55,7 @@ export default function CommissionRatesPage() {
         <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid var(--pg-row-border)" }}>
           <h2 className="text-[13px] font-semibold" style={{ color: "var(--pg-text-1)" }}>Active Commission Rates</h2>
           <button className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12px] font-semibold text-white"
-                  style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                  style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
             <Plus className="w-3.5 h-3.5" /> Add Product
           </button>
         </div>
@@ -75,13 +75,13 @@ export default function CommissionRatesPage() {
                   onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
-                    <Star className="w-3.5 h-3.5 shrink-0" style={{ color: r.currency === "USD" ? "#7c3aed" : "#2563eb" }} />
+                    <Star className="w-3.5 h-3.5 shrink-0" style={{ color: r.currency === "USD" ? "#7c3aed" : "#FF6600" }} />
                     <span className="text-[13px] font-medium" style={{ color: "var(--pg-text-1)" }}>{r.label}</span>
                   </div>
                 </td>
                 <td className="px-4 py-3">
                   <span className="text-[11px] font-bold px-2 py-0.5 rounded-full"
-                        style={{ background: r.currency === "USD" ? "#f5f3ff" : "#eff6ff", color: r.currency === "USD" ? "#7c3aed" : "#2563eb" }}>
+                        style={{ background: r.currency === "USD" ? "#f5f3ff" : "#fff7f0", color: r.currency === "USD" ? "#7c3aed" : "#FF6600" }}>
                     {r.currency}
                   </span>
                 </td>
@@ -90,7 +90,7 @@ export default function CommissionRatesPage() {
                     <input type="number" value={draft.mgmt_fee_bps ?? r.mgmt_fee_bps}
                            onChange={e => setDraft(d => ({ ...d, mgmt_fee_bps: parseInt(e.target.value) || 0 }))}
                            className="w-20 h-8 px-2 rounded-lg text-[13px] font-semibold tabular outline-none"
-                           style={{ background: "var(--pg-input)", border: "1px solid #2563eb", color: "var(--pg-text-1)" }} />
+                           style={{ background: "var(--pg-input)", border: "1px solid #FF6600", color: "var(--pg-text-1)" }} />
                   ) : (
                     <span className="text-[13px] font-semibold tabular" style={{ color: "var(--pg-text-1)" }}>
                       {(r.mgmt_fee_bps/100).toFixed(2)}% ({r.mgmt_fee_bps} bps)
@@ -103,7 +103,7 @@ export default function CommissionRatesPage() {
                       <input type="number" value={draft.wm_portion_pct ?? r.wm_portion_pct}
                              onChange={e => setDraft(d => ({ ...d, wm_portion_pct: parseInt(e.target.value) || 0 }))}
                              className="w-16 h-8 px-2 rounded-lg text-[13px] font-semibold tabular outline-none"
-                             style={{ background: "var(--pg-input)", border: "1px solid #2563eb", color: "var(--pg-text-1)" }} />
+                             style={{ background: "var(--pg-input)", border: "1px solid #FF6600", color: "var(--pg-text-1)" }} />
                       <span className="text-[12px]" style={{ color: "var(--pg-text-3)" }}>%</span>
                     </div>
                   ) : (
@@ -123,7 +123,7 @@ export default function CommissionRatesPage() {
                     <div className="flex gap-1">
                       <button onClick={() => saveEdit(r.id)}
                               className="h-7 px-2.5 rounded-lg text-[11px] font-semibold text-white"
-                              style={{ background: "#2563eb" }}>
+                              style={{ background: "#FF6600" }}>
                         <Save className="w-3.5 h-3.5" />
                       </button>
                       <button onClick={() => setEditing(null)}

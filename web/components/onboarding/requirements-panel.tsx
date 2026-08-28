@@ -113,7 +113,7 @@ function ReqRow({
           onClick={() => onUpload(key)}
           disabled={isUploading}
           className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12px] font-semibold text-white shrink-0 disabled:opacity-60 transition-opacity"
-          style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}
+          style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}
         >
           {isUploading
             ? <><Loader2 className="w-3 h-3 animate-spin" /> Uploading…</>
@@ -213,7 +213,7 @@ export function RequirementsPanel({ caseId, requirements, canUpload = false }: R
         <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--pg-card-border)" }}>
           <div
             className="h-full rounded-full transition-all duration-500"
-            style={{ width: `${pct}%`, background: allDone ? "#10b981" : "#2563eb" }}
+            style={{ width: `${pct}%`, background: allDone ? "#10b981" : "#FF6600" }}
           />
         </div>
       </div>

@@ -55,11 +55,11 @@ function HBar({ label, value, max, color, formatted }: { label: string; value: n
 
 // ── Data ───────────────────────────────────────────────────────────────────────
 
-const REVENUE_TREND = [{ label: "Revenue", values: [2.1,2.3,2.0,2.4,2.5,2.3,2.7,2.8,2.9,3.0,3.1,3.2], color: "#2563eb" },
+const REVENUE_TREND = [{ label: "Revenue", values: [2.1,2.3,2.0,2.4,2.5,2.3,2.7,2.8,2.9,3.0,3.1,3.2], color: "#FF6600" },
                        { label: "Expenses", values: [1.2,1.3,1.1,1.2,1.3,1.2,1.2,1.1,1.1,1.1,1.1,1.1], color: "#dc2626" }];
 
 const INCOME_LINES = [
-  { label: "Fixed Income",    value: 1840, max: 1840, color: "#2563eb",  formatted: "₦1,840M" },
+  { label: "Fixed Income",    value: 1840, max: 1840, color: "#FF6600",  formatted: "₦1,840M" },
   { label: "Equity Mandates", value: 924,  max: 1840, color: "#7c3aed",  formatted: "₦924M" },
   { label: "Money Market",    value: 436,  max: 1840, color: "#0891b2",  formatted: "₦436M" },
 ];
@@ -117,7 +117,7 @@ export default function ReportsPage() {
             <Share2 className="w-3.5 h-3.5" /> Share
           </button>
           <button className="flex items-center gap-1.5 h-8 px-4 rounded-lg text-[12px] font-semibold text-white"
-                  style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)", boxShadow: "0 1px 6px rgba(37,99,235,0.35)" }}>
+                  style={{ background: "linear-gradient(135deg,#FF6600,#E05500)", boxShadow: "0 1px 6px rgba(255,102,0,0.35)" }}>
             <Download className="w-3.5 h-3.5" /> Export PDF
           </button>
         </div>
@@ -125,9 +125,9 @@ export default function ReportsPage() {
 
       {/* AI narrative */}
       <div className="flex items-start gap-3 px-5 py-4 rounded-2xl"
-           style={{ background: "linear-gradient(135deg,rgba(37,99,235,0.07),rgba(124,58,237,0.07))", border: "1px solid rgba(37,99,235,0.18)" }}>
+           style={{ background: "linear-gradient(135deg,rgba(255,102,0,0.07),rgba(124,58,237,0.07))", border: "1px solid rgba(255,102,0,0.18)" }}>
         <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
-             style={{ background: "linear-gradient(135deg,#2563eb,#7c3aed)" }}>
+             style={{ background: "linear-gradient(135deg,#FF6600,#7c3aed)" }}>
           <Brain className="w-4 h-4 text-white" />
         </div>
         <div className="flex-1">
@@ -143,7 +143,7 @@ export default function ReportsPage() {
         <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid var(--pg-row-border)" }}>
           <h2 className="text-[13px] font-semibold" style={{ color: "var(--pg-text-1)" }}>Revenue vs Expenses — 12 Month Trend (₦B)</h2>
           <div className="flex items-center gap-4 text-[11px]" style={{ color: "var(--pg-text-3)" }}>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-1 rounded-full inline-block" style={{ background: "#2563eb" }} /> Revenue</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-1 rounded-full inline-block" style={{ background: "#FF6600" }} /> Revenue</span>
             <span className="flex items-center gap-1.5"><span className="w-3 h-1 rounded-full inline-block" style={{ background: "#dc2626" }} /> Expenses</span>
           </div>
         </div>
@@ -158,7 +158,7 @@ export default function ReportsPage() {
           {tabs.map(t => (
             <button key={t.key} onClick={() => setTab(t.key)}
                     className={cn("h-8 px-4 rounded-lg text-[12px] font-medium transition-all", tab === t.key ? "text-white" : "hover:bg-black/5 dark:hover:bg-white/10")}
-                    style={tab === t.key ? { background: "linear-gradient(135deg,#2563eb,#1d4ed8)", color: "white" } : { color: "var(--pg-text-2)" }}>
+                    style={tab === t.key ? { background: "linear-gradient(135deg,#FF6600,#E05500)", color: "white" } : { color: "var(--pg-text-2)" }}>
               {t.label}
             </button>
           ))}

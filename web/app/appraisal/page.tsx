@@ -33,7 +33,7 @@ function statusLabel(s: string) {
   switch (s) {
     case "pending":         return { label: "Not started",        color: "#94a3b8", bg: "#f1f5f9" };
     case "self_draft":      return { label: "In progress",        color: "#d97706", bg: "#fffbeb" };
-    case "self_submitted":  return { label: "Submitted",          color: "#2563eb", bg: "#eff6ff" };
+    case "self_submitted":  return { label: "Submitted",          color: "#FF6600", bg: "#fff7f0" };
     case "manager_scoring": return { label: "Manager reviewing",  color: "#7c3aed", bg: "#f5f3ff" };
     case "completed":       return { label: "Completed",          color: "#059669", bg: "#ecfdf5" };
     default:                return { label: s,                    color: "#64748b", bg: "#f1f5f9" };
@@ -124,7 +124,7 @@ export default function AppraisalPage() {
         {isHR && (
           <Link href="/appraisal/dashboard"
                 className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold text-white"
-                style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
             <Settings2 className="w-3.5 h-3.5" /> Manage Appraisals
           </Link>
         )}
@@ -149,10 +149,10 @@ export default function AppraisalPage() {
                        style={{ borderBottom: "1px solid var(--pg-row-border)" }}>
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-xl flex items-center justify-center"
-                           style={{ background: isDone ? "#ecfdf5" : "#eff6ff" }}>
+                           style={{ background: isDone ? "#ecfdf5" : "#fff7f0" }}>
                         {isDone
                           ? <CheckCircle2 className="w-4.5 h-4.5 text-emerald-600" />
-                          : <ClipboardList className="w-4.5 h-4.5 text-blue-600" />}
+                          : <ClipboardList className="w-4.5 h-4.5 text-orange-600" />}
                       </div>
                       <div>
                         <p className="text-[14px] font-bold" style={{ color: "var(--pg-text-1)" }}>{cycle.title}</p>
@@ -180,7 +180,7 @@ export default function AppraisalPage() {
                       <div className="flex items-center gap-4">
                         <div>
                           <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--pg-text-3)" }}>Self Score</p>
-                          <p className="text-[18px] font-bold" style={{ color: "#2563eb" }}>{mySub.self_score.toFixed(1)}%</p>
+                          <p className="text-[18px] font-bold" style={{ color: "#FF6600" }}>{mySub.self_score.toFixed(1)}%</p>
                         </div>
                         {mySub.manager_score != null && (
                           <div>
@@ -195,7 +195,7 @@ export default function AppraisalPage() {
                           className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold"
                           style={isDone
                             ? { border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }
-                            : { background: "linear-gradient(135deg,#2563eb,#1d4ed8)", color: "white" }}>
+                            : { background: "linear-gradient(135deg,#FF6600,#E05500)", color: "white" }}>
                       {isDone ? <><Eye className="w-3.5 h-3.5" /> View</> : <><ClipboardList className="w-3.5 h-3.5" /> {mySub?.status === "self_draft" ? "Continue" : "Start Assessment"}</>}
                     </Link>
                   </div>
@@ -210,7 +210,7 @@ export default function AppraisalPage() {
       {pendingReviews.length > 0 && (
         <div>
           <p className="text-[11px] font-bold uppercase tracking-widest mb-3" style={{ color: "var(--pg-text-3)" }}>
-            Pending Team Reviews <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold text-white" style={{ background: "#2563eb" }}>{pendingReviews.length}</span>
+            Pending Team Reviews <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold text-white" style={{ background: "#FF6600" }}>{pendingReviews.length}</span>
           </p>
           <div className="rounded-2xl overflow-hidden"
                style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}>
@@ -247,7 +247,7 @@ export default function AppraisalPage() {
         <div>
           <div className="flex items-center justify-between mb-3">
             <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: "var(--pg-text-3)" }}>All Cycles</p>
-            <Link href="/appraisal/dashboard" className="text-[11px] font-medium text-blue-600 hover:underline flex items-center gap-0.5">
+            <Link href="/appraisal/dashboard" className="text-[11px] font-medium text-orange-600 hover:underline flex items-center gap-0.5">
               Manage <ChevronRight className="w-3 h-3" />
             </Link>
           </div>
@@ -260,10 +260,10 @@ export default function AppraisalPage() {
               return (
                 <div key={cycle.id} className="flex items-center gap-4 px-5 py-4 rounded-2xl"
                      style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}>
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "#eff6ff" }}>
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "#fff7f0" }}>
                     {cycle.status === "closed"
                       ? <Lock className="w-4 h-4 text-slate-500" />
-                      : <BarChart2 className="w-4 h-4 text-blue-600" />}
+                      : <BarChart2 className="w-4 h-4 text-orange-600" />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-[13px] font-semibold" style={{ color: "var(--pg-text-1)" }}>{cycle.title}</p>
@@ -307,7 +307,7 @@ export default function AppraisalPage() {
           {isHR && (
             <Link href="/appraisal/dashboard"
                   className="mt-4 flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold text-white"
-                  style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                  style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
               <Settings2 className="w-3.5 h-3.5" /> Manage Appraisals
             </Link>
           )}

@@ -39,7 +39,7 @@ function fmtDate(d: string) {
 
 const STATUS_CFG: Record<string, { label: string; bg: string; color: string }> = {
   outstanding: { label: "Outstanding", bg: "#fef3c7", color: "#92400e" },
-  partial:     { label: "Partial",     bg: "#dbeafe", color: "#1e40af" },
+  partial:     { label: "Partial",     bg: "#fff0e0", color: "#E05500" },
   paid:        { label: "Paid",        bg: "#d1fae5", color: "#065f46" },
   overdue:     { label: "Overdue",     bg: "#fee2e2", color: "#991b1b" },
   cancelled:   { label: "Cancelled",   bg: "#f1f5f9", color: "#475569" },
@@ -349,7 +349,7 @@ export default function ReceivablesPage() {
           { label: "Total Receivable", value: fmt(totalReceivable), color: "#059669", bg: "#d1fae5", icon: TrendingUp },
           { label: "Overdue",          value: overdue + " invoices", color: "#dc2626", bg: "#fee2e2", icon: AlertTriangle },
           { label: "Outstanding",      value: receivables.filter(r => r.status === "outstanding").length + " invoices", color: "#d97706", bg: "#fffbeb", icon: Clock },
-          { label: "Received",         value: receivables.filter(r => r.status === "paid").length + " invoices",  color: "#2563eb", bg: "#eff6ff", icon: CheckCircle2 },
+          { label: "Received",         value: receivables.filter(r => r.status === "paid").length + " invoices",  color: "#FF6600", bg: "#fff7f0", icon: CheckCircle2 },
         ].map(s => (
           <div key={s.label} className="rounded-xl px-4 py-4 flex items-center gap-3"
                style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}>

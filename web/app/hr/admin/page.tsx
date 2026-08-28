@@ -64,7 +64,7 @@ const USER_COLUMNS: Column<UserRow>[] = [
     cell: (v, row) => (
       <div className="flex items-center gap-2.5">
         <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
-             style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+             style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
           {String(v).split(" ").slice(0,2).map(w => w[0]).join("").toUpperCase()}
         </div>
         <div>
@@ -82,7 +82,7 @@ const USER_COLUMNS: Column<UserRow>[] = [
       if (!primary) return <span style={{ color: "var(--pg-text-4)" }}>No assignment</span>;
       return (
         <span className="text-[12px] font-semibold px-2 py-0.5 rounded-full"
-              style={{ background: "#eff6ff", color: "#2563eb" }}>
+              style={{ background: "#fff7f0", color: "#FF6600" }}>
           {primary.position_title}
         </span>
       );
@@ -317,7 +317,7 @@ function PositionModal({
             </button>
             <button type="submit" disabled={saving}
                     className="h-9 px-5 rounded-xl text-[13px] font-semibold text-white disabled:opacity-60"
-                    style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)", boxShadow: "0 1px 6px rgba(37,99,235,0.35)" }}>
+                    style={{ background: "linear-gradient(135deg,#FF6600,#E05500)", boxShadow: "0 1px 6px rgba(255,102,0,0.35)" }}>
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : isEdit ? "Save Changes" : "Create Position"}
             </button>
           </div>
@@ -363,7 +363,7 @@ function PositionsTab({ subsidiaries }: { subsidiaries: SubsidiaryOption[] }) {
           </span>
           <button onClick={() => setShowCreate(true)}
                   className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold text-white"
-                  style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)", boxShadow: "0 1px 6px rgba(37,99,235,0.35)" }}>
+                  style={{ background: "linear-gradient(135deg,#FF6600,#E05500)", boxShadow: "0 1px 6px rgba(255,102,0,0.35)" }}>
             <Plus className="w-3.5 h-3.5" /> New Position
           </button>
         </div>
@@ -598,7 +598,7 @@ function CreateUserPanel({ onClose, subsidiaries, allUsers }: {
                     const checked = selectedSubs.includes(s.id);
                     return (
                       <label key={s.id} className="flex items-center gap-2.5 cursor-pointer py-1">
-                        <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${checked ? "bg-blue-500 border-blue-500" : "border-slate-300 dark:border-slate-600"}`}
+                        <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${checked ? "bg-orange-500 border-orange-500" : "border-slate-300 dark:border-slate-600"}`}
                              onClick={() => {
                                if (isGroupSelected) return;
                                setSelectedSubs(prev => checked ? prev.filter(x => x !== s.id) : [...prev, s.id]);
@@ -693,7 +693,7 @@ function CreateUserPanel({ onClose, subsidiaries, allUsers }: {
                     style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}>Cancel</button>
             <button type="submit" disabled={saving}
                     className="h-9 px-5 rounded-xl text-[13px] font-semibold text-white disabled:opacity-60"
-                    style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)", boxShadow: "0 1px 6px rgba(37,99,235,0.35)" }}>
+                    style={{ background: "linear-gradient(135deg,#FF6600,#E05500)", boxShadow: "0 1px 6px rgba(255,102,0,0.35)" }}>
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Create User"}
             </button>
           </div>
@@ -757,7 +757,7 @@ export default function HRAdminPage() {
         {tab === "users" && (
           <button onClick={() => setShowCreate(true)}
                   className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold text-white"
-                  style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)", boxShadow: "0 1px 6px rgba(37,99,235,0.35)" }}>
+                  style={{ background: "linear-gradient(135deg,#FF6600,#E05500)", boxShadow: "0 1px 6px rgba(255,102,0,0.35)" }}>
             <Plus className="w-3.5 h-3.5" /> Onboard User
           </button>
         )}
@@ -766,7 +766,7 @@ export default function HRAdminPage() {
       {/* Stats */}
       <div className="grid grid-cols-3 gap-4">
         {[
-          { label: "Total Users",   value: users.length,  color: "#2563eb", bg: "#eff6ff", icon: Users },
+          { label: "Total Users",   value: users.length,  color: "#FF6600", bg: "#fff7f0", icon: Users },
           { label: "Assigned",      value: assigned,      color: "#059669", bg: "#ecfdf5", icon: Briefcase },
           { label: "No Assignment", value: unassigned,    color: "#d97706", bg: "#fffbeb", icon: Building2 },
         ].map(s => (

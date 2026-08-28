@@ -23,7 +23,7 @@ type StageKey =
   | "closed_lost";
 
 const STAGES: { key: StageKey; label: string; headerBg: string; headerText: string; accent: string }[] = [
-  { key: "qualification", label: "Qualification", headerBg: "#dbeafe", headerText: "#2563eb", accent: "#2563eb" },
+  { key: "qualification", label: "Qualification", headerBg: "#fff0e0", headerText: "#FF6600", accent: "#FF6600" },
   { key: "proposal",      label: "Proposal",      headerBg: "#ede9fe", headerText: "#7c3aed", accent: "#7c3aed" },
   { key: "negotiation",   label: "Negotiation",   headerBg: "#fef3c7", headerText: "#d97706", accent: "#d97706" },
   { key: "verbal_commit", label: "Verbal Commit",  headerBg: "#d1fae5", headerText: "#059669", accent: "#059669" },
@@ -164,7 +164,7 @@ function OppCard({
       <Link
         href={`/crm/contacts/${opp.contact_id}`}
         className="text-[12px] font-semibold hover:underline leading-tight block truncate"
-        style={{ color: "#2563eb" }}
+        style={{ color: "#FF6600" }}
         onClick={e => e.stopPropagation()}
       >
         {opp.contact_name}
@@ -511,13 +511,13 @@ function NewOppModal({ onClose }: { onClose: () => void }) {
               {selectedContact ? (
                 <div
                   className="flex items-center justify-between px-3 py-2 rounded-xl"
-                  style={{ background: "#eff6ff", border: "1px solid #bfdbfe" }}
+                  style={{ background: "#fff7f0", border: "1px solid #fed7aa" }}
                 >
-                  <span className="text-[13px] font-semibold text-blue-700">{selectedContact.full_name}</span>
+                  <span className="text-[13px] font-semibold text-orange-700">{selectedContact.full_name}</span>
                   <button
                     type="button"
                     onClick={() => { setSelectedContact(null); setContactSearch(""); }}
-                    className="w-5 h-5 flex items-center justify-center rounded text-blue-400 hover:text-blue-700"
+                    className="w-5 h-5 flex items-center justify-center rounded text-orange-500 hover:text-orange-700"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
@@ -799,8 +799,8 @@ export default function CRMPipelinePage() {
       label: "Total Pipeline",
       value: fmtNaira(activePipeline),
       icon: DollarSign,
-      color: "#2563eb",
-      bg: "#eff6ff",
+      color: "#FF6600",
+      bg: "#fff7f0",
     },
     {
       label: "Weighted Pipeline",

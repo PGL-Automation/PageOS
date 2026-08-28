@@ -41,7 +41,7 @@ const EMPLOYMENT_TYPE_STYLES: Record<string, { label: string; bg: string; color:
   secondee:  { label: "Secondee",  bg: "#ede9fe", color: "#7c3aed" },
   intern:    { label: "Intern",    bg: "#fef3c7", color: "#d97706" },
   nysc:      { label: "NYSC",      bg: "#d1fae5", color: "#059669" },
-  contract:  { label: "Contract",  bg: "#dbeafe", color: "#2563eb" },
+  contract:  { label: "Contract",  bg: "#fff0e0", color: "#FF6600" },
 };
 
 function EmploymentBadge({ type }: { type: string }) {
@@ -124,7 +124,7 @@ function ScanBadge({ status }: { status: string }) {
 }
 
 function DocIcon({ mimeType }: { mimeType: string }) {
-  if (mimeType.startsWith("image/")) return <Image className="w-4 h-4 text-blue-500" />;
+  if (mimeType.startsWith("image/")) return <Image className="w-4 h-4 text-orange-500" />;
   if (mimeType === "application/pdf") return <FileText className="w-4 h-4 text-red-500" />;
   return <File className="w-4 h-4" style={{ color: "var(--pg-text-3)" }} />;
 }
@@ -158,7 +158,7 @@ function DocumentPreviewModal({ doc, downloadUrl, onClose }: {
           <div className="flex items-center gap-2 shrink-0">
             <a href={downloadUrl} target="_blank" rel="noopener noreferrer"
                className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-[12px] font-semibold text-white"
-               style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+               style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
               <Download className="w-3.5 h-3.5" /> Download
             </a>
             <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-xl" style={{ color: "var(--pg-text-3)" }}>
@@ -181,7 +181,7 @@ function DocumentPreviewModal({ doc, downloadUrl, onClose }: {
               <p className="text-[13px] mt-3" style={{ color: "var(--pg-text-2)" }}>Preview not available for this file type.</p>
               <a href={downloadUrl} target="_blank" rel="noopener noreferrer"
                  className="mt-4 inline-flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold text-white"
-                 style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                 style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
                 <Download className="w-3.5 h-3.5" /> Download File
               </a>
             </div>
@@ -196,7 +196,7 @@ function DocumentPreviewModal({ doc, downloadUrl, onClose }: {
 
 const CATEGORIES = [
   { key: "medical",    label: "Medical",    color: "#dc2626", bg: "#fee2e2" },
-  { key: "education",  label: "Education",  color: "#2563eb", bg: "#dbeafe" },
+  { key: "education",  label: "Education",  color: "#FF6600", bg: "#fff0e0" },
   { key: "employment", label: "Employment", color: "#059669", bg: "#d1fae5" },
   { key: "referral",   label: "Referral",   color: "#d97706", bg: "#fef3c7" },
   { key: "compliance", label: "Compliance", color: "#7c3aed", bg: "#ede9fe" },
@@ -282,7 +282,7 @@ function EmployeeDocuments({ employee }: { employee: Employee }) {
           onClick={() => fileInputRef.current?.click()}
           disabled={uploading}
           className="flex items-center gap-1 h-6 px-2.5 rounded-lg text-[11px] font-semibold text-white disabled:opacity-60"
-          style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+          style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
           {uploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
           {uploading ? "Uploading…" : "Upload"}
         </button>
@@ -340,7 +340,7 @@ function EmployeeDocuments({ employee }: { employee: Employee }) {
         <div className="py-4 text-center rounded-xl" style={{ background: "var(--pg-muted-bg)", border: "1px dashed var(--pg-card-border)" }}>
           <p className="text-[12px]" style={{ color: "var(--pg-text-4)" }}>No documents yet</p>
           <button onClick={() => fileInputRef.current?.click()}
-                  className="mt-1.5 text-[11px] font-medium text-blue-600 hover:underline">
+                  className="mt-1.5 text-[11px] font-medium text-orange-600 hover:underline">
             Upload first document →
           </button>
         </div>
@@ -583,7 +583,7 @@ function AddToDepartmentDialog({
                     style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}>Cancel</button>
             <button type="submit" disabled={saving}
                     className="h-9 px-5 rounded-xl text-[13px] font-semibold text-white disabled:opacity-60"
-                    style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                    style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
               {saving ? "Adding…" : "Add Assignment"}
             </button>
           </div>
@@ -685,7 +685,7 @@ function TransferDialog({
               {subsidiaries.map(s => (
                 <label key={s.id} className="flex items-center gap-2.5 cursor-pointer py-0.5">
                   <div className={cn("w-4 h-4 rounded flex items-center justify-center border transition-all",
-                                     selectedSubs.includes(s.id) ? "border-blue-500 bg-blue-500" : "border-slate-300 dark:border-slate-600")}
+                                     selectedSubs.includes(s.id) ? "border-orange-500 bg-orange-500" : "border-slate-300 dark:border-slate-600")}
                        onClick={() => toggleSub(s.id)}>
                     {selectedSubs.includes(s.id) && <Check className="w-2.5 h-2.5 text-white" />}
                   </div>
@@ -726,7 +726,7 @@ function TransferDialog({
             <div className="flex flex-col justify-end">
               <label className="flex items-center gap-2 cursor-pointer pb-2">
                 <div className={cn("w-4 h-4 rounded border transition-all flex items-center justify-center",
-                                   endCurrent ? "bg-blue-500 border-blue-500" : "border-slate-300 dark:border-slate-600")}
+                                   endCurrent ? "bg-orange-500 border-orange-500" : "border-slate-300 dark:border-slate-600")}
                      onClick={() => setEndCurrent(v => !v)}>
                   {endCurrent && <Check className="w-2.5 h-2.5 text-white" />}
                 </div>
@@ -746,7 +746,7 @@ function TransferDialog({
                     style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}>Cancel</button>
             <button type="submit" disabled={saving}
                     className="h-9 px-5 rounded-xl text-[13px] font-semibold text-white disabled:opacity-60"
-                    style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                    style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
               {saving ? "Transferring…" : "Confirm Transfer"}
             </button>
           </div>
@@ -802,7 +802,7 @@ function ResetPasswordDialog({ employee, onClose }: { employee: Employee; onClos
           {!newPassword ? (
             <button onClick={doReset} disabled={loading}
                     className="w-full h-10 rounded-xl text-[13px] font-semibold text-white"
-                    style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                    style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
               {loading ? "Generating…" : "Generate New Password"}
             </button>
           ) : (
@@ -963,7 +963,7 @@ function ProvisionAccountDialog({ employee, onClose }: { employee: Employee; onC
               </button>
               <button type="submit" disabled={saving}
                       className="h-9 px-5 rounded-xl text-[13px] font-semibold text-white disabled:opacity-60"
-                      style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                      style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
                 {saving ? "Provisioning…" : "Create Account"}
               </button>
             </div>
@@ -986,7 +986,7 @@ const GENDER_OPTIONS = [
 
 const GENDER_LABEL: Record<string, string> = { M: "Male", F: "Female" };
 const GENDER_COLOR: Record<string, { bg: string; color: string }> = {
-  M: { bg: "#dbeafe", color: "#1d4ed8" },
+  M: { bg: "#fff0e0", color: "#E05500" },
   F: { bg: "#fce7f3", color: "#be185d" },
 };
 
@@ -1051,9 +1051,9 @@ function GenderField({ employee, onUpdate }: {
                 onClick={() => setSelected(opt.value)}
                 className="h-8 rounded-xl text-[12px] font-medium transition-all"
                 style={{
-                  border: `1px solid ${selected === opt.value ? "#2563eb" : "var(--pg-card-border)"}`,
-                  background: selected === opt.value ? "#eff6ff" : "var(--pg-muted-bg)",
-                  color: selected === opt.value ? "#1d4ed8" : "var(--pg-text-2)",
+                  border: `1px solid ${selected === opt.value ? "#FF6600" : "var(--pg-card-border)"}`,
+                  background: selected === opt.value ? "#fff7f0" : "var(--pg-muted-bg)",
+                  color: selected === opt.value ? "#E05500" : "var(--pg-text-2)",
                 }}
               >
                 {opt.label}
@@ -1064,7 +1064,7 @@ function GenderField({ employee, onUpdate }: {
             onClick={save}
             disabled={saving}
             className="h-8 rounded-xl text-[12px] font-semibold text-white disabled:opacity-60"
-            style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}
+            style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}
           >
             {saving ? "Saving…" : "Save"}
           </button>
@@ -1169,7 +1169,7 @@ export default function HRRecordsPage() {
         </div>
         <Link href="/hr/admin"
               className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold text-white"
-              style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)", boxShadow: "0 1px 6px rgba(37,99,235,0.35)" }}>
+              style={{ background: "linear-gradient(135deg,#FF6600,#E05500)", boxShadow: "0 1px 6px rgba(255,102,0,0.35)" }}>
           <UserPlus className="w-3.5 h-3.5" /> Onboard User
         </Link>
       </div>
@@ -1186,7 +1186,7 @@ export default function HRRecordsPage() {
           {(["all","active","inactive","unassigned"] as const).map(f => (
             <button key={f} onClick={() => setFilter(f)}
                     className={cn("h-7 px-3 rounded-lg text-[11px] font-medium capitalize transition-all", filter !== f && "")}
-                    style={filter === f ? { background: "linear-gradient(135deg,#2563eb,#1d4ed8)", color: "white" } : { color: "var(--pg-text-2)" }}>
+                    style={filter === f ? { background: "linear-gradient(135deg,#FF6600,#E05500)", color: "white" } : { color: "var(--pg-text-2)" }}>
               {f}
             </button>
           ))}
@@ -1227,7 +1227,7 @@ export default function HRRecordsPage() {
 
             {isLoading ? (
               <div className="py-12 flex justify-center">
-                <div className="w-5 h-5 border-2 rounded-full animate-spin" style={{ borderColor: "var(--pg-text-4)", borderTopColor: "#2563eb" }} />
+                <div className="w-5 h-5 border-2 rounded-full animate-spin" style={{ borderColor: "var(--pg-text-4)", borderTopColor: "#FF6600" }} />
               </div>
             ) : filtered.length === 0 ? (
               <div className="py-12 text-center">
@@ -1242,13 +1242,13 @@ export default function HRRecordsPage() {
                   return (
                     <div key={emp.user_id}
                          className="grid items-center gap-2 px-5 py-3 cursor-pointer transition-colors"
-                         style={{ gridTemplateColumns: "2.5fr 1.5fr 1.5fr 80px 100px", background: isSelected ? "rgba(37,99,235,0.05)" : undefined }}
+                         style={{ gridTemplateColumns: "2.5fr 1.5fr 1.5fr 80px 100px", background: isSelected ? "rgba(255,102,0,0.05)" : undefined }}
                          onClick={() => setSelected(isSelected ? null : emp)}
                          onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = "var(--pg-row-hover)"; }}
                          onMouseLeave={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = ""; }}>
                       <div className="flex items-center gap-2.5 min-w-0">
                         <div className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
-                             style={{ background: emp.user_status === "active" ? "linear-gradient(135deg,#2563eb,#1d4ed8)" : emp.user_status === "no_account" ? "linear-gradient(135deg,#64748b,#475569)" : "#94a3b8" }}>
+                             style={{ background: emp.user_status === "active" ? "linear-gradient(135deg,#FF6600,#E05500)" : emp.user_status === "no_account" ? "linear-gradient(135deg,#64748b,#475569)" : "#94a3b8" }}>
                           {initials(emp.display_name)}
                         </div>
                         <div className="min-w-0">
@@ -1290,7 +1290,7 @@ export default function HRRecordsPage() {
               {/* Avatar + name */}
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-full flex items-center justify-center text-[14px] font-bold text-white"
-                     style={{ background: selected.user_status === "active" ? "linear-gradient(135deg,#2563eb,#1d4ed8)" : "#94a3b8" }}>
+                     style={{ background: selected.user_status === "active" ? "linear-gradient(135deg,#FF6600,#E05500)" : "#94a3b8" }}>
                   {initials(selected.display_name)}
                 </div>
                 <div>
@@ -1308,7 +1308,7 @@ export default function HRRecordsPage() {
                   <div className="space-y-2">
                     {selected.assignments.map((a, i) => (
                       <div key={i} className="flex items-start gap-2 px-3 py-2.5 rounded-xl" style={{ background: "var(--pg-muted-bg)" }}>
-                        <Briefcase className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: "#2563eb" }} />
+                        <Briefcase className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: "#FF6600" }} />
                         <div className="flex-1 min-w-0 space-y-1">
                           <p className="text-[12px] font-medium truncate" style={{ color: "var(--pg-text-1)" }}>{a.position_title}</p>
                           <p className="text-[11px]" style={{ color: "var(--pg-text-3)" }}>
@@ -1354,7 +1354,7 @@ export default function HRRecordsPage() {
                         style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-1)" }}
                         onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--pg-muted-bg)"}
                         onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
-                  <ArrowRight className="w-3.5 h-3.5 text-blue-600" /> Transfer / Change Role
+                  <ArrowRight className="w-3.5 h-3.5 text-orange-600" /> Transfer / Change Role
                 </button>
 
                 {hasAccount(selected) ? (
@@ -1379,8 +1379,8 @@ export default function HRRecordsPage() {
                 ) : (
                   <button onClick={() => { setProvision(selected); setSelected(null); }}
                           className="w-full flex items-center gap-2 h-9 px-3 rounded-xl text-[12px] font-medium transition-colors"
-                          style={{ border: "1px solid #bfdbfe", color: "#2563eb" }}
-                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#eff6ff"}
+                          style={{ border: "1px solid #fed7aa", color: "#FF6600" }}
+                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#fff7f0"}
                           onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
                     <UserPlus className="w-3.5 h-3.5" /> Provision Login Account
                   </button>

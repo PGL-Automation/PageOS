@@ -72,7 +72,7 @@ function statusLabel(s: string) {
   switch (s) {
     case "pending":          return { label: "Not started",       color: "#94a3b8", bg: "#f1f5f9" };
     case "self_draft":       return { label: "In progress",       color: "#d97706", bg: "#fffbeb" };
-    case "self_submitted":   return { label: "Self submitted",    color: "#2563eb", bg: "#eff6ff" };
+    case "self_submitted":   return { label: "Self submitted",    color: "#FF6600", bg: "#fff7f0" };
     case "manager_scoring":  return { label: "Under review",      color: "#7c3aed", bg: "#f5f3ff" };
     case "completed":        return { label: "Completed",         color: "#059669", bg: "#ecfdf5" };
     default:                 return { label: s,                   color: "#64748b", bg: "#f1f5f9" };
@@ -140,7 +140,7 @@ function QuestionForm({
                 style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}>Cancel</button>
         <button onClick={() => onSave(form)} disabled={!form.text.trim() || saving}
                 className="h-8 px-3 rounded-lg text-[12px] font-semibold text-white disabled:opacity-60"
-                style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
           {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><Save className="w-3.5 h-3.5 inline mr-1" />Save</>}
         </button>
       </div>
@@ -357,10 +357,10 @@ export default function CycleManagePage() {
           <div>
             <div className="flex justify-between mb-1.5">
               <p className="text-[11px] font-semibold" style={{ color: "var(--pg-text-2)" }}>Self-assessment submitted</p>
-              <p className="text-[11px] font-bold" style={{ color: "#2563eb" }}>{cycle.self_submitted_count}/{cycle.submission_count}</p>
+              <p className="text-[11px] font-bold" style={{ color: "#FF6600" }}>{cycle.self_submitted_count}/{cycle.submission_count}</p>
             </div>
             <div className="h-2 rounded-full" style={{ background: "var(--pg-muted-bg)" }}>
-              <div className="h-2 rounded-full" style={{ width: `${selfPct}%`, background: "#2563eb" }} />
+              <div className="h-2 rounded-full" style={{ width: `${selfPct}%`, background: "#FF6600" }} />
             </div>
           </div>
           <div>
@@ -385,7 +385,7 @@ export default function CycleManagePage() {
           <button key={id} onClick={() => setTab(id as Tab)}
                   className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12px] font-medium transition-all"
                   style={tab === id
-                    ? { background: "linear-gradient(135deg,#2563eb,#1d4ed8)", color: "white" }
+                    ? { background: "linear-gradient(135deg,#FF6600,#E05500)", color: "white" }
                     : { color: "var(--pg-text-2)" }}>
             <Icon className="w-3.5 h-3.5" />
             {label}
@@ -411,7 +411,7 @@ export default function CycleManagePage() {
               <button onClick={() => { setAddingQ(true); setEditQ(null); }}
                       disabled={addingQ}
                       className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-[12px] font-semibold text-white disabled:opacity-50"
-                      style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                      style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
                 <Plus className="w-3.5 h-3.5" /> Add Question
               </button>
             )}
@@ -431,7 +431,7 @@ export default function CycleManagePage() {
               <ClipboardList className="w-8 h-8 mb-2" style={{ color: "var(--pg-text-4)" }} />
               <p className="text-[13px]" style={{ color: "var(--pg-text-3)" }}>No questions yet.</p>
               <button onClick={() => setAddingQ(true)}
-                      className="mt-3 text-[12px] font-medium text-blue-600 hover:underline">
+                      className="mt-3 text-[12px] font-medium text-orange-600 hover:underline">
                 Add first question →
               </button>
             </div>
@@ -442,7 +442,7 @@ export default function CycleManagePage() {
                 <div className="flex items-center justify-between px-5 py-3"
                      style={{ borderBottom: "1px solid var(--pg-row-border)", background: "var(--pg-muted-bg)" }}>
                   <p className="text-[12px] font-bold uppercase tracking-wide" style={{ color: "var(--pg-text-2)" }}>{cat}</p>
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: "#eff6ff", color: "#2563eb" }}>{qs.length}</span>
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: "#fff7f0", color: "#FF6600" }}>{qs.length}</span>
                 </div>
                 <div className="divide-y" style={{ borderColor: "var(--pg-row-border)" }}>
                   {qs.map((q, i) => (
@@ -537,7 +537,7 @@ export default function CycleManagePage() {
               </div>
               <button onClick={assignReviewer} disabled={assigningSaving || !assignAppraiseeId || !assignReviewerId}
                       className="h-9 px-4 rounded-xl text-[12px] font-semibold text-white disabled:opacity-50"
-                      style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                      style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
                 {assigningSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Assign"}
               </button>
             </div>
@@ -653,7 +653,7 @@ export default function CycleManagePage() {
                       <p className="text-[12px] truncate" style={{ color: "var(--pg-text-2)" }}>
                         {sub.reviewer_name ?? <span style={{ color: "var(--pg-text-4)" }}>Unassigned</span>}
                       </p>
-                      <p className="text-[13px] font-semibold" style={{ color: sub.self_score != null ? "#2563eb" : "var(--pg-text-4)" }}>
+                      <p className="text-[13px] font-semibold" style={{ color: sub.self_score != null ? "#FF6600" : "var(--pg-text-4)" }}>
                         {sub.self_score != null ? `${sub.self_score.toFixed(1)}%` : "—"}
                       </p>
                       <p className="text-[13px] font-semibold" style={{ color: sub.manager_score != null ? "#059669" : "var(--pg-text-4)" }}>

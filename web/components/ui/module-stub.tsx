@@ -31,12 +31,12 @@ export function ModuleStub({ title, description, icon: Icon, color, bg, features
 
       {/* Status banner */}
       <div className="rounded-2xl px-6 py-5"
-           style={{ background: "linear-gradient(135deg,#eff6ff,#dbeafe)", border: "1px solid #bfdbfe" }}>
+           style={{ background: "linear-gradient(135deg,#fff7f0,#fff0e0)", border: "1px solid #fed7aa" }}>
         <div className="flex items-center gap-3">
-          <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: "#2563eb" }} />
+          <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: "#FF6600" }} />
           <p className="text-[13px] font-semibold text-blue-900">This module is under active development</p>
         </div>
-        <p className="text-[12px] text-blue-700 mt-1.5 leading-relaxed">
+        <p className="text-[12px] text-orange-700 mt-1.5 leading-relaxed">
           The backend infrastructure and data models for <strong>{title}</strong> are already in place.
           The UI is being built as part of the PageOS rollout. Estimated availability: Q1 2027.
         </p>

@@ -175,14 +175,14 @@ export default function BalanceSheetPage() {
             }
           </div>
 
-          <Section title="Assets"      groups={report.assets ?? []}      total={report.total_assets}      color="#2563eb" bg="#eff6ff" />
+          <Section title="Assets"      groups={report.assets ?? []}      total={report.total_assets}      color="#FF6600" bg="#fff7f0" />
           <Section title="Liabilities" groups={report.liabilities ?? []} total={report.total_liabilities} color="#dc2626" bg="#fef2f2" />
           <Section title="Equity"      groups={report.equity ?? []}      total={report.total_equity}      color="#7c3aed" bg="#f5f3ff" />
 
           {/* Summary */}
           <div className="rounded-2xl overflow-hidden" style={{ background: "var(--pg-card)", border: "2px solid var(--pg-card-border)" }}>
             {[
-              { label: "Total Assets",              value: report.total_assets,                                   color: "#2563eb" },
+              { label: "Total Assets",              value: report.total_assets,                                   color: "#FF6600" },
               { label: "Total Liabilities",          value: report.total_liabilities,                              color: "#dc2626" },
               { label: "Total Equity",               value: report.total_equity,                                   color: "#7c3aed" },
               { label: "Total Liabilities + Equity", value: report.total_liabilities + report.total_equity,        color: "#059669" },

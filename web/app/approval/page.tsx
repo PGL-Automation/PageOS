@@ -33,7 +33,7 @@ function StepChain({ steps, activeId }: { steps: ApprovalStep[]; activeId: strin
     rejected: { bg: "#fef2f2", text: "#dc2626", border: "#fca5a5" },
     returned: { bg: "#fff7ed", text: "#c2410c", border: "#fed7aa" },
     skipped:  { bg: "#f1f5f9", text: "#94a3b8", border: "#e2e8f0" },
-    pending:  { bg: "#eff6ff", text: "#2563eb", border: "#bfdbfe" },
+    pending:  { bg: "#fff7f0", text: "#FF6600", border: "#fed7aa" },
   };
 
   return (
@@ -42,7 +42,7 @@ function StepChain({ steps, activeId }: { steps: ApprovalStep[]; activeId: strin
         const isActive  = step.ID === activeId;
         const status    = isActive ? "active" : step.Status;
         const style     = isActive
-          ? { bg: "#2563eb", text: "#fff", border: "#1d4ed8" }
+          ? { bg: "#FF6600", text: "#fff", border: "#E05500" }
           : STATUS_COLOR[step.Status] ?? STATUS_COLOR.pending;
 
         return (
@@ -166,7 +166,7 @@ function DecisionPanel({
               border: "1px solid var(--pg-card-border)",
               color: "var(--pg-text-1)",
             }}
-            onFocus={e => (e.target.style.borderColor = "#2563eb")}
+            onFocus={e => (e.target.style.borderColor = "#FF6600")}
             onBlur={e  => (e.target.style.borderColor = "var(--pg-card-border)")}
           />
         </div>
@@ -314,7 +314,7 @@ export default function ApprovalPage() {
             {queue.length > 0 && (
               <span
                 className="text-[11px] font-bold px-2 py-0.5 rounded-full"
-                style={{ background: "#eff6ff", color: "#2563eb", border: "1px solid #bfdbfe" }}
+                style={{ background: "#fff7f0", color: "#FF6600", border: "1px solid #fed7aa" }}
               >
                 {queue.length}
               </span>

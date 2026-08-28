@@ -164,7 +164,7 @@ function isOverdue(dueDateStr?: string, status?: string): boolean {
 // ─── Badge color maps ──────────────────────────────────────────────────────────
 
 const CONTACT_TYPE_COLORS: Record<string, { bg: string; color: string }> = {
-  prospect: { bg: "#dbeafe", color: "#1d4ed8" },
+  prospect: { bg: "#fff0e0", color: "#E05500" },
   client:   { bg: "#d1fae5", color: "#065f46" },
   lead:     { bg: "#fef3c7", color: "#92400e" },
   partner:  { bg: "#ede9fe", color: "#5b21b6" },
@@ -177,12 +177,12 @@ const SEGMENT_COLORS: Record<string, { bg: string; color: string }> = {
   hnwi:          { bg: "#fef3c7", color: "#b45309" },
   uhnwi:         { bg: "#fde68a", color: "#78350f" },
   institutional: { bg: "#ede9fe", color: "#5b21b6" },
-  corporate:     { bg: "#dbeafe", color: "#1e40af" },
+  corporate:     { bg: "#fff0e0", color: "#E05500" },
 };
 
 const STAGE_COLORS: Record<string, { bg: string; color: string }> = {
   new:           { bg: "#f1f5f9", color: "#64748b" },
-  contacted:     { bg: "#dbeafe", color: "#1d4ed8" },
+  contacted:     { bg: "#fff0e0", color: "#E05500" },
   qualified:     { bg: "#e0f2fe", color: "#0369a1" },
   proposal_sent: { bg: "#ede9fe", color: "#5b21b6" },
   negotiation:   { bg: "#fef3c7", color: "#92400e" },
@@ -192,14 +192,14 @@ const STAGE_COLORS: Record<string, { bg: string; color: string }> = {
 const PRIORITY_COLORS: Record<string, { bg: string; color: string }> = {
   urgent: { bg: "#fee2e2", color: "#dc2626" },
   high:   { bg: "#fef3c7", color: "#b45309" },
-  medium: { bg: "#dbeafe", color: "#1d4ed8" },
+  medium: { bg: "#fff0e0", color: "#E05500" },
   low:    { bg: "#f1f5f9", color: "#64748b" },
 };
 
 const PRIORITY_DOT: Record<string, string> = {
   urgent: "#dc2626",
   high:   "#f97316",
-  medium: "#3b82f6",
+  medium: "#FF6600",
   low:    "#94a3b8",
 };
 
@@ -212,7 +212,7 @@ const OUTCOME_COLORS: Record<string, { bg: string; color: string }> = {
 };
 
 const INTERACTION_TYPE_COLOR: Record<string, string> = {
-  call:      "#3b82f6",
+  call:      "#FF6600",
   meeting:   "#8b5cf6",
   email:     "#0ea5e9",
   whatsapp:  "#22c55e",
@@ -222,7 +222,7 @@ const INTERACTION_TYPE_COLOR: Record<string, string> = {
 
 const OPP_STAGE_COLORS: Record<string, { bg: string; color: string }> = {
   prospecting:  { bg: "#f1f5f9", color: "#475569" },
-  qualified:    { bg: "#dbeafe", color: "#1d4ed8" },
+  qualified:    { bg: "#fff0e0", color: "#E05500" },
   proposal_sent:{ bg: "#ede9fe", color: "#5b21b6" },
   negotiation:  { bg: "#fef3c7", color: "#92400e" },
   closed_won:   { bg: "#d1fae5", color: "#065f46" },
@@ -369,8 +369,8 @@ function PrimaryBtn({
       disabled={props.disabled || loading}
       className={`flex items-center gap-1.5 px-4 h-9 rounded-xl text-[13px] font-semibold text-white ${props.className ?? ""}`}
       style={{
-        background: "linear-gradient(135deg,#2563eb,#1d4ed8)",
-        boxShadow: "0 1px 8px rgba(37,99,235,0.3)",
+        background: "linear-gradient(135deg,#FF6600,#E05500)",
+        boxShadow: "0 1px 8px rgba(255,102,0,0.3)",
         opacity: (props.disabled || loading) ? 0.6 : 1,
         cursor: (props.disabled || loading) ? "not-allowed" : "pointer",
         ...props.style,
@@ -857,7 +857,7 @@ function OverviewTab({
           <div className="flex items-start gap-4">
             <div
               className="w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 text-[18px] font-bold text-white"
-              style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}
+              style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}
             >
               {initials(contact.full_name)}
             </div>
@@ -887,8 +887,8 @@ function OverviewTab({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {contact.email && (
               <a href={`mailto:${contact.email}`} className="flex items-center gap-2.5 group">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: "#eff6ff" }}>
-                  <Mail className="w-4 h-4" style={{ color: "#2563eb" }} />
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: "#fff7f0" }}>
+                  <Mail className="w-4 h-4" style={{ color: "#FF6600" }} />
                 </div>
                 <div className="min-w-0">
                   <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "var(--pg-text-3)" }}>Email</p>
@@ -920,7 +920,7 @@ function OverviewTab({
             )}
             {contact.linkedin_url && (
               <a href={contact.linkedin_url} target="_blank" rel="noreferrer" className="flex items-center gap-2.5 group">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: "#eff6ff" }}>
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: "#fff7f0" }}>
                   <Link2 className="w-4 h-4" style={{ color: "#0a66c2" }} />
                 </div>
                 <div className="min-w-0">
@@ -954,7 +954,7 @@ function OverviewTab({
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-4">
             <div>
               <div className="flex items-center gap-1.5 mb-1">
-                <DollarSign className="w-3.5 h-3.5" style={{ color: "#2563eb" }} />
+                <DollarSign className="w-3.5 h-3.5" style={{ color: "#FF6600" }} />
                 <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "var(--pg-text-3)" }}>Est. AUM</p>
               </div>
               <p className="text-[14px] font-bold" style={{ color: "var(--pg-text-1)" }}>{fmtNGN(contact.estimated_aum)}</p>
@@ -992,12 +992,12 @@ function OverviewTab({
           {Array.isArray(contact.preferred_products) && contact.preferred_products.length > 0 && (
             <div>
               <div className="flex items-center gap-1.5 mb-2">
-                <Package className="w-3.5 h-3.5" style={{ color: "#3b82f6" }} />
+                <Package className="w-3.5 h-3.5" style={{ color: "#FF6600" }} />
                 <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "var(--pg-text-3)" }}>Preferred Products</p>
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {contact.preferred_products.map((p, i) => (
-                  <span key={i} className="px-2 py-0.5 rounded-full text-[11px] font-medium" style={{ background: "#dbeafe", color: "#1e40af" }}>
+                  <span key={i} className="px-2 py-0.5 rounded-full text-[11px] font-medium" style={{ background: "#fff0e0", color: "#E05500" }}>
                     {p}
                   </span>
                 ))}
@@ -1061,7 +1061,7 @@ function OverviewTab({
           <button
             onClick={onLogInteraction}
             className="w-full flex items-center gap-2 h-9 px-4 rounded-xl text-[13px] font-semibold text-white"
-            style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)", cursor: "pointer" }}
+            style={{ background: "linear-gradient(135deg,#FF6600,#E05500)", cursor: "pointer" }}
           >
             <MessageCircle className="w-3.5 h-3.5" /> Log Interaction
           </button>
@@ -1099,12 +1099,12 @@ function OverviewTab({
                       className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold text-white shrink-0"
                       style={{
                         background: isPast
-                          ? "#2563eb"
+                          ? "#FF6600"
                           : isCurrent
-                          ? "linear-gradient(135deg,#2563eb,#1d4ed8)"
+                          ? "linear-gradient(135deg,#FF6600,#E05500)"
                           : "var(--pg-muted-bg)",
-                        border: isCurrent ? "2px solid #2563eb" : "1px solid var(--pg-card-border)",
-                        boxShadow: isCurrent ? "0 0 0 3px rgba(37,99,235,0.15)" : "none",
+                        border: isCurrent ? "2px solid #FF6600" : "1px solid var(--pg-card-border)",
+                        boxShadow: isCurrent ? "0 0 0 3px rgba(255,102,0,0.15)" : "none",
                         color: (isPast || isCurrent) ? "white" : "var(--pg-text-3)",
                       }}
                     >
@@ -1112,7 +1112,7 @@ function OverviewTab({
                     </div>
                     <span
                       className="text-[8.5px] font-medium mt-1 text-center leading-tight"
-                      style={{ color: (isPast || isCurrent) ? "#2563eb" : "var(--pg-text-3)" }}
+                      style={{ color: (isPast || isCurrent) ? "#FF6600" : "var(--pg-text-3)" }}
                     >
                       {s.replace(/_/g,"\n")}
                     </span>
@@ -1120,7 +1120,7 @@ function OverviewTab({
                   {!isLast && (
                     <div
                       className="h-px flex-1 mx-0.5 mb-4"
-                      style={{ background: isPast ? "#2563eb" : "var(--pg-card-border)" }}
+                      style={{ background: isPast ? "#FF6600" : "var(--pg-card-border)" }}
                     />
                   )}
                 </div>
@@ -1136,7 +1136,7 @@ function OverviewTab({
         >
           <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--pg-text-3)" }}>Quick Stats</p>
           {[
-            { label: "Interactions", value: String(contact.interaction_count ?? 0), icon: MessageCircle, color: "#2563eb" },
+            { label: "Interactions", value: String(contact.interaction_count ?? 0), icon: MessageCircle, color: "#FF6600" },
             { label: "Open Tasks", value: String(contact.open_task_count ?? 0), icon: CheckCircle, color: "#f59e0b" },
             { label: "Pipeline Value", value: fmtNGN(contact.pipeline_value), icon: DollarSign, color: "#16a34a" },
           ].map(stat => (
@@ -1958,11 +1958,11 @@ export default function ContactDetailPage() {
             className="px-4 h-9 rounded-xl text-[13px] font-semibold whitespace-nowrap transition-all"
             style={{
               background: activeTab === tab.key
-                ? "linear-gradient(135deg,#2563eb,#1d4ed8)"
+                ? "linear-gradient(135deg,#FF6600,#E05500)"
                 : "var(--pg-muted-bg)",
               color: activeTab === tab.key ? "white" : "var(--pg-text-2)",
               border: activeTab === tab.key ? "none" : "1px solid var(--pg-card-border)",
-              boxShadow: activeTab === tab.key ? "0 1px 8px rgba(37,99,235,0.3)" : "none",
+              boxShadow: activeTab === tab.key ? "0 1px 8px rgba(255,102,0,0.3)" : "none",
               cursor: "pointer",
             }}
           >

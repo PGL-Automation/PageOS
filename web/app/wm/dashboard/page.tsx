@@ -24,7 +24,7 @@ function getGreeting() {
 const CASE_PILL: Record<string, { label: string; bg: string; color: string }> = {
   draft:            { label: "Draft",       bg: "#f1f5f9", color: "#475569" },
   submitted:        { label: "Submitted",   bg: "#e0f2fe", color: "#0369a1" },
-  in_review:        { label: "In Review",   bg: "#dbeafe", color: "#1d4ed8" },
+  in_review:        { label: "In Review",   bg: "#fff0e0", color: "#E05500" },
   compliance_review:{ label: "Compliance",  bg: "#ede9fe", color: "#6d28d9" },
   approved:         { label: "Approved",    bg: "#d1fae5", color: "#065f46" },
   rejected:         { label: "Rejected",    bg: "#fee2e2", color: "#991b1b" },
@@ -111,7 +111,7 @@ export default function WMDashboard() {
         <div className="flex gap-2">
           <Link href="/investments/onboarding"
                 className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold text-white"
-                style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)", boxShadow: "0 1px 8px rgba(37,99,235,0.35)" }}>
+                style={{ background: "linear-gradient(135deg,#FF6600,#E05500)", boxShadow: "0 1px 8px rgba(255,102,0,0.35)" }}>
             <Plus className="w-3.5 h-3.5" /> New Client
           </Link>
           <Link href="/ai"
@@ -125,7 +125,7 @@ export default function WMDashboard() {
       {/* Stats strip */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: "My Clients",       value: clients.length.toString(),   icon: Users,       color: "#2563eb", bg: "#eff6ff" },
+          { label: "My Clients",       value: clients.length.toString(),   icon: Users,       color: "#FF6600", bg: "#fff7f0" },
           { label: "Approved",         value: approved.toString(),          icon: CheckCircle2,color: "#059669", bg: "#ecfdf5" },
           { label: "Pending Review",   value: pendingReview.toString(),     icon: Clock,       color: "#d97706", bg: "#fffbeb" },
           { label: "Needs Attention",  value: needsAttention.length.toString(), icon: AlertCircle, color: "#dc2626", bg: "#fef2f2" },
@@ -153,7 +153,7 @@ export default function WMDashboard() {
           <div className="rounded-2xl overflow-hidden" style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}>
             <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid var(--pg-row-border)" }}>
               <h2 className="text-[13px] font-semibold" style={{ color: "var(--pg-text-1)" }}>My Clients</h2>
-              <Link href="/wm/clients" className="text-[11px] font-medium text-blue-600 hover:underline flex items-center gap-0.5">
+              <Link href="/wm/clients" className="text-[11px] font-medium text-orange-600 hover:underline flex items-center gap-0.5">
                 View all <ChevronRight className="w-3 h-3" />
               </Link>
             </div>
@@ -167,7 +167,7 @@ export default function WMDashboard() {
                 <Users className="w-10 h-10 mb-3" style={{ color: "var(--pg-text-4)" }} />
                 <p className="text-[13px]" style={{ color: "var(--pg-text-3)" }}>No clients yet</p>
                 <Link href="/investments/onboarding"
-                      className="mt-3 text-[12px] font-semibold text-blue-600 hover:underline">
+                      className="mt-3 text-[12px] font-semibold text-orange-600 hover:underline">
                   Start a new onboarding →
                 </Link>
               </div>
@@ -182,7 +182,7 @@ export default function WMDashboard() {
                           onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--pg-row-hover)"}
                           onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
                       <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-[11px] font-bold text-white"
-                           style={{ background: c.riskFlag ? "linear-gradient(135deg,#dc2626,#b91c1c)" : "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                           style={{ background: c.riskFlag ? "linear-gradient(135deg,#dc2626,#b91c1c)" : "linear-gradient(135deg,#FF6600,#E05500)" }}>
                         {c.name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase()}
                       </div>
                       <div className="flex-1 min-w-0">
@@ -262,7 +262,7 @@ export default function WMDashboard() {
                       <p className="text-[12.5px] font-medium truncate" style={{ color: "var(--pg-text-1)" }}>{c.name}</p>
                       <p className="text-[11px] capitalize" style={{ color: "var(--pg-text-3)" }}>{c.type}</p>
                     </div>
-                    <button className="flex items-center gap-1 h-7 px-2.5 rounded-lg text-[11px] font-medium text-blue-600 transition-colors hover:bg-blue-50">
+                    <button className="flex items-center gap-1 h-7 px-2.5 rounded-lg text-[11px] font-medium text-orange-600 transition-colors hover:bg-orange-50">
                       <Mail className="w-3 h-3" /> Contact
                     </button>
                   </div>
@@ -278,7 +278,7 @@ export default function WMDashboard() {
             </div>
             <div className="p-3 grid grid-cols-2 gap-2">
               {[
-                { label: "New Client",    icon: Plus,      href: "/investments/onboarding", color: "#2563eb" },
+                { label: "New Client",    icon: Plus,      href: "/investments/onboarding", color: "#FF6600" },
                 { label: "Commission",    icon: Star,      href: "/wm/commission",          color: "#059669" },
                 { label: "All Clients",   icon: Users,     href: "/wm/clients",             color: "#7c3aed" },
                 { label: "Documents",     icon: FileText,  href: "/documents",              color: "#0891b2" },
@@ -298,7 +298,7 @@ export default function WMDashboard() {
           {/* AI nudge */}
           <Link href="/ai"
                 className="flex items-center gap-3 px-5 py-4 rounded-2xl transition-all"
-                style={{ background: "linear-gradient(135deg,rgba(124,58,237,0.08),rgba(37,99,235,0.08))", border: "1px solid rgba(124,58,237,0.15)" }}>
+                style={{ background: "linear-gradient(135deg,rgba(124,58,237,0.08),rgba(255,102,0,0.08))", border: "1px solid rgba(124,58,237,0.15)" }}>
             <Brain className="w-5 h-5 shrink-0" style={{ color: "#7c3aed" }} />
             <div className="flex-1 min-w-0">
               <p className="text-[12.5px] font-semibold" style={{ color: "var(--pg-text-1)" }}>AI Copilot</p>

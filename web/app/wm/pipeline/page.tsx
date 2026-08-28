@@ -46,9 +46,9 @@ const COLUMNS: ColumnDef[] = [
     id: "in_review",
     label: "In Review",
     states: ["in_review"],
-    accentColor: "#1d4ed8",
-    headerBg:    "#dbeafe",
-    headerText:  "#1d4ed8",
+    accentColor: "#E05500",
+    headerBg:    "#fff0e0",
+    headerText:  "#E05500",
   },
   {
     id: "compliance",
@@ -85,7 +85,7 @@ interface PipelineCard {
 const STATE_PILL: Record<string, { label: string; bg: string; color: string }> = {
   draft:             { label: "Draft",       bg: "#f1f5f9", color: "#475569" },
   submitted:         { label: "Submitted",   bg: "#e0f2fe", color: "#0369a1" },
-  in_review:         { label: "In Review",   bg: "#dbeafe", color: "#1d4ed8" },
+  in_review:         { label: "In Review",   bg: "#fff0e0", color: "#E05500" },
   compliance_review: { label: "Compliance",  bg: "#ede9fe", color: "#6d28d9" },
   approved:          { label: "Approved",    bg: "#d1fae5", color: "#065f46" },
   rejected:          { label: "Rejected",    bg: "#fee2e2", color: "#991b1b" },
@@ -114,7 +114,7 @@ function PipelineCard({ card }: { card: PipelineCard }) {
   const pill = STATE_PILL[card.state] ?? { label: card.state, bg: "#f1f5f9", color: "#475569" };
   const avatarBg = card.riskFlag
     ? "linear-gradient(135deg,#dc2626,#b91c1c)"
-    : "linear-gradient(135deg,#2563eb,#1d4ed8)";
+    : "linear-gradient(135deg,#FF6600,#E05500)";
 
   return (
     <div
@@ -192,7 +192,7 @@ function PipelineCard({ card }: { card: PipelineCard }) {
         <Link
           href={`/dashboard/cases/${card.id}`}
           onClick={e => e.stopPropagation()}
-          className="flex items-center gap-0.5 text-[10.5px] font-medium text-blue-600 hover:underline"
+          className="flex items-center gap-0.5 text-[10.5px] font-medium text-orange-600 hover:underline"
         >
           Open case <ChevronRight className="w-3 h-3" />
         </Link>
@@ -303,7 +303,7 @@ export default function WMPipelinePage() {
   const returned   = cards.filter(c => c.state === "returned").length;
 
   const stats = [
-    { label: "Total",     value: total,    color: "#2563eb", bg: "#eff6ff",  icon: Users },
+    { label: "Total",     value: total,    color: "#FF6600", bg: "#fff7f0",  icon: Users },
     { label: "Approved",  value: approved, color: "#059669", bg: "#ecfdf5",  icon: CheckCircle2 },
     { label: "In Review", value: inReview, color: "#d97706", bg: "#fffbeb",  icon: Clock },
     { label: "Returned",  value: returned, color: "#dc2626", bg: "#fef2f2",  icon: RotateCcw },
@@ -325,7 +325,7 @@ export default function WMPipelinePage() {
         <Link
           href="/investments/onboarding"
           className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold text-white shrink-0"
-          style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)", boxShadow: "0 1px 8px rgba(37,99,235,0.35)" }}
+          style={{ background: "linear-gradient(135deg,#FF6600,#E05500)", boxShadow: "0 1px 8px rgba(255,102,0,0.35)" }}
         >
           <Plus className="w-3.5 h-3.5" /> New Client
         </Link>

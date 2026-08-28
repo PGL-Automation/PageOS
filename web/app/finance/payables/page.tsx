@@ -45,7 +45,7 @@ function fmtDate(d: string) {
 
 const STATUS_CFG: Record<string, { label: string; bg: string; color: string }> = {
   pending:  { label: "Pending",  bg: "#fef3c7", color: "#92400e" },
-  approved: { label: "Approved", bg: "#dbeafe", color: "#1e40af" },
+  approved: { label: "Approved", bg: "#fff0e0", color: "#E05500" },
   paid:     { label: "Paid",     bg: "#d1fae5", color: "#065f46" },
   overdue:  { label: "Overdue",  bg: "#fee2e2", color: "#991b1b" },
   cancelled:{ label: "Cancelled",bg: "#f1f5f9", color: "#475569" },
@@ -241,8 +241,8 @@ function CreatePayableModal({ vendors, accounts, onClose }: { vendors: Vendor[];
                 </div>
               )}
               <div className="text-right">
-                <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "#2563eb" }}>Net Payable</p>
-                <p className="text-[16px] font-bold tabular font-mono" style={{ color: "#2563eb" }}>{fmt(netPayable)}</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "#FF6600" }}>Net Payable</p>
+                <p className="text-[16px] font-bold tabular font-mono" style={{ color: "#FF6600" }}>{fmt(netPayable)}</p>
               </div>
             </div>
           </div>
@@ -439,7 +439,7 @@ export default function PayablesPage() {
         {[
           { label: "Total Outstanding", value: fmt(totalOutstanding), color: "#d97706", bg: "#fffbeb", icon: CreditCard },
           { label: "Overdue Invoices",  value: overdue + " invoices", color: "#dc2626", bg: "#fee2e2", icon: AlertTriangle },
-          { label: "Pending Approval",  value: payables.filter(p => p.status === "pending").length + " invoices", color: "#2563eb", bg: "#eff6ff", icon: Clock },
+          { label: "Pending Approval",  value: payables.filter(p => p.status === "pending").length + " invoices", color: "#FF6600", bg: "#fff7f0", icon: Clock },
           { label: "Paid This Month",   value: payables.filter(p => p.status === "paid").length + " invoices", color: "#059669", bg: "#d1fae5", icon: CheckCircle2 },
         ].map(s => (
           <div key={s.label} className="rounded-xl px-4 py-4 flex items-center gap-3"
@@ -533,7 +533,7 @@ export default function PayablesPage() {
                       <button onClick={() => approveMutation.mutate(p.id)}
                               disabled={approveMutation.isPending}
                               className="flex items-center gap-1 h-7 px-2 rounded-lg text-[11px] font-semibold text-white"
-                              style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                              style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
                         <CheckCircle2 className="w-3 h-3" /> Approve
                       </button>
                     )}

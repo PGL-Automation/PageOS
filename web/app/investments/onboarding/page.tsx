@@ -47,10 +47,10 @@ function StepIndicator({ current }: { current: number }) {
                   background: done
                     ? "linear-gradient(135deg,#059669,#047857)"
                     : active
-                    ? "linear-gradient(135deg,#2563eb,#1d4ed8)"
+                    ? "linear-gradient(135deg,#FF6600,#E05500)"
                     : "var(--pg-card)",
                   border: done || active ? "none" : "1.5px solid var(--pg-card-border)",
-                  boxShadow: active ? "0 2px 8px rgba(37,99,235,0.35)" : "none",
+                  boxShadow: active ? "0 2px 8px rgba(255,102,0,0.35)" : "none",
                 }}
               >
                 {done ? (
@@ -149,20 +149,20 @@ function StepClientSetup({
               onClick={() => setClientType(t)}
               className="flex flex-col items-center gap-2 p-5 rounded-2xl transition-all duration-150"
               style={{
-                background: active ? "linear-gradient(135deg,#eff6ff,#dbeafe)" : "var(--pg-card)",
-                border: active ? "2px solid #2563eb" : "1.5px solid var(--pg-card-border)",
-                boxShadow: active ? "0 2px 8px rgba(37,99,235,0.15)" : "none",
+                background: active ? "linear-gradient(135deg,#fff7f0,#fff0e0)" : "var(--pg-card)",
+                border: active ? "2px solid #FF6600" : "1.5px solid var(--pg-card-border)",
+                boxShadow: active ? "0 2px 8px rgba(255,102,0,0.15)" : "none",
               }}
             >
               <div
                 className="w-10 h-10 rounded-xl flex items-center justify-center"
-                style={{ background: active ? "#2563eb" : "var(--pg-card-border)" }}
+                style={{ background: active ? "#FF6600" : "var(--pg-card-border)" }}
               >
                 <Icon className="w-5 h-5" style={{ color: active ? "#fff" : "var(--pg-text-3)" }} />
               </div>
               <span
                 className="text-[13px] font-semibold capitalize"
-                style={{ color: active ? "#2563eb" : "var(--pg-text-2)" }}
+                style={{ color: active ? "#FF6600" : "var(--pg-text-2)" }}
               >
                 {t}
               </span>
@@ -190,7 +190,7 @@ function StepClientSetup({
         onClick={() => createMutation.mutate()}
         disabled={createMutation.isPending || !displayName.trim()}
         className="w-full h-11 rounded-xl text-[14px] font-semibold"
-        style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}
+        style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}
       >
         {createMutation.isPending ? (
           <><Loader2 className="mr-2 w-4 h-4 animate-spin" /> Creating…</>
@@ -324,7 +324,7 @@ function StepDocuments({
         <Button
           onClick={onContinue}
           className="h-10 px-6 rounded-xl text-[13px] font-semibold"
-          style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}
+          style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}
         >
           Continue to Review <ChevronRight className="ml-1 w-4 h-4" />
         </Button>
@@ -441,7 +441,7 @@ function StepReview({
             <div className="flex items-center gap-3">
               <div
                 className="w-10 h-10 rounded-full flex items-center justify-center text-[13px] font-bold text-white"
-                style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}
+                style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}
               >
                 {client.DisplayName
                   .split(" ")

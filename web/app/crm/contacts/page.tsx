@@ -131,7 +131,7 @@ function initials(name: string): string {
 }
 
 const SEGMENT_COLORS: Record<string, { bg: string; text: string }> = {
-  retail: { bg: "#eff6ff", text: "#1d4ed8" },
+  retail: { bg: "#fff7f0", text: "#E05500" },
   hnw: { bg: "#f5f3ff", text: "#6d28d9" },
   uhnw: { bg: "#fdf4ff", text: "#9333ea" },
   institutional: { bg: "#ecfeff", text: "#0e7490" },
@@ -139,7 +139,7 @@ const SEGMENT_COLORS: Record<string, { bg: string; text: string }> = {
 };
 
 const SEGMENT_AVATAR_BG: Record<string, string> = {
-  retail: "#3b82f6",
+  retail: "#FF6600",
   hnw: "#7c3aed",
   uhnw: "#9333ea",
   institutional: "#0891b2",
@@ -148,7 +148,7 @@ const SEGMENT_AVATAR_BG: Record<string, string> = {
 
 const STAGE_STYLES: Record<string, { bg: string; text: string }> = {
   new: { bg: "#f1f5f9", text: "#475569" },
-  contacted: { bg: "#eff6ff", text: "#1d4ed8" },
+  contacted: { bg: "#fff7f0", text: "#E05500" },
   qualified: { bg: "#f5f3ff", text: "#6d28d9" },
   proposal_sent: { bg: "#fffbeb", text: "#b45309" },
   negotiation: { bg: "#fff7ed", text: "#c2410c" },
@@ -158,7 +158,7 @@ const STAGE_STYLES: Record<string, { bg: string; text: string }> = {
 };
 
 const TYPE_STYLES: Record<string, { bg: string; text: string }> = {
-  prospect: { bg: "#eff6ff", text: "#1d4ed8" },
+  prospect: { bg: "#fff7f0", text: "#E05500" },
   client: { bg: "#f0fdf4", text: "#15803d" },
   referral_source: { bg: "#fdf4ff", text: "#9333ea" },
   introducer: { bg: "#fff7ed", text: "#c2410c" },
@@ -168,7 +168,7 @@ const TYPE_STYLES: Record<string, { bg: string; text: string }> = {
 
 const PRIORITY_COLORS: Record<string, string> = {
   low: "#94a3b8",
-  medium: "#3b82f6",
+  medium: "#FF6600",
   high: "#f59e0b",
   vip: "#a855f7",
 };
@@ -1060,13 +1060,13 @@ function LogInteractionModal({ contact, onClose, onLogged }: LogInteractionModal
                   flex: 2,
                   height: 36,
                   borderRadius: 10,
-                  background: "linear-gradient(135deg,#2563eb,#1d4ed8)",
+                  background: "linear-gradient(135deg,#FF6600,#E05500)",
                   border: "none",
                   color: "#fff",
                   fontSize: 13,
                   fontWeight: 600,
                   cursor: mutation.isPending ? "not-allowed" : "pointer",
-                  boxShadow: "0 1px 8px rgba(37,99,235,0.35)",
+                  boxShadow: "0 1px 8px rgba(255,102,0,0.35)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
@@ -1330,9 +1330,9 @@ function ContactCard({ contact, onLogInteraction }: ContactCardProps) {
                 height: 28,
                 padding: "0 10px",
                 borderRadius: 8,
-                background: "#eff6ff",
-                border: "1px solid #bfdbfe",
-                color: "#1d4ed8",
+                background: "#fff7f0",
+                border: "1px solid #fed7aa",
+                color: "#E05500",
                 fontSize: 11,
                 fontWeight: 600,
                 cursor: "pointer",

@@ -40,7 +40,7 @@ function calcQuarterlyCommission(naira: number): number {
 const CASE_PILL: Record<string, { label: string; bg: string; color: string }> = {
   draft:             { label: "Draft",       bg: "#f1f5f9", color: "#475569" },
   submitted:         { label: "Submitted",   bg: "#e0f2fe", color: "#0369a1" },
-  in_review:         { label: "In Review",   bg: "#dbeafe", color: "#1d4ed8" },
+  in_review:         { label: "In Review",   bg: "#fff0e0", color: "#E05500" },
   compliance_review: { label: "Compliance",  bg: "#ede9fe", color: "#6d28d9" },
   approved:          { label: "Approved",    bg: "#d1fae5", color: "#065f46" },
   rejected:          { label: "Rejected",    bg: "#fee2e2", color: "#991b1b" },
@@ -130,8 +130,8 @@ export default function WMCommissionPage() {
 
       {/* Parameter notice */}
       <div className="flex items-start gap-3 px-4 py-3.5 rounded-xl"
-           style={{ background: "rgba(37,99,235,0.07)", border: "1px solid rgba(37,99,235,0.18)" }}>
-        <Info className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+           style={{ background: "rgba(255,102,0,0.07)", border: "1px solid rgba(255,102,0,0.18)" }}>
+        <Info className="w-4 h-4 text-orange-500 shrink-0 mt-0.5" />
         <div>
           <p className="text-[12px] font-semibold" style={{ color: "var(--pg-text-1)" }}>
             Commission parameters — Q4 2026
@@ -152,7 +152,7 @@ export default function WMCommissionPage() {
             label: "Total AUM",
             value: fmtNGN(totalAUM),
             sub:   `All ${rows.length} client${rows.length !== 1 ? "s" : ""}`,
-            color: "#2563eb",
+            color: "#FF6600",
             icon:  Users,
           },
           {
@@ -210,7 +210,7 @@ export default function WMCommissionPage() {
                  background: targetPct >= 100
                    ? "linear-gradient(90deg,#059669,#34d399)"
                    : targetPct >= 75
-                   ? "linear-gradient(90deg,#2563eb,#60a5fa)"
+                   ? "linear-gradient(90deg,#FF6600,#FF6600)"
                    : "linear-gradient(90deg,#f59e0b,#fbbf24)",
                  minWidth: 8,
                }}>
@@ -271,7 +271,7 @@ export default function WMCommissionPage() {
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-2.5">
                         <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold text-white"
-                             style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }}>
+                             style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
                           {r.name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase()}
                         </div>
                         <span className="text-[13px] font-medium" style={{ color: "var(--pg-text-1)" }}>

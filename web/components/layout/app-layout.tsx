@@ -428,7 +428,7 @@ function NotificationsPanel({ open, onClose }: { open: boolean; onClose: () => v
           </div>
           <div className="flex items-center gap-2">
             {unreadCount > 0 && (
-              <button onClick={markAllRead} className="text-[11px] font-medium text-blue-600 hover:underline">
+              <button onClick={markAllRead} className="text-[11px] font-medium text-orange-600 hover:underline">
                 Mark all read
               </button>
             )}

@@ -48,16 +48,16 @@ const JOURNAL_TYPE_GROUPS: { group: string; types: string[] }[] = [
 ];
 
 const TYPE_COLORS: Record<string, string> = {
-  Receipt: "#2563eb", Payment: "#dc2626", "Bank Transfer": "#0891b2",
+  Receipt: "#FF6600", Payment: "#dc2626", "Bank Transfer": "#0891b2",
   Accrual: "#7c3aed", Prepayment: "#a21caf", Deferral: "#9333ea",
   Provision: "#be185d", "Write-off": "#be123c", Reclassification: "#6d28d9",
   Payroll: "#059669", "PAYE / Tax Remittance": "#0d9488", "Pension Remittance": "#0f766e",
   "Withholding Tax": "#047857", VAT: "#065f46",
-  "Investment Purchase": "#1d4ed8", "Investment Sale": "#b45309",
+  "Investment Purchase": "#E05500", "Investment Sale": "#b45309",
   "Dividend Receipt": "#15803d", "Coupon Receipt": "#166534",
-  "Interest Income": "#1e40af", "Mark-to-Market": "#7c2d12",
+  "Interest Income": "#E05500", "Mark-to-Market": "#7c2d12",
   "Trade Settlement": "#1e3a8a", "Management Fee": "#4338ca",
-  "Performance Fee": "#3730a3", "Brokerage Commission": "#1d4ed8",
+  "Performance Fee": "#3730a3", "Brokerage Commission": "#E05500",
   "Capital Expenditure": "#1f2937", Depreciation: "#64748b",
   Amortisation: "#475569", "Asset Disposal": "#374151",
   "Opening Entry": "#6b7280", "Month-end Closing": "#94a3b8",
@@ -170,8 +170,8 @@ function AccountInput({ value, onSelect, placeholder }: {
               <code className="text-[11px] font-mono shrink-0" style={{ color: "var(--pg-text-3)" }}>{a.code}</code>
               <p className="text-[12px] truncate flex-1" style={{ color: "var(--pg-text-1)" }}>{a.name}</p>
               <span className="text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0"
-                    style={{ background: a.normal_balance === "DR" ? "#eff6ff" : "#fef2f2",
-                             color: a.normal_balance === "DR" ? "#2563eb" : "#dc2626" }}>
+                    style={{ background: a.normal_balance === "DR" ? "#fff7f0" : "#fef2f2",
+                             color: a.normal_balance === "DR" ? "#FF6600" : "#dc2626" }}>
                 {a.normal_balance}
               </span>
             </button>
@@ -661,7 +661,7 @@ export default function JournalsPage() {
         </div>
         <button onClick={() => setShowCreate(true)}
                 className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold text-white"
-                style={{ background: "linear-gradient(135deg,#2563eb,#1d4ed8)", boxShadow: "0 1px 6px rgba(37,99,235,0.35)" }}>
+                style={{ background: "linear-gradient(135deg,#FF6600,#E05500)", boxShadow: "0 1px 6px rgba(255,102,0,0.35)" }}>
           <Plus className="w-3.5 h-3.5" /> New Journal
         </button>
       </div>
@@ -703,7 +703,7 @@ export default function JournalsPage() {
             <button key={t} onClick={() => setStatusTab(t)}
                     className="h-7 px-3 rounded-lg text-[11px] font-medium capitalize transition-all"
                     style={statusTab === t
-                      ? { background: "linear-gradient(135deg,#2563eb,#1d4ed8)", color: "white" }
+                      ? { background: "linear-gradient(135deg,#FF6600,#E05500)", color: "white" }
                       : { color: "var(--pg-text-2)" }}>
               {t === "pending_approval" ? "Pending" : t}
             </button>
@@ -762,7 +762,7 @@ export default function JournalsPage() {
                          className="grid items-center gap-3 px-4 py-3 cursor-pointer transition-colors"
                          style={{
                            gridTemplateColumns: "100px 110px 100px 1fr 90px 90px 120px 110px",
-                           background: isSelected ? "rgba(37,99,235,0.05)" : undefined,
+                           background: isSelected ? "rgba(255,102,0,0.05)" : undefined,
                          }}
                          onClick={() => setSelectedId(isSelected ? null : j.id)}
                          onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = "var(--pg-row-hover)"; }}
