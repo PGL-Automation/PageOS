@@ -113,6 +113,160 @@ function PreviewModal({ doc, onClose }: { doc: VaultDoc; onClose: () => void }) 
   );
 }
 
+// ── Date-Time Picker ──────────────────────────────────────────────────────────
+
+const MONTH_NAMES = ["January","February","March","April","May","June",
+                     "July","August","September","October","November","December"];
+const DAY_NAMES   = ["Su","Mo","Tu","We","Th","Fr","Sa"];
+
+function DateTimePicker({
+  value, onConfirm, onClose,
+}: {
+  value: string;           // YYYY-MM-DDTHH:mm or ""
+  onConfirm: (v: string) => void;
+  onClose: () => void;
+}) {
+  const now = new Date();
+  const initDate = value ? new Date(value) : now;
+
+  const [viewYear,  setViewYear]  = useState(initDate.getFullYear());
+  const [viewMonth, setViewMonth] = useState(initDate.getMonth()); // 0-based
+  const [selDate,   setSelDate]   = useState<Date | null>(value ? initDate : null);
+  const [hour,      setHour]      = useState(initDate.getHours().toString().padStart(2, "0"));
+  const [minute,    setMinute]    = useState(initDate.getMinutes().toString().padStart(2, "0"));
+
+  // Build calendar grid
+  const firstDay = new Date(viewYear, viewMonth, 1).getDay(); // 0=Sun
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const cells: (number | null)[] = [
+    ...Array(firstDay).fill(null),
+    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+  ];
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  function prevMonth() {
+    if (viewMonth === 0) { setViewYear(y => y - 1); setViewMonth(11); }
+    else setViewMonth(m => m - 1);
+  }
+  function nextMonth() {
+    if (viewMonth === 11) { setViewYear(y => y + 1); setViewMonth(0); }
+    else setViewMonth(m => m + 1);
+  }
+  function selectDay(day: number) {
+    setSelDate(new Date(viewYear, viewMonth, day));
+  }
+  function confirm() {
+    if (!selDate) return;
+    const h = Math.min(23, Math.max(0, parseInt(hour) || 0));
+    const m = Math.min(59, Math.max(0, parseInt(minute) || 0));
+    const result = new Date(selDate.getFullYear(), selDate.getMonth(), selDate.getDate(), h, m);
+    onConfirm(result.toISOString().slice(0, 16));
+  }
+
+  const todayStr  = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
+  const selStr    = selDate ? `${selDate.getFullYear()}-${selDate.getMonth()}-${selDate.getDate()}` : "";
+
+  return (
+    <div className="absolute top-full left-0 mt-1 z-[200] rounded-2xl overflow-hidden"
+         style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)", boxShadow: "0 16px 40px rgba(0,0,0,0.2)", width: 280 }}>
+
+      {/* Month nav */}
+      <div className="flex items-center justify-between px-4 py-3"
+           style={{ borderBottom: "1px solid var(--pg-row-border)" }}>
+        <button onClick={prevMonth}
+                className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors"
+                style={{ color: "var(--pg-text-2)" }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--pg-muted-bg)"}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
+          ‹
+        </button>
+        <span className="text-[13px] font-semibold" style={{ color: "var(--pg-text-1)" }}>
+          {MONTH_NAMES[viewMonth]} {viewYear}
+        </span>
+        <button onClick={nextMonth}
+                className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors"
+                style={{ color: "var(--pg-text-2)" }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--pg-muted-bg)"}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
+          ›
+        </button>
+      </div>
+
+      {/* Day-of-week headers */}
+      <div className="grid grid-cols-7 px-3 pt-2">
+        {DAY_NAMES.map(d => (
+          <div key={d} className="text-center text-[10px] font-bold py-1"
+               style={{ color: "var(--pg-text-3)" }}>{d}</div>
+        ))}
+      </div>
+
+      {/* Day cells */}
+      <div className="grid grid-cols-7 px-3 pb-2 gap-y-0.5">
+        {cells.map((day, i) => {
+          if (!day) return <div key={i} />;
+          const cellStr = `${viewYear}-${viewMonth}-${day}`;
+          const isToday = cellStr === todayStr;
+          const isSel   = cellStr === selStr;
+          const isPast  = new Date(viewYear, viewMonth, day) < new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          return (
+            <button
+              key={i}
+              onClick={() => !isPast && selectDay(day)}
+              disabled={isPast}
+              className="h-8 w-full rounded-lg text-[12px] font-medium transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+              style={{
+                background: isSel ? "#FF6600" : "transparent",
+                color: isSel ? "#fff" : isToday ? "#FF6600" : "var(--pg-text-1)",
+                fontWeight: isToday || isSel ? 700 : 400,
+                border: isToday && !isSel ? "1px solid #FF6600" : "1px solid transparent",
+              }}
+              onMouseEnter={e => { if (!isSel && !isPast) (e.currentTarget as HTMLElement).style.background = "var(--pg-muted-bg)"; }}
+              onMouseLeave={e => { if (!isSel) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+            >
+              {day}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Time inputs */}
+      <div className="flex items-center justify-center gap-2 px-4 py-3"
+           style={{ borderTop: "1px solid var(--pg-row-border)" }}>
+        <span className="text-[11px] font-semibold" style={{ color: "var(--pg-text-3)" }}>Time</span>
+        <input
+          type="number" min={0} max={23} value={hour}
+          onChange={e => setHour(e.target.value.padStart(2, "0"))}
+          className="w-12 h-8 text-center text-[14px] font-semibold rounded-lg outline-none"
+          style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)", color: "var(--pg-text-1)" }}
+        />
+        <span className="text-[16px] font-bold" style={{ color: "var(--pg-text-2)" }}>:</span>
+        <input
+          type="number" min={0} max={59} value={minute}
+          onChange={e => setMinute(e.target.value.padStart(2, "0"))}
+          className="w-12 h-8 text-center text-[14px] font-semibold rounded-lg outline-none"
+          style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)", color: "var(--pg-text-1)" }}
+        />
+      </div>
+
+      {/* Actions */}
+      <div className="flex items-center justify-between gap-2 px-4 pb-4">
+        <button onClick={onClose}
+                className="h-8 px-3 rounded-xl text-[12px] font-medium transition-colors"
+                style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--pg-muted-bg)"}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
+          Cancel
+        </button>
+        <button onClick={confirm} disabled={!selDate}
+                className="h-8 px-4 rounded-xl text-[12px] font-semibold text-white disabled:opacity-40"
+                style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
+          Set Reminder
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Note editor / viewer ───────────────────────────────────────────────────────
 
 function NoteEditor({
@@ -139,6 +293,7 @@ function NoteEditor({
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showPicker, setShowPicker] = useState(false);
 
   useEffect(() => {
     titleRef.current?.focus();
@@ -250,30 +405,37 @@ function NoteEditor({
             </div>
           )}
 
-          {/* Reminder date-time picker */}
-          <div className="flex items-center gap-1">
+          {/* Reminder button */}
+          <div className="relative">
             {notifyAt ? (
               <div className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium"
                    style={{ background: "#fff3e0", border: "1px solid #FF6600", color: "#E05500" }}>
-                <Bell className="w-3 h-3" />
-                <span>{new Date(notifyAt).toLocaleString("en-GB", { dateStyle: "short", timeStyle: "short" })}</span>
-                <button onClick={() => setNotifyAt("")} className="ml-1 hover:opacity-70">
+                <Bell className="w-3 h-3 shrink-0" />
+                <button onClick={() => setShowPicker(true)} className="hover:underline">
+                  {new Date(notifyAt).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                </button>
+                <button onClick={() => { setNotifyAt(""); setShowPicker(false); }} className="ml-1 hover:opacity-70" title="Clear reminder">
                   <X className="w-3 h-3" />
                 </button>
               </div>
             ) : (
-              <label className="flex items-center gap-1 h-7 px-2.5 rounded-lg text-[11px] font-medium cursor-pointer transition-colors"
-                     style={{ color: "var(--pg-text-3)", border: "1px solid var(--pg-card-border)" }}
-                     title="Set reminder"
-                     onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--pg-muted-bg)"}
-                     onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
+              <button
+                type="button"
+                onClick={() => setShowPicker(true)}
+                className="flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium transition-all"
+                style={{ color: "var(--pg-text-3)", border: "1px solid var(--pg-card-border)" }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "var(--pg-muted-bg)"; (e.currentTarget as HTMLElement).style.color = "#FF6600"; (e.currentTarget as HTMLElement).style.borderColor = "#FF6600"; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = ""; (e.currentTarget as HTMLElement).style.color = "var(--pg-text-3)"; (e.currentTarget as HTMLElement).style.borderColor = "var(--pg-card-border)"; }}>
                 <Bell className="w-3 h-3" />
-                <span className="hidden sm:inline">Remind me</span>
-                <input type="datetime-local" className="sr-only"
-                       min={new Date().toISOString().slice(0, 16)}
-                       value={notifyAt}
-                       onChange={e => setNotifyAt(e.target.value)} />
-              </label>
+                Remind me
+              </button>
+            )}
+            {showPicker && (
+              <DateTimePicker
+                value={notifyAt}
+                onConfirm={val => { setNotifyAt(val); setShowPicker(false); }}
+                onClose={() => setShowPicker(false)}
+              />
             )}
           </div>
 
