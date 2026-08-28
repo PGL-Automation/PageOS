@@ -14,6 +14,44 @@ import { cn } from "@/lib/utils";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
 
+// ── Nigeria timezone helpers (WAT = UTC+1, no DST) ────────────────────────────
+
+const NIGERIA_TZ = "Africa/Lagos";
+
+/** Parts of the current Nigeria time. */
+function nowWAT() {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: NIGERIA_TZ, year: "numeric", month: "numeric",
+    day: "numeric", hour: "numeric", minute: "numeric", hour12: false,
+  });
+  const p = Object.fromEntries(fmt.formatToParts(new Date()).map(x => [x.type, parseInt(x.value, 10)]));
+  return { year: p.year, month: p.month - 1, day: p.day, hour: p.hour === 24 ? 0 : p.hour, minute: p.minute };
+}
+
+/** Convert a UTC ISO string → Nigeria {year,month(0-based),day,hour,minute}. */
+function utcToWAT(utcIso: string) {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: NIGERIA_TZ, year: "numeric", month: "numeric",
+    day: "numeric", hour: "numeric", minute: "numeric", hour12: false,
+  });
+  const p = Object.fromEntries(fmt.formatToParts(new Date(utcIso)).map(x => [x.type, parseInt(x.value, 10)]));
+  return { year: p.year, month: p.month - 1, day: p.day, hour: p.hour === 24 ? 0 : p.hour, minute: p.minute };
+}
+
+/** Convert Nigeria date parts → UTC ISO string. */
+function watToUtcIso(year: number, month: number, day: number, hour: number, minute: number): string {
+  // WAT = UTC+1 — subtract 1 hour to get UTC
+  return new Date(Date.UTC(year, month, day, hour - 1, minute)).toISOString();
+}
+
+/** Format a UTC ISO string for display in Nigeria time. */
+function fmtWAT(utcIso: string) {
+  const w = utcToWAT(utcIso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return `${w.day} ${months[w.month]}, ${pad(w.hour)}:${pad(w.minute)}`;
+}
+
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 type VaultDoc = {
@@ -171,14 +209,18 @@ function DateTimePicker({
   onConfirm: (v: string) => void;
   onClose: () => void;
 }) {
-  const now  = new Date();
-  const init = value ? new Date(value) : now;
+  // Always work in Nigeria time (WAT = UTC+1, no DST).
+  // If there's an existing value, convert the stored UTC ISO to WAT parts;
+  // otherwise default to the current WAT time.
+  const init = value ? utcToWAT(value) : nowWAT();
 
-  const [yr,  setYr]  = useState(init.getFullYear());
-  const [mo,  setMo]  = useState(init.getMonth());   // 0-based
-  const [sel, setSel] = useState<Date | null>(value ? init : null);
-  const [hr,  setHr]  = useState(init.getHours());   // 0-23 number
-  const [min, setMin] = useState(init.getMinutes()); // 0-59 number
+  const [yr,  setYr]  = useState(init.year);
+  const [mo,  setMo]  = useState(init.month); // 0-based
+  const [sel, setSel] = useState<Date | null>(
+    value ? new Date(init.year, init.month, init.day) : null
+  );
+  const [hr,  setHr]  = useState(init.hour);   // 0-23 WAT
+  const [min, setMin] = useState(init.minute); // 0-59
 
   const firstWeekday = new Date(yr, mo, 1).getDay();
   const totalDays    = new Date(yr, mo + 1, 0).getDate();
@@ -197,10 +239,8 @@ function DateTimePicker({
 
   function confirm() {
     if (!sel) return;
-    const h = hr;
-    const m = min;
-    onConfirm(new Date(sel.getFullYear(), sel.getMonth(), sel.getDate(), h, m)
-      .toISOString().slice(0, 16));
+    // Convert the Nigeria (WAT) selection to UTC ISO for storage.
+    onConfirm(watToUtcIso(sel.getFullYear(), sel.getMonth(), sel.getDate(), hr, min));
   }
 
   const isSameDay = (a: Date, b: Date) =>
@@ -304,9 +344,9 @@ function DateTimePicker({
               label="Hour"
             />
             <span style={{ fontSize: 24, fontWeight: 900, color: "var(--pg-text-2)", lineHeight: 1 }}>:</span>
-            {/* Minute spinner */}
+            {/* Minute spinner — step 1 so every minute is reachable */}
             <TimeSpinner
-              value={min} min={0} max={59} step={5}
+              value={min} min={0} max={59} step={1}
               onChange={setMin}
               label="Min"
             />
@@ -369,10 +409,9 @@ function NoteEditor({
 
   const [title, setTitle] = useState(note?.title ?? "");
   const [body, setBody] = useState(note?.body ?? "");
-  // notifyAt stored as local datetime-local string (YYYY-MM-DDTHH:mm)
-  const [notifyAt, setNotifyAt] = useState(
-    note?.notify_at ? new Date(note.notify_at).toISOString().slice(0, 16) : ""
-  );
+  // notifyAt stored as UTC ISO string (matches API format).
+  // All display converts UTC → Nigeria WAT using fmtWAT().
+  const [notifyAt, setNotifyAt] = useState(note?.notify_at ?? "");
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -382,27 +421,19 @@ function NoteEditor({
     titleRef.current?.focus();
   }, []);
 
-  const existingNotifyAt = note?.notify_at
-    ? new Date(note.notify_at).toISOString().slice(0, 16)
-    : "";
   const isDirty = title !== (note?.title ?? "") ||
     body !== (note?.body ?? "") ||
-    notifyAt !== existingNotifyAt;
+    notifyAt !== (note?.notify_at ?? "");
 
   async function save() {
     if (!title.trim() && !body.trim()) { onClose(); return; }
     setSaving(true);
     try {
-      // Convert local datetime-local string to UTC ISO-8601 for the API
-      let notifyAtISO: string | null = null;
-      if (notifyAt) {
-        const d = new Date(notifyAt);
-        if (!isNaN(d.getTime())) notifyAtISO = d.toISOString();
-      }
+      // notifyAt is already a UTC ISO string from DateTimePicker.confirm().
       const payload: Record<string, unknown> = {
         title: title.trim() || "Untitled",
         body,
-        notify_at: notifyAtISO,
+        notify_at: notifyAt || null,
       };
       if (note) {
         await fetch(`${BASE}/api/v1/vault/notes/${note.id}`, {
@@ -495,7 +526,7 @@ function NoteEditor({
                    style={{ background: "#fff3e0", border: "1px solid #FF6600", color: "#E05500" }}>
                 <Bell className="w-3 h-3 shrink-0" />
                 <button onClick={() => setShowPicker(true)} className="hover:underline">
-                  {new Date(notifyAt).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                  {fmtWAT(notifyAt)}
                 </button>
                 <button onClick={() => { setNotifyAt(""); setShowPicker(false); }} className="ml-1 hover:opacity-70" title="Clear reminder">
                   <X className="w-3 h-3" />
@@ -818,7 +849,7 @@ export default function VaultPage() {
                       <span className="flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-md"
                             style={{ background: "#fff3e0", color: "#E05500" }}>
                         <Bell className="w-2.5 h-2.5" />
-                        {new Date(note.notify_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                        {fmtWAT(note.notify_at)}
                       </span>
                     )}
                   </div>
