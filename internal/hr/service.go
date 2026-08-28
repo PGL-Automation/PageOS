@@ -90,6 +90,8 @@ func (s *Service) ListPolicies(ctx context.Context, personID *uuid.UUID) ([]Leav
 		WHERE  pol.is_active = true
 
 		  -- 1. Grade filter: annual leave tiers only visible to matching grade.
+		  --    Fallback: if the person has NO grade at all, show ANNUAL_L1 so
+		  --    they are never left without any annual leave option.
 		  AND (
 		        pol.applicable_grades IS NULL
 		        OR $1::uuid IS NULL
@@ -98,6 +100,15 @@ func (s *Service) ListPolicies(ctx context.Context, personID *uuid.UUID) ([]Leav
 		             WHERE  a.person_id        = $1
 		               AND  a.effective_to     IS NULL
 		               AND  a.grade_level_code = ANY(pol.applicable_grades)
+		           )
+		        OR (
+		             pol.code = 'ANNUAL_L1'
+		             AND NOT EXISTS (
+		                   SELECT 1 FROM organization.assignment a
+		                   WHERE  a.person_id        = $1
+		                     AND  a.effective_to     IS NULL
+		                     AND  a.grade_level_code IS NOT NULL
+		                 )
 		           )
 		  )
 

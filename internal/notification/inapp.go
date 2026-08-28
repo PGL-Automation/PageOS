@@ -37,18 +37,33 @@ func Send(ctx context.Context, db interface {
 	if n.EntityID != nil && *n.EntityID != uuid.Nil {
 		entityID = n.EntityID
 	}
-	err := db.QueryRow(ctx, `
-		INSERT INTO notification.in_app
-			(user_id, type, title, body, link, priority, entity_type, entity_id, created_date)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8, CURRENT_DATE)
-		ON CONFLICT (user_id, type, entity_id, created_date)
-		    DO NOTHING
-		RETURNING id`,
-		userID, n.Type, n.Title, n.Body,
-		nullStr(n.Link), n.priority(), nullStr(n.EntityType), entityID,
-	).Scan(new(uuid.UUID))
-	if err != nil && err.Error() == "no rows in result set" {
-		return nil // duplicate suppressed by de-dup index — not an error
+	// The partial dedup index only exists for non-NULL entity_id rows.
+	// Using ON CONFLICT when entity_id IS NULL would raise a PostgreSQL error
+	// ("no unique constraint matching"), so we branch on whether entity_id is set.
+	var err error
+	if entityID != nil {
+		err = db.QueryRow(ctx, `
+			INSERT INTO notification.in_app
+				(user_id, type, title, body, link, priority, entity_type, entity_id, created_date)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8, CURRENT_DATE)
+			ON CONFLICT (user_id, type, entity_id, created_date) DO NOTHING
+			RETURNING id`,
+			userID, n.Type, n.Title, n.Body,
+			nullStr(n.Link), n.priority(), nullStr(n.EntityType), entityID,
+		).Scan(new(uuid.UUID))
+		if err != nil && err.Error() == "no rows in result set" {
+			return nil // duplicate suppressed — not an error
+		}
+	} else {
+		// No entity — no dedup needed, plain insert always succeeds.
+		err = db.QueryRow(ctx, `
+			INSERT INTO notification.in_app
+				(user_id, type, title, body, link, priority, entity_type, entity_id, created_date)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8, CURRENT_DATE)
+			RETURNING id`,
+			userID, n.Type, n.Title, n.Body,
+			nullStr(n.Link), n.priority(), nullStr(n.EntityType), nil,
+		).Scan(new(uuid.UUID))
 	}
 	return err
 }

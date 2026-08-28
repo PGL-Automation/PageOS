@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  Plus, X, Bell, FileText, Search, ChevronDown,
+  Plus, X, Bell, FileText, Search, ChevronDown, Check,
   Loader2, AlertCircle, Eye, CalendarDays, FileX,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -103,7 +103,7 @@ function NewRequestModal({ onClose }: { onClose: () => void }) {
 
   const [personSearch, setPersonSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [documentType, setDocumentType] = useState("");
+  const [selectedDocTypes, setSelectedDocTypes] = useState<Set<string>>(new Set());
   const [notes, setNotes] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [error, setError] = useState("");
@@ -161,35 +161,42 @@ function NewRequestModal({ onClose }: { onClose: () => void }) {
     e.preventDefault();
     setError("");
     if (selectedIds.size === 0) { setError("Select at least one employee."); return; }
-    if (!documentType) { setError("Please select a document type."); return; }
+    if (selectedDocTypes.size === 0) { setError("Select at least one document type."); return; }
     setSending(true);
     try {
       const selected = persons.filter(p => selectedIds.has(p.id));
-      const results = await Promise.all(selected.map(async person => {
-        const res = await fetch(`${BASE}/api/v1/hr/document-requests`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            person_id: person.id,
-            document_type: documentType,
-            notes,
-            due_date: dueDate || undefined,
-          }),
-        });
-        if (!res.ok) {
-          const text = await res.text().catch(() => "");
-          let msg = `Error ${res.status}`;
-          try { msg = JSON.parse(text)?.error?.message ?? msg; } catch { /* */ }
-          throw new Error(`Failed for ${person.first_name}: ${msg}`);
-        }
-        return res.json();
-      }));
+      const types = Array.from(selectedDocTypes);
+      // One request per employee × per document type
+      const results = await Promise.all(
+        selected.flatMap(person =>
+          types.map(async docType => {
+            const res = await fetch(`${BASE}/api/v1/hr/document-requests`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify({
+                person_id: person.id,
+                document_type: docType,
+                notes,
+                due_date: dueDate || undefined,
+              }),
+            });
+            if (!res.ok) {
+              const text = await res.text().catch(() => "");
+              let msg = `Error ${res.status}`;
+              try { msg = JSON.parse(text)?.error?.message ?? msg; } catch { /* */ }
+              throw new Error(`Failed for ${person.first_name} (${docType}): ${msg}`);
+            }
+            return res.json();
+          })
+        )
+      );
       queryClient.invalidateQueries({ queryKey: ["hr-doc-requests"] });
       queryClient.refetchQueries({ queryKey: ["hr-doc-requests"] });
+      const totalRequests = selected.length * types.length;
       toast({
         title: "Requests sent",
-        description: `Document request sent to ${results.length} employee${results.length !== 1 ? "s" : ""}.`,
+        description: `${totalRequests} document request${totalRequests !== 1 ? "s" : ""} sent to ${selected.length} employee${selected.length !== 1 ? "s" : ""}.`,
       });
       onClose();
     } catch (err) {
@@ -303,20 +310,47 @@ function NewRequestModal({ onClose }: { onClose: () => void }) {
               )}
             </div>
 
-            {/* Document type */}
+            {/* Document types — multi-select checkbox grid */}
             <div>
-              <label className="block text-[12px] font-medium mb-1.5" style={{ color: "var(--pg-text-2)" }}>
-                Document Type *
-              </label>
-              <div className="relative">
-                <select value={documentType} onChange={e => setDocumentType(e.target.value)} required
-                        className="w-full h-10 px-3 pr-8 rounded-xl text-[13px] outline-none appearance-none"
-                        style={{ background: "var(--pg-input)", border: "1px solid var(--pg-input-border)",
-                                 color: documentType ? "var(--pg-text-1)" : "var(--pg-text-3)" }}>
-                  <option value="">Select document type…</option>
-                  {docTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: "var(--pg-text-3)" }} />
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-[12px] font-medium" style={{ color: "var(--pg-text-2)" }}>
+                  Document Types * <span style={{ color: "var(--pg-text-4)", fontWeight: 400 }}>— select one or more</span>
+                </label>
+                {selectedDocTypes.size > 0 && (
+                  <button type="button" onClick={() => setSelectedDocTypes(new Set())}
+                          className="text-[11px] font-semibold" style={{ color: "#94a3b8" }}>
+                    Clear ({selectedDocTypes.size})
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-1.5 max-h-40 overflow-y-auto pr-1">
+                {docTypes.map(t => {
+                  const checked = selectedDocTypes.has(t);
+                  return (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setSelectedDocTypes(prev => {
+                        const next = new Set(prev);
+                        if (next.has(t)) next.delete(t); else next.add(t);
+                        return next;
+                      })}
+                      className="flex items-center gap-2 px-3 py-2 rounded-xl text-left text-[12px] transition-all"
+                      style={{
+                        border: `1px solid ${checked ? "#FF6600" : "var(--pg-card-border)"}`,
+                        background: checked ? "#fff3e0" : "var(--pg-muted-bg)",
+                        color: checked ? "#E05500" : "var(--pg-text-2)",
+                        fontWeight: checked ? 600 : 400,
+                      }}
+                    >
+                      <div className="w-4 h-4 rounded flex items-center justify-center shrink-0"
+                           style={{ background: checked ? "#FF6600" : "var(--pg-card-border)" }}>
+                        {checked && <Check className="w-2.5 h-2.5 text-white" />}
+                      </div>
+                      {t}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
