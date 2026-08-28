@@ -27,6 +27,7 @@ type UserRow = {
 };
 
 type PendingGradeRow = {
+  user_id?: string;
   assignment_id: string;
   person_id: string;
   display_name: string;
@@ -80,8 +81,10 @@ function PendingGradeCard() {
   });
 
   const confirmMutation = useMutation({
-    mutationFn: async ({ userId, gradeCode }: { userId: string; gradeCode: string }) => {
-      const res = await fetch(`${BASE}/api/v1/admin/users/${userId}/grade`, {
+    mutationFn: async ({ userId, personId, gradeCode }: { userId?: string; personId: string; gradeCode: string }) => {
+      // API expects identity.users.id; fall back to a person-based endpoint if no account.
+      const id = userId ?? personId;
+      const res = await fetch(`${BASE}/api/v1/admin/users/${id}/grade`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -139,7 +142,7 @@ function PendingGradeCard() {
                     ))}
                   </select>
                   <button
-                    onClick={() => confirmMutation.mutate({ userId: row.person_id, gradeCode: newGrade[row.person_id] ?? row.grade_level_code })}
+                    onClick={() => confirmMutation.mutate({ userId: row.user_id, personId: row.person_id, gradeCode: newGrade[row.person_id] ?? row.grade_level_code })}
                     disabled={confirmMutation.isPending}
                     className="w-7 h-7 flex items-center justify-center rounded-lg text-white"
                     style={{ background: "#059669" }}>

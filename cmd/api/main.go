@@ -831,12 +831,17 @@ func updateGradeHandler(pool *pgxpool.Pool, orgSvc *organization.Service, auditW
 			return
 		}
 
-		// Resolve person_id from user_id.
+		// Resolve person_id: try user_id lookup first; if not found the caller
+		// may have passed a person_id directly (employees without login accounts).
 		var personID uuid.UUID
 		if err := pool.QueryRow(r.Context(),
 			"SELECT id FROM organization.person WHERE user_id = $1", targetUserID).Scan(&personID); err != nil {
-			httpx.Error(w, http.StatusNotFound, "person_not_found", "no person record for this user")
-			return
+			// Try treating targetUserID as a person_id directly.
+			if err2 := pool.QueryRow(r.Context(),
+				"SELECT id FROM organization.person WHERE id = $1", targetUserID).Scan(&personID); err2 != nil {
+				httpx.Error(w, http.StatusNotFound, "person_not_found", "no person record found")
+				return
+			}
 		}
 
 		if err := orgSvc.UpdateGradeLevel(r.Context(), personID, in.GradeLevelCode); err != nil {

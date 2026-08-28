@@ -144,14 +144,15 @@ type UserWithAssignments struct {
 
 // PendingGradeRow is returned by ListPendingGradeReview.
 type PendingGradeRow struct {
-	AssignmentID   uuid.UUID `json:"assignment_id"`
-	PersonID       uuid.UUID `json:"person_id"`
-	DisplayName    string    `json:"display_name"`
-	Email          string    `json:"email"`
-	SubsidiaryName string    `json:"subsidiary_name"`
-	PositionTitle  string    `json:"position_title"`
-	GradeLevelCode string    `json:"grade_level_code"`
-	GradeLevelName string    `json:"grade_level_name"`
+	AssignmentID   uuid.UUID  `json:"assignment_id"`
+	PersonID       uuid.UUID  `json:"person_id"`
+	UserID         *uuid.UUID `json:"user_id,omitempty"` // identity.users.id — needed by grade update API
+	DisplayName    string     `json:"display_name"`
+	Email          string     `json:"email"`
+	SubsidiaryName string     `json:"subsidiary_name"`
+	PositionTitle  string     `json:"position_title"`
+	GradeLevelCode string     `json:"grade_level_code"`
+	GradeLevelName string     `json:"grade_level_name"`
 }
 
 // ListUsersWithAssignments returns every person who has an active assignment,
@@ -263,6 +264,7 @@ func (s *Store) ListPendingGradeReview(ctx context.Context) ([]PendingGradeRow, 
 		SELECT
 			a.id                      AS assignment_id,
 			p.id                      AS person_id,
+			u.id                      AS user_id,
 			COALESCE(u.display_name, p.first_name || ' ' || p.last_name) AS display_name,
 			p.email,
 			COALESCE(s.name, '')      AS subsidiary_name,
@@ -287,7 +289,7 @@ func (s *Store) ListPendingGradeReview(ctx context.Context) ([]PendingGradeRow, 
 	var out []PendingGradeRow
 	for rows.Next() {
 		var r PendingGradeRow
-		if err := rows.Scan(&r.AssignmentID, &r.PersonID, &r.DisplayName, &r.Email,
+		if err := rows.Scan(&r.AssignmentID, &r.PersonID, &r.UserID, &r.DisplayName, &r.Email,
 			&r.SubsidiaryName, &r.PositionTitle, &r.GradeLevelCode, &r.GradeLevelName); err != nil {
 			return nil, err
 		}
