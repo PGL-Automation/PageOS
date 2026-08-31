@@ -49,7 +49,7 @@ const WM_NAV: NavGroup[] = [
     { href: "/approval",                label: "Approvals",           icon: CheckSquare },
     { href: "/appraisal",               label: "My Appraisal",        icon: ClipboardList },
     { href: "/leave",                   label: "My Leave",            icon: CalendarDays },
-    { href: "/hr/documents/my",         label: "My Documents",        icon: FileText },
+    { href: "/my-documents",         label: "My Documents",        icon: FileText },
     { href: "/documents",               label: "Shared Documents",    icon: FolderOpen },
     { href: "/vault",                   label: "My Vault",            icon: Lock },
   ]},
@@ -72,7 +72,7 @@ const MD_NAV: NavGroup[] = [
     { href: "/investments/onboarding",label: "Onboarding",       icon: UserPlus },
     { href: "/approval",              label: "Approvals",         icon: CheckSquare },
     { href: "/leave",                 label: "My Leave",          icon: CalendarDays },
-    { href: "/hr/documents/my",       label: "My Documents",      icon: FileText },
+    { href: "/my-documents",       label: "My Documents",      icon: FileText },
     { href: "/reports",               label: "Reports",           icon: FileBarChart },
     { href: "/vault",                 label: "My Vault",          icon: Lock },
   ]},
@@ -99,7 +99,7 @@ const COMPLIANCE_NAV: NavGroup[] = [
   { id: "actions", label: "Actions", items: [
     { href: "/approval",              label: "Approvals",      icon: CheckSquare },
     { href: "/leave",                 label: "My Leave",       icon: CalendarDays },
-    { href: "/hr/documents/my",       label: "My Documents",   icon: FileText },
+    { href: "/my-documents",       label: "My Documents",   icon: FileText },
     { href: "/documents",             label: "Documents",      icon: FolderOpen },
     { href: "/vault",                 label: "My Vault",       icon: Lock },
   ]},
@@ -165,7 +165,7 @@ const HR_NAV: NavGroup[] = [
   { id: "actions", label: "Actions", items: [
     { href: "/approval",              label: "Approvals",       icon: CheckSquare },
     { href: "/leave",                 label: "My Leave",        icon: CalendarDays },
-    { href: "/hr/documents/my",       label: "My Documents",    icon: FileText },
+    { href: "/my-documents",       label: "My Documents",    icon: FileText },
     { href: "/vault",                 label: "My Vault",        icon: Lock },
   ]},
 ];
@@ -223,7 +223,7 @@ const DEFAULT_NAV: NavGroup[] = [
     { href: "/appraisal",             label: "My Appraisal",   icon: ClipboardList },
     { href: "/approval",              label: "Approvals",      icon: CheckSquare },
     { href: "/leave",                 label: "My Leave",       icon: CalendarDays },
-    { href: "/hr/documents/my",       label: "My Documents",   icon: FileText },
+    { href: "/my-documents",       label: "My Documents",   icon: FileText },
     { href: "/vault",                 label: "My Vault",       icon: Lock },
   ]},
   { id: "finance", label: "Finance", items: [

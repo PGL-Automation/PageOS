@@ -517,7 +517,7 @@ func (s *Service) CreateDocumentRequest(ctx context.Context, in CreateDocumentRe
 		Type:     "hr_document_requested",
 		Title:    "Document Request from HR",
 		Body:     fmt.Sprintf("HR has requested your %s.%s", in.DocumentType, dueStr),
-		Link:     "/hr/documents/my",
+		Link:     "/my-documents",
 		Priority: "high",
 	})
 
