@@ -239,7 +239,7 @@ func (s *Scheduler) pendingLeaveReminders(ctx context.Context) error {
 				Type:       "hr.leave_pending_reminder",
 				Title:      "Leave Request Awaiting Review",
 				Body:       fmt.Sprintf("%s's leave request (starting %s) has been pending for over 48 hours.", r.EmployeeName, r.StartDate.Format("2 Jan 2006")),
-				Link:       "/hr",
+				Link:       "/hr/leave",
 				Priority:   "medium",
 				EntityType: "leave_request",
 				EntityID:   &r.RequestID,

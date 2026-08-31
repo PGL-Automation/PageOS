@@ -312,17 +312,9 @@ function NewRequestModal({ onClose }: { onClose: () => void }) {
 
             {/* Document types — multi-select checkbox grid */}
             <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-[12px] font-medium" style={{ color: "var(--pg-text-2)" }}>
-                  Document Types * <span style={{ color: "var(--pg-text-4)", fontWeight: 400 }}>— select one or more</span>
-                </label>
-                {selectedDocTypes.size > 0 && (
-                  <button type="button" onClick={() => setSelectedDocTypes(new Set())}
-                          className="text-[11px] font-semibold" style={{ color: "#94a3b8" }}>
-                    Clear ({selectedDocTypes.size})
-                  </button>
-                )}
-              </div>
+              <label className="block text-[12px] font-medium mb-1.5" style={{ color: "var(--pg-text-2)" }}>
+                Document Types * <span style={{ color: "var(--pg-text-4)", fontWeight: 400 }}>— select one or more</span>
+              </label>
               <div className="grid grid-cols-2 gap-1.5 max-h-40 overflow-y-auto pr-1">
                 {docTypes.map(t => {
                   const checked = selectedDocTypes.has(t);
@@ -351,6 +343,18 @@ function NewRequestModal({ onClose }: { onClose: () => void }) {
                     </button>
                   );
                 })}
+              </div>
+              <div className="flex gap-3 mt-1.5">
+                <button type="button" onClick={() => setSelectedDocTypes(new Set(docTypes))}
+                        className="text-[11px] font-semibold" style={{ color: "#FF6600" }}>
+                  Select all
+                </button>
+                {selectedDocTypes.size > 0 && (
+                  <button type="button" onClick={() => setSelectedDocTypes(new Set())}
+                          className="text-[11px] font-semibold" style={{ color: "#94a3b8" }}>
+                    Clear
+                  </button>
+                )}
               </div>
             </div>
 

@@ -208,7 +208,7 @@ func (s *Service) CreateRequest(ctx context.Context, in CreateLeaveInput) (Leave
 				Type:     "hr_leave_requested",
 				Title:    "New Leave Request",
 				Body:     fmt.Sprintf("%s has requested %.0f days leave from %s to %s.", personName, in.DaysCount, in.StartDate, in.EndDate),
-				Link:     "/hr",
+				Link:     "/hr/leave",
 				Priority: "medium",
 			})
 	}
@@ -329,7 +329,7 @@ func (s *Service) ReviewRequest(ctx context.Context, in ReviewInput) error {
 			}
 			_ = notification.SendToUser(ctx, s.pool, personID, notification.InApp{
 				Type: "hr_leave_" + in.Action + "d", Title: title, Body: body,
-				Link: "/hr", Priority: priority,
+				Link: "/leave", Priority: priority,
 			})
 		}
 	}
