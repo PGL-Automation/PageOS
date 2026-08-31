@@ -608,54 +608,27 @@ export default function HRDocumentsPage() {
         })}
       </div>
 
-      {/* Table card */}
-      <div
-        className="rounded-2xl overflow-hidden"
-        style={{
-          background: "var(--pg-card)",
-          border: "1px solid var(--pg-card-border)",
-          boxShadow: "0 1px 4px var(--pg-card-shadow)",
-        }}
-      >
-        {/* Table header */}
-        <div
-          className="hidden md:grid px-5 py-3 text-[10px] font-bold uppercase tracking-wider"
-          style={{
-            gridTemplateColumns: "2fr 2fr 1.2fr 110px 90px 80px",
-            borderBottom: "1px solid var(--pg-row-border)",
-            color: "var(--pg-text-3)",
-          }}
-        >
-          <span>Employee</span>
-          <span>Document Type</span>
-          <span>Due Date</span>
-          <span>Status</span>
-          <span>Requested</span>
-          <span />
+      {/* Grouped cards */}
+      {isLoading ? (
+        <div className="flex justify-center items-center py-16 gap-2" style={{ color: "var(--pg-text-3)" }}>
+          <Loader2 className="w-5 h-5 animate-spin" />
+          <span className="text-[13px]">Loading requests…</span>
         </div>
-
-        {/* Body */}
-        {isLoading ? (
-          <div className="flex justify-center items-center py-16 gap-2" style={{ color: "var(--pg-text-3)" }}>
-            <Loader2 className="w-5 h-5 animate-spin" />
-            <span className="text-[13px]">Loading requests…</span>
-          </div>
-        ) : requests.length === 0 ? (
-          <EmptyState tab={tab} onNewRequest={() => setNewModal(true)} />
-        ) : (
-          <div className="divide-y" style={{ borderColor: "var(--pg-row-border)" }}>
-            {requests.map((req) => (
-              <RequestRow
-                key={req.id}
-                req={req}
-                onRemind={() => remindMutation.mutate(req.id)}
-                remindingId={remindMutation.isPending ? remindMutation.variables : null}
-                onViewDoc={(id) => setViewDocId(id)}
-              />
-            ))}
-          </div>
-        )}
-      </div>
+      ) : requests.length === 0 ? (
+        <EmptyState tab={tab} onNewRequest={() => setNewModal(true)} />
+      ) : (
+        <div className="space-y-3">
+          {groupByPerson(requests).map((group) => (
+            <PersonGroup
+              key={group.personId}
+              group={group}
+              onRemind={(id) => remindMutation.mutate(id)}
+              remindingId={remindMutation.isPending ? remindMutation.variables : null}
+              onViewDoc={(id) => setViewDocId(id)}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Modals */}
       {showNewModal && <NewRequestModal onClose={() => setNewModal(false)} />}
@@ -664,123 +637,142 @@ export default function HRDocumentsPage() {
   );
 }
 
-// ── Request Row ────────────────────────────────────────────────────────────────
+// ── Grouping ───────────────────────────────────────────────────────────────────
 
-type RequestRowProps = {
-  req: DocumentRequest;
-  onRemind: () => void;
+type PersonGroup = {
+  personId: string;
+  personName: string;
+  personEmail: string;
+  requests: DocumentRequest[];
+};
+
+function groupByPerson(requests: DocumentRequest[]): PersonGroup[] {
+  const map = new Map<string, PersonGroup>();
+  for (const req of requests) {
+    if (!map.has(req.person_id)) {
+      map.set(req.person_id, {
+        personId: req.person_id,
+        personName: req.person_name,
+        personEmail: req.person_email,
+        requests: [],
+      });
+    }
+    map.get(req.person_id)!.requests.push(req);
+  }
+  return Array.from(map.values());
+}
+
+// ── Person Group Card ──────────────────────────────────────────────────────────
+
+type PersonGroupProps = {
+  group: PersonGroup;
+  onRemind: (id: string) => void;
   remindingId: string | null;
   onViewDoc: (docId: string) => void;
 };
 
-function RequestRow({ req, onRemind, remindingId, onViewDoc }: RequestRowProps) {
-  const isReminding = remindingId === req.id;
+function PersonGroup({ group, onRemind, remindingId, onViewDoc }: PersonGroupProps) {
+  const pending  = group.requests.filter(r => r.status === "pending").length;
+  const uploaded = group.requests.filter(r => r.status === "uploaded").length;
+  const declined = group.requests.filter(r => r.status === "declined").length;
 
   return (
-    <div
-      className="grid items-center gap-2 px-5 py-3.5 transition-colors"
-      style={{
-        gridTemplateColumns: "2fr 2fr 1.2fr 110px 90px 80px",
-      }}
-      onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = "var(--pg-row-hover)")}
-      onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = "")}
-    >
-      {/* Employee */}
-      <div className="flex items-center gap-2.5 min-w-0">
-        <div
-          className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
-          style={{ background: "linear-gradient(135deg,#64748b,#475569)" }}
-        >
-          {initials(req.person_name)}
+    <div className="rounded-2xl overflow-hidden"
+         style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)", boxShadow: "0 1px 4px var(--pg-card-shadow)" }}>
+
+      {/* Person header */}
+      <div className="flex items-center gap-3 px-5 py-3.5"
+           style={{ borderBottom: "1px solid var(--pg-row-border)", background: "var(--pg-muted-bg)" }}>
+        <div className="w-9 h-9 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0"
+             style={{ background: "linear-gradient(135deg,#64748b,#475569)" }}>
+          {initials(group.personName)}
         </div>
-        <div className="min-w-0">
-          <p className="text-[13px] font-medium truncate" style={{ color: "var(--pg-text-1)" }}>
-            {req.person_name}
+        <div className="flex-1 min-w-0">
+          <p className="text-[13px] font-semibold truncate" style={{ color: "var(--pg-text-1)" }}>
+            {group.personName}
           </p>
           <p className="text-[11px] truncate" style={{ color: "var(--pg-text-3)" }}>
-            {req.person_email}
+            {group.personEmail}
           </p>
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {pending  > 0 && <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ background: "#fef3c7", color: "#d97706" }}>{pending} pending</span>}
+          {uploaded > 0 && <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ background: "#d1fae5", color: "#059669" }}>{uploaded} uploaded</span>}
+          {declined > 0 && <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ background: "#fee2e2", color: "#dc2626" }}>{declined} declined</span>}
         </div>
       </div>
 
-      {/* Document type */}
-      <div className="min-w-0">
-        <div className="flex items-center gap-1.5">
-          <FileText className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--pg-text-3)" }} />
-          <p className="text-[12px] font-medium truncate" style={{ color: "var(--pg-text-1)" }}>
-            {req.document_type}
-          </p>
-        </div>
-        {req.notes && (
-          <p className="text-[11px] truncate mt-0.5 pl-5" style={{ color: "var(--pg-text-3)" }}>
-            {req.notes}
-          </p>
-        )}
-        {req.status === "declined" && req.declined_note && (
-          <p
-            className="text-[11px] truncate mt-0.5 pl-5 font-medium"
-            style={{ color: "#dc2626" }}
-          >
-            Declined: {req.declined_note}
-          </p>
-        )}
-      </div>
+      {/* Document rows */}
+      <div className="divide-y" style={{ borderColor: "var(--pg-row-border)" }}>
+        {group.requests.map((req, i) => {
+          const isReminding = remindingId === req.id;
+          return (
+            <div key={req.id}
+                 className="grid items-center gap-3 px-5 py-3 transition-colors"
+                 style={{ gridTemplateColumns: "1fr auto auto auto" }}
+                 onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = "var(--pg-row-hover)")}
+                 onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = "")}>
 
-      {/* Due date */}
-      <div>
-        {req.due_date ? (
-          <span className="flex items-center gap-1 text-[12px]" style={{ color: "var(--pg-text-2)" }}>
-            <CalendarDays className="w-3 h-3 shrink-0" style={{ color: "var(--pg-text-4)" }} />
-            {fmtDate(req.due_date)}
-          </span>
-        ) : (
-          <span className="text-[12px]" style={{ color: "var(--pg-text-4)" }}>
-            —
-          </span>
-        )}
-      </div>
+              {/* Doc type + notes */}
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--pg-text-4)" }} />
+                  <p className="text-[12px] font-medium truncate" style={{ color: "var(--pg-text-1)" }}>
+                    {req.document_type}
+                  </p>
+                </div>
+                {req.notes && (
+                  <p className="text-[11px] mt-0.5 pl-5 truncate" style={{ color: "var(--pg-text-3)" }}>
+                    {req.notes}
+                  </p>
+                )}
+                {req.status === "declined" && req.declined_note && (
+                  <p className="text-[11px] mt-0.5 pl-5 font-medium truncate" style={{ color: "#dc2626" }}>
+                    Declined: {req.declined_note}
+                  </p>
+                )}
+              </div>
 
-      {/* Status */}
-      <div>{statusChip(req.status)}</div>
+              {/* Due date */}
+              <div className="shrink-0">
+                {req.due_date ? (
+                  <span className="flex items-center gap-1 text-[11px]" style={{ color: "var(--pg-text-3)" }}>
+                    <CalendarDays className="w-3 h-3" style={{ color: "var(--pg-text-4)" }} />
+                    {fmtDate(req.due_date)}
+                  </span>
+                ) : (
+                  <span className="text-[11px]" style={{ color: "var(--pg-text-4)" }}>—</span>
+                )}
+              </div>
 
-      {/* Requested at */}
-      <div>
-        <span className="text-[11px]" style={{ color: "var(--pg-text-3)" }}>
-          {fmtDate(req.created_at)}
-        </span>
-      </div>
+              {/* Status chip */}
+              <div className="shrink-0">{statusChip(req.status)}</div>
 
-      {/* Actions */}
-      <div className="flex items-center gap-1.5 justify-end">
-        {req.status === "pending" && (
-          <button
-            onClick={onRemind}
-            disabled={isReminding}
-            title="Send reminder email"
-            className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors disabled:opacity-60"
-            style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}
-            onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = "#fef3c7")}
-            onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = "")}
-          >
-            {isReminding ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Bell className="w-3.5 h-3.5" />
-            )}
-          </button>
-        )}
-        {req.status === "uploaded" && req.document_id && (
-          <button
-            onClick={() => onViewDoc(req.document_id!)}
-            title="View uploaded document"
-            className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors"
-            style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}
-            onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = "#fff7f0")}
-            onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = "")}
-          >
-            <Eye className="w-3.5 h-3.5" />
-          </button>
-        )}
+              {/* Actions */}
+              <div className="flex items-center gap-1 shrink-0">
+                {req.status === "pending" && (
+                  <button onClick={() => onRemind(req.id)} disabled={isReminding}
+                          title="Send reminder"
+                          className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors disabled:opacity-60"
+                          style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}
+                          onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = "#fef3c7")}
+                          onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = "")}>
+                    {isReminding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bell className="w-3.5 h-3.5" />}
+                  </button>
+                )}
+                {req.status === "uploaded" && req.document_id && (
+                  <button onClick={() => onViewDoc(req.document_id!)} title="View document"
+                          className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors"
+                          style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}
+                          onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = "#fff7f0")}
+                          onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = "")}>
+                    <Eye className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
