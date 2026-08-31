@@ -2,8 +2,9 @@
 package documentshttp
 
 import (
+	"fmt"
+	"io"
 	"net/http"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -123,12 +124,17 @@ func (h *Handler) download(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid document id")
 		return
 	}
-	url, err := h.svc.GetSignedURL(r.Context(), id, 15*time.Minute)
+	rc, filename, mimeType, err := h.svc.StreamDocument(r.Context(), id)
 	if err != nil {
 		httpx.Error(w, http.StatusNotFound, "not_found", "document not found")
 		return
 	}
-	http.Redirect(w, r, url, http.StatusFound)
+	defer rc.Close()
+	if mimeType != "" {
+		w.Header().Set("Content-Type", mimeType)
+	}
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename=%q`, filename))
+	io.Copy(w, rc) //nolint:errcheck
 }
 
 // list handles two modes:

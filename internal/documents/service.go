@@ -128,6 +128,21 @@ func (s *Service) GetSignedURL(ctx context.Context, id uuid.UUID, expires time.D
 	return s.objects.SignedURL(ctx, row.StorageKey, expires)
 }
 
+// StreamDocument fetches the raw file bytes from object storage so the API can
+// pipe them directly to the browser. This avoids presigned-URL redirects which
+// use an internal hostname (minio:9000) the browser cannot reach.
+func (s *Service) StreamDocument(ctx context.Context, id uuid.UUID) (body io.ReadCloser, filename, mimeType string, err error) {
+	row, err := s.store.GetDocument(ctx, id)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("documents: not found: %w", err)
+	}
+	rc, err := s.objects.Get(ctx, row.StorageKey)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("documents: fetch object: %w", err)
+	}
+	return rc, row.Filename, row.MimeType, nil
+}
+
 // GetDocument returns document metadata by ID.
 func (s *Service) GetDocument(ctx context.Context, id uuid.UUID) (Document, error) {
 	row, err := s.store.GetDocument(ctx, id)

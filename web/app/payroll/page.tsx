@@ -176,8 +176,7 @@ function PayslipPanel({ payslip, periodName }: { payslip: Payslip; periodName: s
         <Row label="Basic (70%)"      value={fmt(payslip.basic_salary)} />
         <Row label="Housing (15%)"    value={fmt(payslip.housing_allowance)} />
         <Row label="Transport (15%)"  value={fmt(payslip.transport_allowance)} />
-        <p className="text-[10px] font-bold uppercase tracking-wider mt-4 mb-2" style={{ color: "var(--pg-text-4)" }}>Tax Computation (Nigerian PAYE)</p>
-        <Row label="CRA (monthly)"    value={fmt(payslip.cra)} />
+        <p className="text-[10px] font-bold uppercase tracking-wider mt-4 mb-2" style={{ color: "var(--pg-text-4)" }}>Tax (PAYE)</p>
         <Row label="Taxable Income"   value={fmt(payslip.taxable_income)} />
         <Row label="PAYE Tax"         value={fmt(payslip.paye_tax)}  color="#dc2626" />
         <p className="text-[10px] font-bold uppercase tracking-wider mt-4 mb-2" style={{ color: "var(--pg-text-4)" }}>Pension (PenCom)</p>

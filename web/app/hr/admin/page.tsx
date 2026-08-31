@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DataTable, Column } from "@/components/ui/data-table";
 import {
@@ -710,6 +711,10 @@ type Tab = "users" | "positions";
 export default function HRAdminPage() {
   const [tab, setTab]           = useState<Tab>("users");
   const [showCreate, setShowCreate] = useState(false);
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    if (searchParams.get("create") === "1") setShowCreate(true);
+  }, [searchParams]);
 
   const { data: rawUsers, isLoading: usersLoading } = useQuery({
     queryKey: ["org-users"],

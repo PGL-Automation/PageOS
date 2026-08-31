@@ -1167,7 +1167,7 @@ export default function HRRecordsPage() {
           <h1 className="text-[18px] font-bold" style={{ color: "var(--pg-text-1)" }}>Employee Directory</h1>
           <p className="text-[12px] mt-0.5" style={{ color: "var(--pg-text-3)" }}>Page Group · {rawUsers.length} people</p>
         </div>
-        <Link href="/hr/admin"
+        <Link href="/hr/admin?create=1"
               className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold text-white"
               style={{ background: "linear-gradient(135deg,#FF6600,#E05500)", boxShadow: "0 1px 6px rgba(255,102,0,0.35)" }}>
           <UserPlus className="w-3.5 h-3.5" /> Onboard User
