@@ -143,6 +143,19 @@ func (s *Service) StreamDocument(ctx context.Context, id uuid.UUID) (body io.Rea
 	return rc, row.Filename, row.MimeType, nil
 }
 
+// DeleteDocument removes a document from both the database and object storage.
+func (s *Service) DeleteDocument(ctx context.Context, id uuid.UUID) error {
+	doc, err := s.GetDocument(ctx, id)
+	if err != nil {
+		return err
+	}
+	if _, err := s.store.pool.Exec(ctx, `DELETE FROM documents.document WHERE id = $1`, id); err != nil {
+		return fmt.Errorf("documents: delete record: %w", err)
+	}
+	_ = s.objects.Delete(ctx, doc.StorageKey)
+	return nil
+}
+
 // GetDocument returns document metadata by ID.
 func (s *Service) GetDocument(ctx context.Context, id uuid.UUID) (Document, error) {
 	row, err := s.store.GetDocument(ctx, id)

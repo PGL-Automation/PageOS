@@ -566,6 +566,18 @@ func (s *Service) FulfillDocumentRequest(ctx context.Context, requestID, documen
 	if err != nil {
 		return err
 	}
+	// Tag the uploaded document with the employee's user_id and hr_employee vault
+	// so it appears in the employee's document panel (ListByEmployee query).
+	_, _ = s.pool.Exec(ctx, `
+		UPDATE documents.document d
+		SET    subject_user_id = p.user_id,
+		       vault_type      = 'hr_employee'
+		FROM   documents.document_request dr
+		JOIN   organization.person p ON p.id = dr.person_id
+		WHERE  dr.id = $1
+		  AND  d.id  = $2
+		  AND  p.user_id IS NOT NULL
+	`, requestID, documentID)
 	// Notify HR managers that the employee uploaded a document.
 	var personName, docType string
 	_ = s.pool.QueryRow(ctx, `

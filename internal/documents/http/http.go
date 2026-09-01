@@ -31,6 +31,7 @@ func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	r.Get("/", h.list)
 	r.Get("/{id}/download", h.download)
 	r.Get("/{id}", h.get)
+	r.Delete("/{id}", h.deleteDoc)
 	return r
 }
 
@@ -116,6 +117,19 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.JSON(w, http.StatusOK, doc)
+}
+
+func (h *Handler) deleteDoc(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid document id")
+		return
+	}
+	if err := h.svc.DeleteDocument(r.Context(), id); err != nil {
+		httpx.Error(w, http.StatusNotFound, "not_found", "document not found")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) download(w http.ResponseWriter, r *http.Request) {

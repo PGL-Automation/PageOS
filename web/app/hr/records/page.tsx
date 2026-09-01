@@ -7,7 +7,7 @@ import {
   ChevronRight, X, Check, AlertCircle, Copy, CheckCircle2,
   ArrowRight, Building2, Briefcase, FolderPlus,
   Upload, FileText, File, Image, Download, Shield, ShieldCheck,
-  ShieldAlert, Loader2, Eye, EyeOff,
+  ShieldAlert, Loader2, Eye, EyeOff, Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -223,6 +223,26 @@ function EmployeeDocuments({ employee }: { employee: Employee }) {
   const [selectedCategory, setSelectedCategory] = useState<CategoryKey>("other");
   const [filterCat, setFilterCat] = useState<CategoryKey | "all">("all");
   const [previewDoc, setPreviewDoc] = useState<{ doc: EmployeeDocument; url: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<EmployeeDocument | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`${BASE}/api/v1/documents/${deleteTarget.id}`, {
+        method: "DELETE", credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to delete document");
+      queryClient.invalidateQueries({ queryKey: ["employee-docs", employee.user_id] });
+      toast({ title: "Document removed", description: `${deleteTarget.filename} has been permanently deleted.` });
+      setDeleteTarget(null);
+    } catch {
+      toast({ title: "Delete failed", description: "Could not remove the document.", variant: "destructive" });
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   const { data: docs = [], isLoading: loadingDocs } = useQuery<EmployeeDocument[]>({
     queryKey: ["employee-docs", employee.user_id],
@@ -377,6 +397,14 @@ function EmployeeDocuments({ employee }: { employee: Employee }) {
                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
                   <Download className="w-3.5 h-3.5" />
                 </a>
+                <button onClick={() => setDeleteTarget(doc)}
+                        title="Remove document"
+                        className="w-6 h-6 flex items-center justify-center rounded-lg transition-colors"
+                        style={{ color: "#dc2626" }}
+                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#fee2e2"}
+                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
               </div>
             </div>
           ))}
@@ -392,6 +420,42 @@ function EmployeeDocuments({ employee }: { employee: Employee }) {
           downloadUrl={previewDoc.url}
           onClose={() => setPreviewDoc(null)}
         />
+      )}
+
+      {/* Delete confirmation modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+             style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}
+             onClick={() => !deleting && setDeleteTarget(null)}>
+          <div className="w-full max-w-sm rounded-2xl p-6 space-y-4"
+               style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)", boxShadow: "0 24px 64px rgba(0,0,0,0.3)" }}
+               onClick={e => e.stopPropagation()}>
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0" style={{ background: "#fee2e2" }}>
+                <Trash2 className="w-4 h-4 text-red-600" />
+              </div>
+              <div>
+                <p className="text-[14px] font-bold" style={{ color: "var(--pg-text-1)" }}>Remove document?</p>
+                <p className="text-[12px] mt-1" style={{ color: "var(--pg-text-3)" }}>
+                  <span className="font-semibold" style={{ color: "var(--pg-text-2)" }}>{deleteTarget.filename}</span> will be permanently deleted from {employee.display_name}&apos;s profile and cannot be recovered. If this was submitted for a document request, it will no longer be available.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setDeleteTarget(null)} disabled={deleting}
+                      className="h-8 px-4 rounded-xl text-[12px] font-medium"
+                      style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}>
+                Cancel
+              </button>
+              <button onClick={handleDelete} disabled={deleting}
+                      className="h-8 px-4 rounded-xl text-[12px] font-semibold text-white flex items-center gap-1.5 disabled:opacity-60"
+                      style={{ background: "#dc2626" }}>
+                {deleting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                {deleting ? "Removing…" : "Remove permanently"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
