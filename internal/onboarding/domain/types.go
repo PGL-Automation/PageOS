@@ -20,6 +20,7 @@ type Client struct {
 type OnboardingCase struct {
 	ID                    uuid.UUID  `json:"ID"`
 	ClientID              uuid.UUID  `json:"ClientID"`
+	ClientName            string     `json:"ClientName,omitempty"`
 	SubsidiaryID          uuid.UUID  `json:"SubsidiaryID"`
 	ClientType            string     `json:"ClientType"`
 	RequirementSetVersion int32      `json:"RequirementSetVersion"`
