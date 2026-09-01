@@ -102,6 +102,11 @@ type RequirementInstance struct {
 	Status         string     `json:"status"` // pending | satisfied | not_applicable
 	DocumentID     *uuid.UUID `json:"document_id,omitempty"`
 	SatisfiedAt    *time.Time `json:"satisfied_at,omitempty"`
+	// Document metadata — populated when DocumentID is set (enriched by GetCaseDetails).
+	DocumentFilename   string     `json:"document_filename,omitempty"`
+	DocumentMimeType   string     `json:"document_mime_type,omitempty"`
+	DocumentSizeBytes  int64      `json:"document_size_bytes,omitempty"`
+	DocumentUploadedAt *time.Time `json:"document_uploaded_at,omitempty"`
 }
 
 // RMClient is an active RM → Client assignment.

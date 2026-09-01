@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -214,6 +215,49 @@ func (s *Service) GetCaseDetails(ctx context.Context, caseID uuid.UUID) (domain.
 	for _, r := range reqRows {
 		reqs = append(reqs, toRequirementInstance(r))
 	}
+
+	// Enrich requirements with document metadata so compliance can see filenames,
+	// types, and upload dates without a separate fetch per document.
+	var docIDs []uuid.UUID
+	for _, r := range reqs {
+		if r.DocumentID != nil {
+			docIDs = append(docIDs, *r.DocumentID)
+		}
+	}
+	if len(docIDs) > 0 {
+		type docMeta struct {
+			ID         uuid.UUID
+			Filename   string
+			MimeType   string
+			SizeBytes  int64
+			CreatedAt  time.Time
+		}
+		metaMap := make(map[uuid.UUID]docMeta, len(docIDs))
+		rows, qErr := s.store.Pool().Query(ctx,
+			`SELECT id, filename, mime_type, size_bytes, created_at FROM documents.document WHERE id = ANY($1)`,
+			docIDs,
+		)
+		if qErr == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var m docMeta
+				if rows.Scan(&m.ID, &m.Filename, &m.MimeType, &m.SizeBytes, &m.CreatedAt) == nil {
+					metaMap[m.ID] = m
+				}
+			}
+		}
+		for i, r := range reqs {
+			if r.DocumentID != nil {
+				if m, ok := metaMap[*r.DocumentID]; ok {
+					reqs[i].DocumentFilename   = m.Filename
+					reqs[i].DocumentMimeType   = m.MimeType
+					reqs[i].DocumentSizeBytes  = m.SizeBytes
+					reqs[i].DocumentUploadedAt = &m.CreatedAt
+				}
+			}
+		}
+	}
+
 	details.Requirements = reqs
 	details.CanSubmit = c.State == "draft" && allRequiredSatisfied(reqs)
 

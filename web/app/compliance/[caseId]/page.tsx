@@ -9,10 +9,9 @@ import { api } from "@/lib/api/client";
 import { components } from "@/lib/api/types";
 import {
   ChevronLeft, CheckCircle2, XCircle, AlertCircle, Shield,
-  Flag, User, Phone, Mail, Building2, DollarSign, FileText,
+  Flag, User, FileText, File, FileImage,
   Loader2, Send, Eye, Clock, AlertTriangle, Lock,
-  StickyNote, MessageSquare, ChevronDown, ChevronUp,
-  Briefcase, RefreshCw,
+  ChevronDown, ChevronUp, RefreshCw, Download, RotateCcw, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
@@ -242,50 +241,157 @@ function AppInfo({ app }: { app: CaseDetails["application"] }) {
 
 // ── Documents panel ───────────────────────────────────────────────────────────
 
-function DocumentsPanel({ requirements }: { requirements: RequirementInstance[] }) {
-  const docs = requirements.filter(r =>
-    (r.status ?? r.Status) === "satisfied" && (r.document_id ?? r.DocumentID)
-  );
-  const pending = requirements.filter(r => (r.status ?? r.Status) === "pending");
+function docIcon(mime: string) {
+  if (mime.startsWith("image/")) return <FileImage className="w-4 h-4 text-blue-500" />;
+  if (mime === "application/pdf")  return <FileText  className="w-4 h-4 text-red-500" />;
+  return <File className="w-4 h-4" style={{ color: "var(--pg-text-4)" }} />;
+}
+
+function fmtBytes(n: number) {
+  if (!n) return "";
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function DocumentsPanel({
+  requirements, caseId, onRequestReupload,
+}: {
+  requirements: RequirementInstance[];
+  caseId: string;
+  onRequestReupload: (label: string, reqId: string) => void;
+}) {
+  const [preview, setPreview] = useState<{ url: string; name: string } | null>(null);
+
+  const uploaded = requirements.filter(r => (r.status ?? (r as any).Status) === "satisfied").length;
+  const total    = requirements.length;
 
   return (
     <div className="rounded-2xl overflow-hidden" style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}>
       <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid var(--pg-row-border)" }}>
-        <h2 className="text-[13px] font-semibold" style={{ color: "var(--pg-text-1)" }}>KYC Documents</h2>
-        <span className="text-[11px] font-medium"
-              style={{ color: docs.length === requirements.filter(r => (r.obligation ?? r.Obligation) === "required").length ? "#059669" : "var(--pg-text-3)" }}>
-          {docs.length}/{requirements.length} uploaded
+        <div>
+          <h2 className="text-[13px] font-semibold" style={{ color: "var(--pg-text-1)" }}>KYC Documents</h2>
+          <p className="text-[11px] mt-0.5" style={{ color: "var(--pg-text-3)" }}>Submitted by wealth manager</p>
+        </div>
+        <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full"
+              style={{ background: uploaded === total ? "#d1fae5" : "#fef3c7", color: uploaded === total ? "#065f46" : "#92400e" }}>
+          {uploaded}/{total} uploaded
         </span>
       </div>
+
       <div className="divide-y" style={{ borderColor: "var(--pg-row-border)" }}>
         {requirements.map(req => {
-          const isSatisfied = (req.status ?? req.Status) === "satisfied";
-          const docId       = req.document_id ?? req.DocumentID;
-          const label       = req.label ?? req.Label ?? req.requirement_key ?? req.RequirementKey ?? "";
+          const isSatisfied = (req.status ?? (req as any).Status) === "satisfied";
+          const docId       = req.document_id ?? (req as any).DocumentID;
+          const label       = req.label ?? (req as any).Label ?? req.requirement_key ?? (req as any).RequirementKey ?? "";
+          const filename    = (req as any).document_filename as string | undefined;
+          const mime        = (req as any).document_mime_type as string | undefined;
+          const sizeBytes   = (req as any).document_size_bytes as number | undefined;
+          const uploadedAt  = (req as any).document_uploaded_at as string | undefined;
+
           return (
-            <div key={req.id ?? req.ID} className="flex items-center gap-3 px-5 py-3">
-              <div className={cn("w-6 h-6 rounded-full flex items-center justify-center shrink-0")}
-                   style={{ background: isSatisfied ? "#ecfdf5" : "#f1f5f9" }}>
-                {isSatisfied
-                  ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                  : <Clock className="w-3.5 h-3.5" style={{ color: "var(--pg-text-4)" }} />}
+            <div key={req.id ?? (req as any).ID} className="px-5 py-3.5">
+              {/* Requirement header row */}
+              <div className="flex items-center gap-3">
+                <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0"
+                     style={{ background: isSatisfied ? "#ecfdf5" : "#f1f5f9" }}>
+                  {isSatisfied
+                    ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    : <Clock className="w-3.5 h-3.5" style={{ color: "var(--pg-text-4)" }} />}
+                </div>
+                <p className="flex-1 text-[12px] font-semibold truncate" style={{ color: "var(--pg-text-1)" }}>{label}</p>
+                {!isSatisfied && (
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0"
+                        style={{ background: "#fef9c3", color: "#92400e" }}>Missing</span>
+                )}
               </div>
-              <p className="flex-1 text-[12px] font-medium truncate" style={{ color: "var(--pg-text-1)" }}>{label}</p>
+
+              {/* Uploaded document details */}
               {isSatisfied && docId && (
-                <a href={`${BASE}/api/v1/documents/${docId}/download`}
-                   target="_blank" rel="noopener noreferrer"
-                   className="flex items-center gap-1 h-7 px-2.5 rounded-lg text-[11px] font-semibold text-violet-600 hover:bg-violet-50 transition-colors">
-                  <Eye className="w-3 h-3" /> View
-                </a>
-              )}
-              {!isSatisfied && (
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                      style={{ background: "#fef9c3", color: "#92400e" }}>Missing</span>
+                <div className="mt-2.5 ml-9 rounded-xl overflow-hidden"
+                     style={{ border: "1px solid var(--pg-card-border)", background: "var(--pg-muted-bg)" }}>
+                  <div className="flex items-center gap-2.5 px-3 py-2.5">
+                    {mime ? docIcon(mime) : <FileText className="w-4 h-4" style={{ color: "var(--pg-text-4)" }} />}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[12px] font-medium truncate" style={{ color: "var(--pg-text-1)" }}>
+                        {filename || "Uploaded document"}
+                      </p>
+                      <p className="text-[10px] mt-0.5" style={{ color: "var(--pg-text-4)" }}>
+                        {[
+                          mime?.split("/")[1]?.toUpperCase(),
+                          sizeBytes ? fmtBytes(sizeBytes) : null,
+                          uploadedAt ? new Date(uploadedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : null,
+                        ].filter(Boolean).join(" · ")}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => setPreview({ url: `${BASE}/api/v1/documents/${docId}/download`, name: filename || label })}
+                        className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors"
+                        title="Preview document"
+                        style={{ border: "1px solid var(--pg-card-border)", color: "#6d28d9" }}
+                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#ede9fe"}
+                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
+                        <Eye className="w-3.5 h-3.5" />
+                      </button>
+                      <a href={`${BASE}/api/v1/documents/${docId}/download`}
+                         target="_blank" rel="noopener noreferrer"
+                         className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors"
+                         title="Download document"
+                         style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-3)" }}
+                         onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--pg-card)"}
+                         onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
+                        <Download className="w-3.5 h-3.5" />
+                      </a>
+                      <button
+                        onClick={() => onRequestReupload(label, req.id ?? (req as any).ID)}
+                        className="flex items-center gap-1 h-7 px-2 rounded-lg text-[11px] font-semibold transition-colors"
+                        title="Request re-upload"
+                        style={{ border: "1px solid #fde68a", background: "#fffbeb", color: "#92400e" }}
+                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#fef3c7"}
+                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "#fffbeb"}>
+                        <RotateCcw className="w-3 h-3" /> Re-upload
+                      </button>
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
           );
         })}
       </div>
+
+      {/* In-page document preview modal */}
+      {preview && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+             style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(6px)" }}
+             onClick={() => setPreview(null)}>
+          <div className="w-full max-w-3xl rounded-2xl overflow-hidden flex flex-col"
+               style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)", maxHeight: "90vh", boxShadow: "0 32px 80px rgba(0,0,0,0.5)" }}
+               onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-3.5 shrink-0"
+                 style={{ borderBottom: "1px solid var(--pg-row-border)" }}>
+              <p className="text-[13px] font-semibold truncate" style={{ color: "var(--pg-text-1)" }}>{preview.name}</p>
+              <div className="flex items-center gap-2">
+                <a href={preview.url} target="_blank" rel="noopener noreferrer"
+                   className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-[12px] font-semibold text-white"
+                   style={{ background: "linear-gradient(135deg,#6d28d9,#4f46e5)" }}>
+                  <Download className="w-3.5 h-3.5" /> Download
+                </a>
+                <button onClick={() => setPreview(null)}
+                        className="w-8 h-8 flex items-center justify-center rounded-xl"
+                        style={{ color: "var(--pg-text-3)" }}>
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 p-4" style={{ minHeight: 400 }}>
+              <iframe src={preview.url} title={preview.name} className="w-full rounded-lg"
+                      style={{ height: "65vh", border: "none" }} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -578,6 +684,31 @@ export default function ComplianceCasePage() {
     },
   });
 
+  const [reuploadTarget, setReuploadTarget] = useState<{ label: string; reqId: string } | null>(null);
+  const [reuploadNote, setReuploadNote]     = useState("");
+  const [reuploadSaving, setReuploadSaving] = useState(false);
+
+  async function submitReuploadRequest() {
+    if (!reuploadTarget) return;
+    setReuploadSaving(true);
+    try {
+      const note = reuploadNote.trim() || `Please re-upload: ${reuploadTarget.label}`;
+      await fetch(`${BASE}/api/v1/onboarding/cases/${caseId}/notes`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ note_type: "compliance", content: `⚠ Re-upload requested for "${reuploadTarget.label}": ${note}` }),
+      });
+      queryClient.invalidateQueries({ queryKey: ["case-notes", caseId] });
+      toast({ title: "Re-upload requested", description: `Note added. Use "Return to WM" to send back.` });
+      setReuploadTarget(null);
+      setReuploadNote("");
+    } catch {
+      toast({ title: "Failed", variant: "destructive" });
+    } finally {
+      setReuploadSaving(false);
+    }
+  }
+
   const { data: complianceChecks = [], refetch: refetchChecks } = useQuery<ComplianceCheck[]>({
     queryKey: ["compliance-checks", caseId],
     queryFn: async () => {
@@ -692,7 +823,13 @@ export default function ComplianceCasePage() {
         {/* Left: Application + Documents (3/5) */}
         <div className="xl:col-span-3 space-y-5">
           <AppInfo app={app} />
-          {reqs.length > 0 && <DocumentsPanel requirements={reqs} />}
+          {reqs.length > 0 && (
+            <DocumentsPanel
+              requirements={reqs}
+              caseId={caseId}
+              onRequestReupload={(label, reqId) => { setReuploadTarget({ label, reqId }); setReuploadNote(""); }}
+            />
+          )}
         </div>
 
         {/* Right: Checklist + Decision + Notes (2/5) */}
@@ -729,6 +866,58 @@ export default function ComplianceCasePage() {
           <CaseNotesPanel caseId={caseId} />
         </div>
       </div>
+
+      {/* Request re-upload modal */}
+      {reuploadTarget && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+             style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}
+             onClick={() => !reuploadSaving && setReuploadTarget(null)}>
+          <div className="w-full max-w-sm rounded-2xl p-6 space-y-4"
+               style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)", boxShadow: "0 24px 64px rgba(0,0,0,0.3)" }}
+               onClick={e => e.stopPropagation()}>
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0" style={{ background: "#fffbeb" }}>
+                <RotateCcw className="w-4 h-4 text-amber-600" />
+              </div>
+              <div>
+                <p className="text-[14px] font-bold" style={{ color: "var(--pg-text-1)" }}>Request Re-upload</p>
+                <p className="text-[12px] mt-0.5" style={{ color: "var(--pg-text-3)" }}>
+                  Adding a note for: <span className="font-semibold" style={{ color: "var(--pg-text-2)" }}>{reuploadTarget.label}</span>
+                </p>
+              </div>
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold mb-1.5" style={{ color: "var(--pg-text-2)" }}>
+                Reason / instructions for the wealth manager
+              </label>
+              <textarea
+                value={reuploadNote}
+                onChange={e => setReuploadNote(e.target.value)}
+                rows={3}
+                placeholder="e.g. Document is unclear, please upload a higher quality scan…"
+                className="w-full px-3 py-2.5 rounded-xl text-[12px] outline-none resize-none"
+                style={{ background: "var(--pg-input)", border: "1px solid var(--pg-input-border)", color: "var(--pg-text-1)" }}
+              />
+            </div>
+            <p className="text-[11px]" style={{ color: "var(--pg-text-4)" }}>
+              This adds a compliance note to the case. Use <strong>Return to WM</strong> to send the case back with all notes.
+            </p>
+            <div className="flex gap-2">
+              <button onClick={() => setReuploadTarget(null)} disabled={reuploadSaving}
+                      className="flex-1 h-9 rounded-xl text-[12px] font-medium"
+                      style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}>
+                Cancel
+              </button>
+              <button onClick={submitReuploadRequest} disabled={reuploadSaving}
+                      className="flex-1 h-9 rounded-xl text-[12px] font-semibold text-white flex items-center justify-center gap-1.5 disabled:opacity-60"
+                      style={{ background: "linear-gradient(135deg,#d97706,#b45309)" }}>
+                {reuploadSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                Add Note
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
