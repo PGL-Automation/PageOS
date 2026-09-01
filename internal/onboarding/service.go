@@ -423,14 +423,14 @@ func (s *Service) SubmitCase(ctx context.Context, caseID, userID uuid.UUID) (dom
 		ResourceType: "onboarding_case", ResourceID: c.ID.String(),
 	})
 
-	// Notify compliance officers that a new case needs review (best-effort).
+	// Notify compliance that a new case needs review.
 	cID := c.ID
 	_ = notification.SendToRole(ctx, s.store.Pool(), c.SubsidiaryID,
-		[]string{"COMPLIANCE_MANAGER", "COMPLIANCE_OFFICER", "MANAGING_DIRECTOR"},
+		[]string{"COMPLIANCE_MANAGER", "HEAD_COMPLIANCE_CORPORATE", "MANAGING_DIRECTOR"},
 		notification.InApp{
 			Type:       "onboarding_submitted",
 			Title:      "New Client Onboarding Submitted",
-			Body:       fmt.Sprintf("A new client account opening application has been submitted and is awaiting compliance review."),
+			Body:       "A new client account opening application has been submitted and is awaiting compliance review.",
 			Link:       fmt.Sprintf("/dashboard/cases/%s", cID),
 			Priority:   "high",
 			EntityType: "case",
@@ -672,16 +672,54 @@ func (s *Service) RecordComplianceCheck(ctx context.Context, caseID uuid.UUID, c
 	return chk, nil
 }
 
-// ApproveCase directly transitions a case to approved state (compliance-initiated).
+// ApproveCase is called by compliance after vetting a submitted case.
+// It moves the case to pending_finance and notifies the finance team to
+// process the account opening — the client is NOT activated at this stage.
 func (s *Service) ApproveCase(ctx context.Context, caseID, userID uuid.UUID) (domain.OnboardingCase, error) {
+	caseRow, err := s.store.GetCase(ctx, caseID)
+	if err != nil {
+		return domain.OnboardingCase{}, ErrCaseNotFound
+	}
+	if caseRow.State != "in_review" && caseRow.State != "compliance_review" && caseRow.State != "submitted" {
+		return domain.OnboardingCase{}, fmt.Errorf("onboarding: case must be in review to approve (current: %s)", caseRow.State)
+	}
+	updated, err := s.store.UpdateCaseState(ctx, onboardingdb.UpdateCaseStateParams{ID: caseID, State: "pending_finance"})
+	if err != nil {
+		return domain.OnboardingCase{}, err
+	}
+	_ = s.audit.Write(ctx, audit.Entry{
+		Actor:        audit.Actor{Type: "user", ID: userID.String()},
+		Action:       "onboarding.case.compliance_approved",
+		ResourceType: "onboarding_case",
+		ResourceID:   caseID.String(),
+	})
+	// Notify finance to process the account opening.
+	cID := caseID
+	_ = notification.SendToRole(ctx, s.store.Pool(), caseRow.SubsidiaryID,
+		[]string{"TREASURY_OPS_FINANCE_MGR", "GROUP_FINANCE", "MANAGING_DIRECTOR"},
+		notification.InApp{
+			Type:       "onboarding_pending_finance",
+			Title:      "Account Opening Approved — Action Required",
+			Body:       "Compliance has approved a client application. Please process the account opening.",
+			Link:       fmt.Sprintf("/dashboard/cases/%s", cID),
+			Priority:   "high",
+			EntityType: "case",
+			EntityID:   &cID,
+		})
+	return toCase(updated), nil
+}
+
+// FinalizeCase is called by finance after processing the account opening.
+// It activates the client, sends the welcome email, and notifies the RM.
+func (s *Service) FinalizeCase(ctx context.Context, caseID, userID uuid.UUID) (domain.OnboardingCase, error) {
 	var result domain.OnboardingCase
 	err := s.store.ExecTx(ctx, func(q *onboardingdb.Queries, tx pgx.Tx) error {
 		caseRow, err := q.GetCase(ctx, caseID)
 		if err != nil {
 			return ErrCaseNotFound
 		}
-		if caseRow.State != "in_review" && caseRow.State != "compliance_review" && caseRow.State != "submitted" {
-			return fmt.Errorf("onboarding: case must be in review to approve (current: %s)", caseRow.State)
+		if caseRow.State != "pending_finance" {
+			return fmt.Errorf("onboarding: case must be pending finance processing to finalize (current: %s)", caseRow.State)
 		}
 		updated, err := q.UpdateCaseState(ctx, onboardingdb.UpdateCaseStateParams{ID: caseID, State: "approved"})
 		if err != nil {
@@ -690,7 +728,7 @@ func (s *Service) ApproveCase(ctx context.Context, caseID, userID uuid.UUID) (do
 		_, _ = q.UpdateClientStatus(ctx, onboardingdb.UpdateClientStatusParams{ID: caseRow.ClientID, Status: "active"})
 		_ = s.audit.Write(ctx, audit.Entry{
 			Actor:        audit.Actor{Type: "user", ID: userID.String()},
-			Action:       "onboarding.case.approved",
+			Action:       "onboarding.case.finalized",
 			ResourceType: "onboarding_case",
 			ResourceID:   caseID.String(),
 		})
@@ -699,13 +737,29 @@ func (s *Service) ApproveCase(ctx context.Context, caseID, userID uuid.UUID) (do
 				EventType:     "onboarding.case.approved",
 				TargetAddress: emailInfo.Email,
 				Subject:       "Your Page Capital Account is Open",
-				BodyText:      fmt.Sprintf("Dear %s,\n\nYour account has been successfully opened.", emailInfo.DisplayName),
+				BodyText:      fmt.Sprintf("Dear %s,\n\nYour account has been successfully opened. Welcome to Page Capital.", emailInfo.DisplayName),
 			})
 		}
 		result = toCase(updated)
 		return nil
 	})
-	return result, err
+	if err != nil {
+		return domain.OnboardingCase{}, err
+	}
+	// Notify RM that their client is now active.
+	cID := caseID
+	_ = notification.SendToRole(ctx, s.store.Pool(), result.SubsidiaryID,
+		[]string{"WEALTH_MANAGER"},
+		notification.InApp{
+			Type:       "onboarding_approved",
+			Title:      "Client Account Opened",
+			Body:       "A client account opening has been processed and the client is now active.",
+			Link:       fmt.Sprintf("/dashboard/cases/%s", cID),
+			Priority:   "high",
+			EntityType: "case",
+			EntityID:   &cID,
+		})
+	return result, nil
 }
 
 // RejectCase directly transitions a case to rejected state.

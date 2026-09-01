@@ -60,6 +60,7 @@ const STATE_CFG: Record<string, { label: string; color: string; bg: string }> = 
   submitted:         { label: "Submitted",         color: "#0369a1", bg: "#e0f2fe" },
   in_review:         { label: "In Review",         color: "#E05500", bg: "#fff0e0" },
   compliance_review: { label: "Compliance Review", color: "#6d28d9", bg: "#ede9fe" },
+  pending_finance:   { label: "Pending Finance",   color: "#0369a1", bg: "#dbeafe" },
   approved:          { label: "Approved",          color: "#065f46", bg: "#d1fae5" },
   rejected:          { label: "Rejected",          color: "#991b1b", bg: "#fee2e2" },
   returned:          { label: "Returned to WM",    color: "#92400e", bg: "#fef3c7" },
@@ -332,12 +333,12 @@ function DecisionPanel({
         throw new Error((err as { message?: string }).message ?? `${decision} failed`);
       }
       toast({
-        title: decision === "approve" ? "Case Approved ✓" : decision === "return" ? "Returned to WM" : "Case Rejected",
+        title: decision === "approve" ? "Approved — Sent to Finance ✓" : decision === "return" ? "Returned to WM" : "Case Rejected",
         description: decision === "approve"
-          ? "The client has been approved for onboarding."
+          ? "The case has passed compliance review and finance has been notified to process the account opening."
           : decision === "return"
-          ? "The wealth manager has been notified."
-          : "The case has been closed as rejected.",
+          ? "The wealth manager has been notified to address the issues."
+          : "The application has been rejected.",
       });
       setDecision(null);
       setReason("");
@@ -378,7 +379,7 @@ function DecisionPanel({
                     className="flex flex-col items-center gap-1.5 p-3 rounded-xl transition-all border-2 hover:border-emerald-500"
                     style={{ background: "#ecfdf5", border: passedAll ? "2px solid #059669" : "2px solid #a7f3d0" }}>
               <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-              <span className="text-[11px] font-semibold text-emerald-700">Approve</span>
+              <span className="text-[11px] font-semibold text-emerald-700">Approve → Finance</span>
             </button>
             <button onClick={() => setDecision("return")}
                     className="flex flex-col items-center gap-1.5 p-3 rounded-xl transition-all border-2 hover:border-amber-500"

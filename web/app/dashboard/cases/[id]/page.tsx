@@ -6,16 +6,19 @@ import { ApplicationForm } from "@/components/onboarding/application-form";
 import { RequirementsPanel } from "@/components/onboarding/requirements-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Send, ArrowLeft } from "lucide-react";
+import { Loader2, Send, ArrowLeft, CheckCircle2 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
+
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
 
 const STATE_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
   draft: "secondary",
   submitted: "outline",
   in_review: "default",
   compliance_review: "default",
+  pending_finance: "outline",
   approved: "default",
   rejected: "destructive",
   returned: "secondary",
@@ -75,6 +78,26 @@ export default function CaseDetailsPage() {
   const canSubmit = Boolean(data?.can_submit) && canEdit;
   const requirements = data?.requirements ?? [];
 
+  const finalizeMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`${BASE}/api/v1/onboarding/cases/${caseId}/finalize`, {
+        method: "POST", credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as Record<string, string>).message ?? "Failed to process account opening");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["case", caseId] });
+      toast({ title: "Account Opened ✓", description: "The client account has been activated and the client has been notified." });
+    },
+    onError: (err) => {
+      toast({ title: "Failed", description: (err as Error).message, variant: "destructive" });
+    },
+  });
+
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       {/* Header */}
@@ -108,8 +131,28 @@ export default function CaseDetailsPage() {
               <Send className="mr-2 h-4 w-4" /> Submit for Review
             </Button>
           )}
+          {state === "pending_finance" && (
+            <Button
+              onClick={() => finalizeMutation.mutate()}
+              disabled={finalizeMutation.isPending}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              {finalizeMutation.isPending
+                ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                : <CheckCircle2 className="mr-2 h-4 w-4" />}
+              Process Account Opening
+            </Button>
+          )}
         </div>
       </div>
+
+      {/* Finance action banner */}
+      {state === "pending_finance" && (
+        <div className="bg-blue-50 border border-blue-200 rounded-md p-4 text-sm text-blue-800">
+          <p className="font-semibold mb-1">Action Required — Process Account Opening</p>
+          <p>This application has been approved by Compliance and is awaiting finance processing. Review the application details below, then click <strong>Process Account Opening</strong> to activate the client account and notify the client.</p>
+        </div>
+      )}
 
       {/* Returned notes */}
       {state === "returned" && caseData?.ReturnNotes && (

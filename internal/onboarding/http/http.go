@@ -52,6 +52,7 @@ func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	r.Get("/cases/{id}/notes", h.listCaseNotes)
 	r.Post("/cases/{id}/notes", h.addCaseNote)
 	r.Post("/cases/{id}/approve", h.approveCase)
+	r.Post("/cases/{id}/finalize", h.finalizeCase)
 	r.Post("/cases/{id}/reject", h.rejectCase)
 	r.Post("/cases/{id}/return", h.returnCase)
 	r.Post("/cases/{id}/reopen", h.reopenCase)
@@ -414,6 +415,21 @@ func (h *Handler) approveCase(w http.ResponseWriter, r *http.Request) {
 	c, err := h.svc.ApproveCase(r.Context(), caseID, user.ID)
 	if err != nil {
 		httpx.Error(w, http.StatusBadRequest, "approve_failed", err.Error())
+		return
+	}
+	httpx.JSON(w, http.StatusOK, c)
+}
+
+func (h *Handler) finalizeCase(w http.ResponseWriter, r *http.Request) {
+	caseID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid case id")
+		return
+	}
+	user, _ := identityhttp.UserFrom(r.Context())
+	c, err := h.svc.FinalizeCase(r.Context(), caseID, user.ID)
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "finalize_failed", err.Error())
 		return
 	}
 	httpx.JSON(w, http.StatusOK, c)

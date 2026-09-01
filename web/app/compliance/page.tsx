@@ -17,13 +17,14 @@ const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
 type OnboardingCase = components["schemas"]["OnboardingCase"];
 
 const STATE_CFG: Record<string, { label: string; color: string; bg: string }> = {
-  submitted:         { label: "Submitted",         color: "#0369a1", bg: "#e0f2fe" },
-  in_review:         { label: "In Review",         color: "#E05500", bg: "#fff0e0" },
-  compliance_review: { label: "Compliance Review", color: "#6d28d9", bg: "#ede9fe" },
-  approved:          { label: "Approved",          color: "#065f46", bg: "#d1fae5" },
-  rejected:          { label: "Rejected",          color: "#991b1b", bg: "#fee2e2" },
-  returned:          { label: "Returned to WM",    color: "#92400e", bg: "#fef3c7" },
-  draft:             { label: "Draft",             color: "#475569", bg: "#f1f5f9" },
+  submitted:         { label: "Submitted",          color: "#0369a1", bg: "#e0f2fe" },
+  in_review:         { label: "In Review",          color: "#E05500", bg: "#fff0e0" },
+  compliance_review: { label: "Compliance Review",  color: "#6d28d9", bg: "#ede9fe" },
+  pending_finance:   { label: "Pending Finance",    color: "#0369a1", bg: "#dbeafe" },
+  approved:          { label: "Approved",           color: "#065f46", bg: "#d1fae5" },
+  rejected:          { label: "Rejected",           color: "#991b1b", bg: "#fee2e2" },
+  returned:          { label: "Returned to WM",     color: "#92400e", bg: "#fef3c7" },
+  draft:             { label: "Draft",              color: "#475569", bg: "#f1f5f9" },
 };
 
 const FILTER_STATES = ["compliance_review", "in_review", "submitted"] as const;
