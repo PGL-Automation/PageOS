@@ -9,6 +9,7 @@ type Family = ReturnType<typeof roleFamily>;
 
 // Where each role family lands after login.
 const ROLE_HOME: Record<Family, string> = {
+  pm:         "/pm/overview",
   wm:         "/wm/dashboard",
   md:         "/dashboard",
   hr:         "/hr/dashboard",

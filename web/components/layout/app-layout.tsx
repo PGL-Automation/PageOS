@@ -12,7 +12,8 @@ import {
   Bell, Command, ChevronDown, Check, Building2, LogOut, Loader2,
   PanelLeft, ChevronRight, Inbox, Sun, Moon, X, Clock,
   CheckCircle2, AlertCircle, Info, FileBarChart, CalendarDays,
-  Star, User, ClipboardList, Lock, Package,
+  Star, User, ClipboardList, Lock, Package, Briefcase, Activity,
+  TrendingDown, Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
@@ -52,6 +53,36 @@ const WM_NAV: NavGroup[] = [
     { href: "/my-documents",         label: "My Documents",        icon: FileText },
     { href: "/documents",               label: "Shared Documents",    icon: FolderOpen },
     { href: "/vault",                   label: "My Vault",            icon: Lock },
+  ]},
+];
+
+const PM_NAV: NavGroup[] = [
+  { id: "core", items: [
+    { href: "/pm/overview",    label: "Overview",         icon: LayoutDashboard },
+    { href: "/ai",             label: "AI Copilot",       icon: Brain, badge: "AI" },
+  ]},
+  { id: "portfolio", label: "Portfolio", items: [
+    { href: "/pm/assets",      label: "Asset Register",   icon: Layers },
+    { href: "/pm/liquidity",   label: "Liquidity",        icon: Wallet },
+    { href: "/pm/liabilities", label: "Liabilities",      icon: CreditCard },
+    { href: "/pm/maturities",  label: "Maturities",       icon: CalendarDays },
+  ]},
+  { id: "analysis", label: "Analysis", items: [
+    { href: "/pm/alm",         label: "ALM",              icon: Activity },
+    { href: "/pm/reports",     label: "Reports",          icon: FileBarChart },
+  ]},
+  { id: "monitoring", label: "Monitoring", items: [
+    { href: "/pm/alerts",      label: "Alerts & Tasks",   icon: Bell },
+  ]},
+  { id: "funds", label: "Funds", items: [
+    { href: "/wm/portfolio",          label: "Funds & Mandates", icon: Briefcase },
+    { href: "/wm/portfolio/accounts", label: "Client Accounts",  icon: Users },
+  ]},
+  { id: "personal", label: "My Work", items: [
+    { href: "/approval",       label: "Approvals",        icon: CheckSquare },
+    { href: "/leave",          label: "My Leave",         icon: CalendarDays },
+    { href: "/my-documents",   label: "My Documents",     icon: FileText },
+    { href: "/vault",          label: "My Vault",         icon: Lock },
   ]},
 ];
 
@@ -252,6 +283,7 @@ const DEFAULT_NAV: NavGroup[] = [
 // not yet defined in the ROLE constant — gets sensible navigation automatically.
 function navForRole(code: string | null): NavGroup[] {
   switch (roleFamily(code)) {
+    case "pm":         return PM_NAV;
     case "wm":         return WM_NAV;
     case "md":         return ADMIN_NAV;
     case "hr":         return HR_NAV;
@@ -578,6 +610,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
   // Role badge colour — derived from family so any new position code works automatically
   const FAMILY_BADGE: Record<string, { bg: string; text: string }> = {
+    pm:         { bg: "#eff6ff", text: "#1d4ed8" },
     wm:         { bg: "#fff3e0", text: "#E05500" },
     md:         { bg: "#f5f3ff", text: "#7c3aed" },
     hr:         { bg: "#ecfeff", text: "#0891b2" },

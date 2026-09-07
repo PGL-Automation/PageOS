@@ -71,7 +71,7 @@ export type RoleCode = (typeof ROLE)[keyof typeof ROLE];
 
 // Maps a position code to a role family for nav/routing/badge decisions.
 // Patterns are evaluated in priority order; more specific checks come first.
-export function roleFamily(code: string | null | undefined): "wm" | "md" | "hr" | "finance" | "compliance" | "default" {
+export function roleFamily(code: string | null | undefined): "wm" | "md" | "hr" | "finance" | "compliance" | "pm" | "default" {
   if (!code) return "default";
   const c = code.toUpperCase();
   // HR family — any HR role, human capital, payroll, recruitment
@@ -82,6 +82,8 @@ export function roleFamily(code: string | null | undefined): "wm" | "md" | "hr" 
       c.includes("DIRECTOR") || c.startsWith("CEO") || c.startsWith("CXO") ||
       c === "HEAD_OF_INVESTMENT" || c === "HEAD_INVESTMENT_MGMT" ||
       c === "GROUP_HEAD_BUSINESS_DEV") return "md";
+  // PM family — portfolio managers, investment/treasury workspace (not CRM-focused)
+  if (c === "PORTFOLIO_MANAGER" || c === "PORTFOLIO_MGMT_ASSISTANT" || c === "EQUITY_TRADER") return "pm";
   // WM family — wealth, portfolio, trading roles
   if (c.includes("WEALTH") || c.includes("PORTFOLIO") || c.includes("EQUITY_TRADER") ||
       c.includes("RELATIONSHIP_MANAGER") || c.startsWith("RM_")) return "wm";
