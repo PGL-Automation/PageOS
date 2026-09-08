@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -303,15 +302,7 @@ export default function WMPipelinePage() {
     },
   });
 
-  // ── Populate team member options for team head view ──
-  useEffect(() => {
-    if (!tv.isTeamHead || !cases.length) return;
-    const seen = new Map<string, string>();
-    (cases as any[]).forEach(c => {
-      if (c.initiatedById && c.initiatedByName) seen.set(c.initiatedById, c.initiatedByName);
-    });
-    tv.setMemberOptions([...seen.entries()].map(([id, name]) => ({ id, name })));
-  }, [cases.length, tv.isTeamHead]);
+  // Member options are loaded centrally by useTeamView() from the org API.
 
   // ── Filter by team view or own cases ──
   const displayCases = tv.isTeamHead

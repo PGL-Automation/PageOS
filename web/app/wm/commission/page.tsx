@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api/client";
@@ -80,15 +79,7 @@ export default function WMCommissionPage() {
     },
   });
 
-  // Populate team member options for Group Head filter bar
-  useEffect(() => {
-    if (!tv.isTeamHead || !cases.length) return;
-    const seen = new Map<string, string>();
-    (cases as any[]).forEach(c => {
-      if (c.InitiatedBy && c.InitiatedByName) seen.set(c.InitiatedBy, c.InitiatedByName);
-    });
-    tv.setMemberOptions([...seen.entries()].map(([id, name]) => ({ id, name })));
-  }, [cases.length, tv.isTeamHead]);
+  // Member options are loaded centrally by useTeamView() from the org API.
 
   const filteredCases = tv.isTeamHead
     ? cases.filter(c => tv.shouldInclude(c.InitiatedBy ?? ""))

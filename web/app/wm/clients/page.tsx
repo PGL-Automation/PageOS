@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search, Mail, Phone, AlertCircle, ChevronRight, Plus, Loader2, Users, Eye } from "lucide-react";
 import Link from "next/link";
@@ -82,15 +82,7 @@ export default function WMClientsPage() {
     },
   });
 
-  // Populate team-view member options from fetched cases
-  useEffect(() => {
-    if (!tv.isTeamHead || !clients.length) return;
-    const seen = new Map<string, string>();
-    clients.forEach(c => {
-      if (c.initiatedBy && c.initiatedByName) seen.set(c.initiatedBy, c.initiatedByName);
-    });
-    tv.setMemberOptions([...seen.entries()].map(([id, name]) => ({ id, name })));
-  }, [clients.length, tv.isTeamHead]);
+  // Member options are loaded centrally by useTeamView() from the org API.
 
   const filtered = clients.filter(c => {
     const q = search.toLowerCase();

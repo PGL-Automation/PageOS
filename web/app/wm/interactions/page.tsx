@@ -472,23 +472,12 @@ export default function InteractionsPage() {
     a.state === "approved" ? -1 : b.state === "approved" ? 1 : 0
   );
 
-  // Prefer server data; fall back to local + demo when backend isn't available yet
+  // Show server data + locally-added interactions from this session.
+  // No demo data — show empty state when there's nothing real.
   const interactions: Interaction[] =
     rawInteractions.length > 0
       ? rawInteractions
-      : [...localInteractions, ...DEMO_INTERACTIONS];
-
-  // Populate team-view member options from unique WM names in the interaction list
-  useEffect(() => {
-    if (!tv.isTeamHead || !interactions.length) return;
-    const seen = new Map<string, string>();
-    interactions.forEach(i => {
-      const name = i.wm_name;
-      if (name && name !== "Me") seen.set(name, name); // use name as id for demo data
-    });
-    tv.setMemberOptions([...seen.entries()].map(([id, name]) => ({ id, name })));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [interactions.length, tv.isTeamHead]);
+      : localInteractions;
 
   const myDisplayName = user?.DisplayName ?? "";
 
@@ -869,26 +858,6 @@ export default function InteractionsPage() {
         )}
       </div>
 
-      {/* DEMO BANNER */}
-      {localInteractions.length === 0 && rawInteractions.length === 0 && (
-        <div
-          style={{
-            background: "#fef3c7",
-            border: "1px solid #fcd34d",
-            borderRadius: 12,
-            padding: "10px 16px",
-            marginBottom: 16,
-            fontSize: 13,
-            color: "#92400e",
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-          }}
-        >
-          <AlertCircle size={15} />
-          Sample interactions shown. Start logging interactions to build your client history.
-        </div>
-      )}
 
       {/* INTERACTION FEED */}
       <div style={{ display: "flex", gap: 20 }}>
@@ -911,14 +880,40 @@ export default function InteractionsPage() {
                 background: "var(--pg-card)",
                 border: "1px solid var(--pg-card-border)",
                 borderRadius: 16,
-                padding: 40,
+                padding: "48px 24px",
                 textAlign: "center",
-                color: "var(--pg-text-3)",
               }}
             >
-              <MessageSquare size={32} style={{ marginBottom: 12, opacity: 0.4 }} />
-              <div style={{ fontSize: 14, fontWeight: 600 }}>No interactions found</div>
-              <div style={{ fontSize: 12, marginTop: 4 }}>Try adjusting your filters</div>
+              <div style={{
+                width: 56, height: 56, borderRadius: 16, margin: "0 auto 16px",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                background: "var(--pg-muted-bg)",
+              }}>
+                <MessageSquare size={28} style={{ color: "var(--pg-text-4)" }} />
+              </div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: "var(--pg-text-1)", marginBottom: 6 }}>
+                {interactions.length === 0 ? "No interactions yet" : "No interactions match your filters"}
+              </div>
+              <div style={{ fontSize: 13, color: "var(--pg-text-3)", maxWidth: 320, margin: "0 auto 20px" }}>
+                {interactions.length === 0
+                  ? "Start logging client interactions to build a history of calls, meetings, requests and follow-ups."
+                  : "Try clearing your filters or switching to a different WM or period."}
+              </div>
+              {interactions.length === 0 && (
+                <button
+                  onClick={() => setShowModal(true)}
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 6,
+                    height: 36, padding: "0 20px", borderRadius: 12,
+                    fontSize: 13, fontWeight: 600, color: "#fff", cursor: "pointer",
+                    background: "linear-gradient(135deg,#FF6600,#E05500)",
+                    border: "none",
+                  }}
+                >
+                  <Plus size={14} />
+                  Log your first interaction
+                </button>
+              )}
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>

@@ -197,11 +197,7 @@ export default function WMMaturitiesPage() {
   const tv = useTeamView();
   const myName = user?.DisplayName ?? "";
 
-  useEffect(() => {
-    if (!tv.isTeamHead) return;
-    const names = [...new Set(DEMO_MATURITIES.map(m => m.wm_name).filter(Boolean))];
-    tv.setMemberOptions(names.map(n => ({ id: n, name: n })));
-  }, [tv.isTeamHead]);
+  // Member options are loaded centrally by useTeamView() from the org API.
 
   /* ── Remote data (unused in demo but fetched for future wiring) ── */
   useQuery({
