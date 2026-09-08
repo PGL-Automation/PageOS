@@ -1,11 +1,13 @@
 "use client";
 
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api/client";
 import { components } from "@/lib/api/types";
+import { useTeamView, TeamViewBar } from "@/lib/team-view";
 import {
   AlertCircle, CheckCircle2, Clock, Loader2,
   Users, RotateCcw, ChevronRight, Plus,
@@ -71,13 +73,15 @@ const COLUMNS: ColumnDef[] = [
 // ─── Enriched card data ──────────────────────────────────────────────────────
 
 interface PipelineCard {
-  id:          string;
-  name:        string;
-  clientType:  string;
-  state:       string;
-  riskFlag:    boolean;
-  returnCount: number;
-  daysSince:   number;    // days since SubmittedAt, or 0 if draft
+  id:              string;
+  name:            string;
+  clientType:      string;
+  state:           string;
+  riskFlag:        boolean;
+  returnCount:     number;
+  daysSince:       number;    // days since SubmittedAt, or 0 if draft
+  initiatedById:   string;
+  initiatedByName: string;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -109,7 +113,7 @@ function initials(name: string): string {
 
 // ─── Card component ──────────────────────────────────────────────────────────
 
-function PipelineCard({ card }: { card: PipelineCard }) {
+function PipelineCard({ card, showInitiatedBy }: { card: PipelineCard; showInitiatedBy?: boolean }) {
   const router = useRouter();
   const pill = STATE_PILL[card.state] ?? { label: card.state, bg: "#f1f5f9", color: "#475569" };
   const avatarBg = card.riskFlag
@@ -149,6 +153,11 @@ function PipelineCard({ card }: { card: PipelineCard }) {
           <p className="text-[12.5px] font-semibold truncate leading-tight" style={{ color: "var(--pg-text-1)" }}>
             {card.name}
           </p>
+          {showInitiatedBy && card.initiatedByName && (
+            <p className="text-[10px] truncate leading-tight mt-0.5" style={{ color: "var(--pg-text-4)" }}>
+              {card.initiatedByName}
+            </p>
+          )}
           {/* Type + state pills */}
           <div className="flex items-center gap-1 mt-1 flex-wrap">
             <span
@@ -203,7 +212,7 @@ function PipelineCard({ card }: { card: PipelineCard }) {
 
 // ─── Column component ────────────────────────────────────────────────────────
 
-function PipelineColumn({ col, cards }: { col: ColumnDef; cards: PipelineCard[] }) {
+function PipelineColumn({ col, cards, showInitiatedBy }: { col: ColumnDef; cards: PipelineCard[]; showInitiatedBy?: boolean }) {
   return (
     <div
       className="flex flex-col rounded-2xl overflow-hidden shrink-0"
@@ -244,7 +253,7 @@ function PipelineColumn({ col, cards }: { col: ColumnDef; cards: PipelineCard[] 
             </p>
           </div>
         ) : (
-          cards.map(card => <PipelineCard key={card.id} card={card} />)
+          cards.map(card => <PipelineCard key={card.id} card={card} showInitiatedBy={showInitiatedBy} />)
         )}
       </div>
     </div>
@@ -256,27 +265,23 @@ function PipelineColumn({ col, cards }: { col: ColumnDef; cards: PipelineCard[] 
 export default function WMPipelinePage() {
   const { user, subsidiary } = useAuth();
   const subsidId = subsidiary?.ID ?? "";
+  const tv = useTeamView();
 
-  const { data: cards = [], isLoading } = useQuery<PipelineCard[]>({
+  const { data: cases = [], isLoading } = useQuery<PipelineCard[]>({
     queryKey: ["wm-pipeline", subsidId, user?.ID],
     enabled:  Boolean(subsidId) && Boolean(user?.ID),
     staleTime: 0,
     refetchOnMount: true,
     refetchOnWindowFocus: true,
     queryFn:  async () => {
-      const { data: cases, error } = await api.GET("/onboarding/cases", {
+      const { data: rawCases, error } = await api.GET("/onboarding/cases", {
         params: { query: { subsidiary_id: subsidId } },
       });
-      if (error || !cases) return [];
-
-      // Filter to cases this WM initiated
-      const mine = (cases as OnboardingCase[]).filter(
-        c => !c.InitiatedBy || c.InitiatedBy === user!.ID,
-      );
+      if (error || !rawCases) return [];
 
       // Fetch details in parallel to get client names
       const details: (CaseDetails | null)[] = await Promise.all(
-        mine.map(async c => {
+        (rawCases as OnboardingCase[]).map(async c => {
           const { data } = await api.GET("/onboarding/cases/{id}", {
             params: { path: { id: c.ID } },
           });
@@ -284,23 +289,40 @@ export default function WMPipelinePage() {
         }),
       );
 
-      return mine.map((c, i): PipelineCard => ({
-        id:          c.ID,
-        name:        details[i]?.application?.full_name ?? `Case ${c.ID.slice(0, 6)}`,
-        clientType:  c.ClientType,
-        state:       c.State,
-        riskFlag:    c.RiskFlag,
-        returnCount: c.ReturnCount ?? 0,
-        daysSince:   daysSinceDate(c.SubmittedAt),
+      return (rawCases as OnboardingCase[]).map((c, i): PipelineCard => ({
+        id:              c.ID,
+        name:            details[i]?.application?.full_name ?? `Case ${c.ID.slice(0, 6)}`,
+        clientType:      c.ClientType,
+        state:           c.State,
+        riskFlag:        c.RiskFlag,
+        returnCount:     c.ReturnCount ?? 0,
+        daysSince:       daysSinceDate(c.SubmittedAt),
+        initiatedById:   (c as any).InitiatedBy ?? "",
+        initiatedByName: (c as any).InitiatedByName ?? "",
       }));
     },
   });
 
+  // ── Populate team member options for team head view ──
+  useEffect(() => {
+    if (!tv.isTeamHead || !cases.length) return;
+    const seen = new Map<string, string>();
+    (cases as any[]).forEach(c => {
+      if (c.initiatedById && c.initiatedByName) seen.set(c.initiatedById, c.initiatedByName);
+    });
+    tv.setMemberOptions([...seen.entries()].map(([id, name]) => ({ id, name })));
+  }, [cases.length, tv.isTeamHead]);
+
+  // ── Filter by team view or own cases ──
+  const displayCases = tv.isTeamHead
+    ? cases.filter(c => !tv.selectedMemberId || c.initiatedById === tv.selectedMemberId)
+    : cases.filter(c => c.initiatedById === user!.ID);
+
   // ── Stats ──
-  const total      = cards.length;
-  const approved   = cards.filter(c => c.state === "approved").length;
-  const inReview   = cards.filter(c => ["in_review", "compliance_review"].includes(c.state)).length;
-  const returned   = cards.filter(c => c.state === "returned").length;
+  const total      = displayCases.length;
+  const approved   = displayCases.filter(c => c.state === "approved").length;
+  const inReview   = displayCases.filter(c => ["in_review", "compliance_review"].includes(c.state)).length;
+  const returned   = displayCases.filter(c => c.state === "returned").length;
 
   const stats = [
     { label: "Total",     value: total,    color: "#FF6600", bg: "#fff7f0",  icon: Users },
@@ -330,6 +352,9 @@ export default function WMPipelinePage() {
           <Plus className="w-3.5 h-3.5" /> New Client
         </Link>
       </div>
+
+      {/* ── Team view bar ────────────────────────────────────────────────── */}
+      <TeamViewBar tv={tv} quickLinks={[{ href: "/wm/clients", label: "Clients" }, { href: "/wm/interactions", label: "Interactions" }]} />
 
       {/* ── Stats strip ─────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -369,8 +394,8 @@ export default function WMPipelinePage() {
         >
           <div className="flex gap-3" style={{ minWidth: "max-content" }}>
             {COLUMNS.map(col => {
-              const colCards = cards.filter(c => col.states.includes(c.state));
-              return <PipelineColumn key={col.id} col={col} cards={colCards} />;
+              const colCards = displayCases.filter(c => col.states.includes(c.state));
+              return <PipelineColumn key={col.id} col={col} cards={colCards} showInitiatedBy={tv.isTeamHead} />;
             })}
           </div>
         </div>

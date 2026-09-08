@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search, Mail, Phone, AlertCircle, ChevronRight, Plus, Loader2, Users, Eye } from "lucide-react";
 import Link from "next/link";
@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api/client";
 import { components } from "@/lib/api/types";
+import { useTeamView, TeamViewBar } from "@/lib/team-view";
 
 type OnboardingCase = components["schemas"]["OnboardingCase"];
 type CaseDetails    = components["schemas"]["CaseDetails"];
@@ -23,25 +24,28 @@ const STATUS_CFG: Record<string, { label: string; bg: string; color: string }> =
 };
 
 interface ClientRow {
-  id:       string;
-  name:     string;
-  type:     string;
-  email:    string;
-  phone:    string;
-  state:    string;
-  riskFlag: boolean;
-  details:  CaseDetails | null;
+  id:              string;
+  name:            string;
+  type:            string;
+  email:           string;
+  phone:           string;
+  state:           string;
+  riskFlag:        boolean;
+  details:         CaseDetails | null;
+  initiatedBy:     string;
+  initiatedByName: string;
 }
 
 export default function WMClientsPage() {
   const { user, subsidiary } = useAuth();
   const subsidId = subsidiary?.ID ?? "";
+  const tv = useTeamView();
   const [search, setSearch]     = useState("");
   const [selected, setSelected] = useState<string | null>(null);
   const [filter, setFilter]     = useState<"all" | "individual" | "corporate" | "attention">("all");
 
   const { data: clients = [], isLoading } = useQuery({
-    queryKey: ["wm-clients-list", subsidId, user?.ID],
+    queryKey: ["wm-clients-list", subsidId, user?.ID, tv.isTeamHead],
     enabled: Boolean(subsidId) && Boolean(user?.ID),
     queryFn: async () => {
       const { data: cases, error } = await api.GET("/onboarding/cases", {
@@ -49,9 +53,10 @@ export default function WMClientsPage() {
       });
       if (error || !cases) return [] as ClientRow[];
 
-      const mine = (cases as OnboardingCase[]).filter(
-        c => !c.InitiatedBy || c.InitiatedBy === user!.ID
-      );
+      const allCases = cases as OnboardingCase[];
+      const mine = tv.isTeamHead
+        ? allCases
+        : allCases.filter(c => !c.InitiatedBy || c.InitiatedBy === user!.ID);
 
       const details: (CaseDetails | null)[] = await Promise.all(
         mine.map(async c => {
@@ -63,17 +68,29 @@ export default function WMClientsPage() {
       );
 
       return mine.map((c, i): ClientRow => ({
-        id:       c.ID,
-        name:     details[i]?.application?.full_name ?? `Case ${c.ID.slice(0, 6)}`,
-        type:     c.ClientType,
-        email:    details[i]?.application?.email ?? "—",
-        phone:    details[i]?.application?.phone_numbers?.[0] ?? "—",
-        state:    c.State,
-        riskFlag: c.RiskFlag,
-        details:  details[i],
+        id:              c.ID,
+        name:            details[i]?.application?.full_name ?? `Case ${c.ID.slice(0, 6)}`,
+        type:            c.ClientType,
+        email:           details[i]?.application?.email ?? "—",
+        phone:           details[i]?.application?.phone_numbers?.[0] ?? "—",
+        state:           c.State,
+        riskFlag:        c.RiskFlag,
+        details:         details[i],
+        initiatedBy:     c.InitiatedBy ?? "",
+        initiatedByName: c.InitiatedByName ?? "",
       }));
     },
   });
+
+  // Populate team-view member options from fetched cases
+  useEffect(() => {
+    if (!tv.isTeamHead || !clients.length) return;
+    const seen = new Map<string, string>();
+    clients.forEach(c => {
+      if (c.initiatedBy && c.initiatedByName) seen.set(c.initiatedBy, c.initiatedByName);
+    });
+    tv.setMemberOptions([...seen.entries()].map(([id, name]) => ({ id, name })));
+  }, [clients.length, tv.isTeamHead]);
 
   const filtered = clients.filter(c => {
     const q = search.toLowerCase();
@@ -81,6 +98,7 @@ export default function WMClientsPage() {
     if (filter === "individual" && c.type !== "individual") return false;
     if (filter === "corporate"  && c.type !== "corporate")  return false;
     if (filter === "attention"  && !c.riskFlag && c.state !== "returned") return false;
+    if (tv.isTeamHead && tv.selectedMemberId && c.initiatedBy !== tv.selectedMemberId) return false;
     return true;
   });
 
@@ -102,6 +120,8 @@ export default function WMClientsPage() {
           <Plus className="w-3.5 h-3.5" /> New Client
         </Link>
       </div>
+
+      <TeamViewBar tv={tv} quickLinks={[{href:"/wm/pipeline", label:"Pipeline"},{href:"/wm/interactions", label:"Interactions"},{href:"/wm/commission", label:"Commission"}]} />
 
       {/* Search + filter */}
       <div className="flex items-center gap-3">
@@ -163,6 +183,9 @@ export default function WMClientsPage() {
                       <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                         <span className="text-[11px] capitalize" style={{ color: "var(--pg-text-3)" }}>{c.type}</span>
                         <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: st.bg, color: st.color }}>{st.label}</span>
+                        {tv.isTeamHead && c.initiatedByName && (
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ background: "#dbeafe", color: "#1d4ed8" }}>{c.initiatedByName}</span>
+                        )}
                       </div>
                     </div>
                     <ChevronRight className="w-4 h-4 shrink-0 ml-1" style={{ color: "var(--pg-text-4)" }} />

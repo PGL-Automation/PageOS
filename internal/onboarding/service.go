@@ -271,24 +271,56 @@ func (s *Service) ListCases(ctx context.Context, subsidiaryID *uuid.UUID, state 
 	if subsidiaryID == nil {
 		return s.listAllCases(ctx, state)
 	}
-	var rows []onboardingdb.OnboardingOnboardingCase
-	var err error
+	return s.listCasesBySubsidiaryWithInitiator(ctx, *subsidiaryID, state)
+}
+
+// listCasesBySubsidiaryWithInitiator returns cases for a subsidiary, enriched
+// with client_name (from application) and initiated_by_name (from identity.users).
+func (s *Service) listCasesBySubsidiaryWithInitiator(ctx context.Context, subsidiaryID uuid.UUID, state string) ([]domain.OnboardingCase, error) {
+	base := `
+		SELECT oc.id, oc.client_id, oc.subsidiary_id, oc.client_type, oc.requirement_set_version,
+		       oc.state, oc.risk_flag, oc.risk_notes, oc.return_count, oc.return_notes,
+		       oc.initiated_by, oc.tnc_version, oc.tnc_accepted_at, oc.submitted_at,
+		       oc.created_at, oc.updated_at,
+		       COALESCE(a.full_name, '')         AS client_name,
+		       COALESCE(u.display_name, u.email, '') AS initiated_by_name
+		FROM onboarding.onboarding_case oc
+		LEFT JOIN onboarding.application a ON a.case_id = oc.id
+		LEFT JOIN identity.users u ON u.id = oc.initiated_by
+		WHERE oc.subsidiary_id = $1`
+	var q string
+	var args []interface{}
 	if state == "" {
-		rows, err = s.store.ListAllCasesBySubsidiary(ctx, *subsidiaryID)
+		q = base + ` ORDER BY oc.risk_flag DESC, oc.created_at DESC`
+		args = []interface{}{subsidiaryID}
 	} else {
-		rows, err = s.store.ListCasesBySubsidiary(ctx, onboardingdb.ListCasesBySubsidiaryParams{
-			SubsidiaryID: *subsidiaryID,
-			State:        state,
-		})
+		q = base + ` AND oc.state = $2 ORDER BY oc.risk_flag DESC, oc.created_at ASC`
+		args = []interface{}{subsidiaryID, state}
 	}
+	pool := s.store.Pool()
+	rows, err := pool.Query(ctx, q, args...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("onboarding: list cases: %w", err)
 	}
-	out := make([]domain.OnboardingCase, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, toCase(r))
+	defer rows.Close()
+	var out []domain.OnboardingCase
+	for rows.Next() {
+		var r onboardingdb.OnboardingOnboardingCase
+		var clientName, initiatedByName string
+		if err := rows.Scan(
+			&r.ID, &r.ClientID, &r.SubsidiaryID, &r.ClientType, &r.RequirementSetVersion,
+			&r.State, &r.RiskFlag, &r.RiskNotes, &r.ReturnCount, &r.ReturnNotes,
+			&r.InitiatedBy, &r.TncVersion, &r.TncAcceptedAt, &r.SubmittedAt, &r.CreatedAt, &r.UpdatedAt,
+			&clientName, &initiatedByName,
+		); err != nil {
+			return nil, fmt.Errorf("onboarding: scan case: %w", err)
+		}
+		c := toCase(r)
+		c.ClientName = clientName
+		c.InitiatedByName = initiatedByName
+		out = append(out, c)
 	}
-	return out, nil
+	return out, rows.Err()
 }
 
 // listAllCases returns cases across all subsidiaries with client names from application data.
@@ -299,9 +331,11 @@ func (s *Service) listAllCases(ctx context.Context, state string) ([]domain.Onbo
 		       oc.state, oc.risk_flag, oc.risk_notes, oc.return_count, oc.return_notes,
 		       oc.initiated_by, oc.tnc_version, oc.tnc_accepted_at, oc.submitted_at,
 		       oc.created_at, oc.updated_at,
-		       COALESCE(a.full_name, '') AS client_name
+		       COALESCE(a.full_name, '')         AS client_name,
+		       COALESCE(u.display_name, u.email, '') AS initiated_by_name
 		FROM onboarding.onboarding_case oc
-		LEFT JOIN onboarding.application a ON a.case_id = oc.id`
+		LEFT JOIN onboarding.application a ON a.case_id = oc.id
+		LEFT JOIN identity.users u ON u.id = oc.initiated_by`
 	var q string
 	var args []interface{}
 	if state == "" {
@@ -319,17 +353,18 @@ func (s *Service) listAllCases(ctx context.Context, state string) ([]domain.Onbo
 	var out []domain.OnboardingCase
 	for rows.Next() {
 		var r onboardingdb.OnboardingOnboardingCase
-		var clientName string
+		var clientName, initiatedByName string
 		if err := rows.Scan(
 			&r.ID, &r.ClientID, &r.SubsidiaryID, &r.ClientType, &r.RequirementSetVersion,
 			&r.State, &r.RiskFlag, &r.RiskNotes, &r.ReturnCount, &r.ReturnNotes,
 			&r.InitiatedBy, &r.TncVersion, &r.TncAcceptedAt, &r.SubmittedAt, &r.CreatedAt, &r.UpdatedAt,
-			&clientName,
+			&clientName, &initiatedByName,
 		); err != nil {
 			return nil, fmt.Errorf("onboarding: scan case: %w", err)
 		}
 		c := toCase(r)
 		c.ClientName = clientName
+		c.InitiatedByName = initiatedByName
 		out = append(out, c)
 	}
 	return out, rows.Err()

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api/client";
@@ -7,6 +8,7 @@ import { components } from "@/lib/api/types";
 import {
   TrendingUp, DollarSign, Users, Loader2, Info,
 } from "lucide-react";
+import { useTeamView, TeamViewBar } from "@/lib/team-view";
 
 type OnboardingCase = components["schemas"]["OnboardingCase"];
 type CaseDetails    = components["schemas"]["CaseDetails"];
@@ -48,34 +50,58 @@ const CASE_PILL: Record<string, { label: string; bg: string; color: string }> = 
 };
 
 interface ClientRow {
-  id:             string;
-  name:           string;
-  state:          string;
+  id:              string;
+  name:            string;
+  state:           string;
   investmentNaira: number;
-  quarterlyComm:  number;
+  quarterlyComm:   number;
+  initiatedBy:     string;
+  initiatedByName: string;
+}
+
+interface CaseRaw extends OnboardingCase {
+  InitiatedByName?: string;
 }
 
 export default function WMCommissionPage() {
   const { user, subsidiary } = useAuth();
   const subsidId = subsidiary?.ID ?? "";
+  const tv = useTeamView();
 
-  const { data: rows = [], isLoading } = useQuery<ClientRow[]>({
-    queryKey: ["wm-commission", subsidId, user?.ID],
+  const { data: cases = [], isLoading: casesLoading } = useQuery<CaseRaw[]>({
+    queryKey: ["wm-commission-cases", subsidId],
     enabled: Boolean(subsidId) && Boolean(user?.ID),
     queryFn: async () => {
-      const { data: cases, error } = await api.GET("/onboarding/cases", {
+      const { data, error } = await api.GET("/onboarding/cases", {
         params: { query: { subsidiary_id: subsidId } },
       });
-      if (error || !cases) return [];
+      if (error || !data) return [];
+      return data as CaseRaw[];
+    },
+  });
 
-      // Filter to cases this WM initiated
-      const mine = (cases as OnboardingCase[]).filter(
-        c => c.InitiatedBy === user!.ID
-      );
+  // Populate team member options for Group Head filter bar
+  useEffect(() => {
+    if (!tv.isTeamHead || !cases.length) return;
+    const seen = new Map<string, string>();
+    (cases as any[]).forEach(c => {
+      if (c.InitiatedBy && c.InitiatedByName) seen.set(c.InitiatedBy, c.InitiatedByName);
+    });
+    tv.setMemberOptions([...seen.entries()].map(([id, name]) => ({ id, name })));
+  }, [cases.length, tv.isTeamHead]);
 
-      // Fetch details in parallel to get investment amounts and names
+  const filteredCases = tv.isTeamHead
+    ? tv.selectedMemberId
+      ? cases.filter(c => c.InitiatedBy === tv.selectedMemberId)
+      : cases
+    : cases.filter(c => c.InitiatedBy === user!.ID);
+
+  const { data: rows = [], isLoading: rowsLoading } = useQuery<ClientRow[]>({
+    queryKey: ["wm-commission-rows", filteredCases.map(c => c.ID).join(",")],
+    enabled: filteredCases.length > 0,
+    queryFn: async () => {
       const details: (CaseDetails | null)[] = await Promise.all(
-        mine.map(async c => {
+        filteredCases.map(async c => {
           const { data } = await api.GET("/onboarding/cases/{id}", {
             params: { path: { id: c.ID } },
           });
@@ -83,9 +109,9 @@ export default function WMCommissionPage() {
         })
       );
 
-      return mine.map((c, i): ClientRow => {
-        const det  = details[i];
-        const kobo = det?.application?.investment_amount_kobo ?? 0;
+      return filteredCases.map((c, i): ClientRow => {
+        const det   = details[i];
+        const kobo  = det?.application?.investment_amount_kobo ?? 0;
         const naira = koboToNaira(kobo);
         return {
           id:              c.ID,
@@ -93,10 +119,14 @@ export default function WMCommissionPage() {
           state:           c.State,
           investmentNaira: naira,
           quarterlyComm:   calcQuarterlyCommission(naira),
+          initiatedBy:     c.InitiatedBy ?? "",
+          initiatedByName: (c as CaseRaw).InitiatedByName ?? "",
         };
       });
     },
   });
+
+  const isLoading = casesLoading || rowsLoading;
 
   // ── Derived totals ──────────────────────────────────────────────────────────
   const totalAUM         = rows.reduce((s, r) => s + r.investmentNaira, 0);
@@ -115,18 +145,44 @@ export default function WMCommissionPage() {
     );
   }
 
+  // ── Team breakdown (Group Head only) ────────────────────────────────────────
+  const teamBreakdown = tv.isTeamHead
+    ? (() => {
+        const map = new Map<string, { name: string; totalAUM: number; approvedAUM: number; totalComm: number }>();
+        rows.forEach(r => {
+          const key = r.initiatedBy || r.initiatedByName || "unknown";
+          const label = r.initiatedByName || r.initiatedBy || "Unknown WM";
+          if (!map.has(key)) map.set(key, { name: label, totalAUM: 0, approvedAUM: 0, totalComm: 0 });
+          const entry = map.get(key)!;
+          entry.totalAUM   += r.investmentNaira;
+          entry.totalComm  += r.quarterlyComm;
+          if (r.state === "approved") entry.approvedAUM += r.investmentNaira;
+        });
+        return [...map.values()];
+      })()
+    : [];
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
 
       {/* Header */}
       <div>
         <h1 className="text-[18px] font-bold" style={{ color: "var(--pg-text-1)" }}>
-          My Commission
+          {tv.isTeamHead ? "Team Commission" : "My Commission"}
         </h1>
         <p className="text-[12px] mt-0.5" style={{ color: "var(--pg-text-3)" }}>
           {subsidiary?.Name ?? "Page Capital"} · Wealth Manager · Q4 2026
         </p>
       </div>
+
+      {/* Team view bar (Group Head only) */}
+      <TeamViewBar
+        tv={tv}
+        quickLinks={[
+          { href: "/wm/clients",  label: "Clients"  },
+          { href: "/wm/pipeline", label: "Pipeline" },
+        ]}
+      />
 
       {/* Parameter notice */}
       <div className="flex items-start gap-3 px-4 py-3.5 rounded-xl"
@@ -225,6 +281,67 @@ export default function WMCommissionPage() {
             : `${fmtNGN(QUARTERLY_TARGET - totalCommission)} remaining to hit quarterly target`}
         </p>
       </div>
+
+      {/* Team summary table (Group Head only) */}
+      {tv.isTeamHead && teamBreakdown.length > 0 && (
+        <div className="rounded-2xl overflow-hidden"
+             style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}>
+          <div className="px-5 py-4" style={{ borderBottom: "1px solid var(--pg-row-border)" }}>
+            <h2 className="text-[13px] font-semibold" style={{ color: "var(--pg-text-1)" }}>
+              Per-WM Summary
+            </h2>
+            <p className="text-[11px] mt-0.5" style={{ color: "var(--pg-text-3)" }}>
+              Aggregate commission breakdown by Wealth Manager
+            </p>
+          </div>
+          <table className="w-full">
+            <thead>
+              <tr style={{ borderBottom: "1px solid var(--pg-row-border)" }}>
+                {["WM Name", "Total AUM", "Approved AUM", "Est. Commission"].map(h => (
+                  <th key={h}
+                      className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-wider"
+                      style={{ color: "var(--pg-text-3)" }}>
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {teamBreakdown.map(wm => (
+                <tr key={wm.name}
+                    className="transition-colors"
+                    style={{ borderBottom: "1px solid var(--pg-row-border)" }}
+                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--pg-row-hover)"}
+                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
+                  <td className="px-5 py-3.5">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold text-white"
+                           style={{ background: "linear-gradient(135deg,#7c3aed,#5b21b6)" }}>
+                        {wm.name.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase()}
+                      </div>
+                      <span className="text-[13px] font-medium" style={{ color: "var(--pg-text-1)" }}>
+                        {wm.name}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-5 py-3.5 text-[13px] tabular font-medium"
+                      style={{ color: "var(--pg-text-1)" }}>
+                    {fmtNGN(wm.totalAUM)}
+                  </td>
+                  <td className="px-5 py-3.5 text-[13px] tabular font-medium"
+                      style={{ color: "#059669" }}>
+                    {fmtNGN(wm.approvedAUM)}
+                  </td>
+                  <td className="px-5 py-3.5 text-[13px] font-semibold tabular"
+                      style={{ color: wm.totalComm > 0 ? "#059669" : "var(--pg-text-3)" }}>
+                    {fmtNGN(wm.totalComm)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Per-client breakdown */}
       <div className="rounded-2xl overflow-hidden"

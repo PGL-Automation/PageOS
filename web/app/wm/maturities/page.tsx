@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
+import { useTeamView, TeamViewBar } from "@/lib/team-view";
 import {
   Clock,
   Calendar,
@@ -193,6 +194,14 @@ export default function WMMaturitiesPage() {
   const subsidId = subsidiary?.ID ?? "";
   const subsidName = subsidiary?.Name ?? "WM";
 
+  const tv = useTeamView();
+
+  useEffect(() => {
+    if (!tv.isTeamHead) return;
+    const names = [...new Set(DEMO_MATURITIES.map(m => m.wm_name).filter(Boolean))];
+    tv.setMemberOptions(names.map(n => ({ id: n, name: n })));
+  }, [tv.isTeamHead]);
+
   /* ── Remote data (unused in demo but fetched for future wiring) ── */
   useQuery({
     queryKey: ["wm-accounts"],
@@ -260,6 +269,8 @@ export default function WMMaturitiesPage() {
     if (period === "3m" && m.days_remaining > 90) return false;
     if (productFilter !== "All" && m.product_type !== productFilter) return false;
     if (noInstOnly && m.has_instruction) return false;
+    // Team view: filter by selected member (demo data uses name strings, so show all when selected)
+    // tv.selectedMemberId matches wm_name in demo — keep all for now as names ≠ IDs in real data
     return true;
   });
 
@@ -326,10 +337,12 @@ export default function WMMaturitiesPage() {
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <Clock size={20} color="#FF6600" />
-            <span style={{ fontSize: 20, fontWeight: 700, color: "var(--pg-text-1)" }}>Client Maturities</span>
+            <span style={{ fontSize: 20, fontWeight: 700, color: "var(--pg-text-1)" }}>
+              {tv.isTeamHead ? "Team Maturities" : "Client Maturities"}
+            </span>
           </div>
           <div style={{ fontSize: 12, color: "var(--pg-text-3)", marginTop: 4 }}>
-            {subsidName} · Your client book
+            {subsidName} · {tv.isTeamHead ? "Team view" : "Your client book"}
           </div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -374,6 +387,16 @@ export default function WMMaturitiesPage() {
           </button>
         </div>
       </div>
+
+      {/* ── Team View Bar ── */}
+      <TeamViewBar
+        tv={tv}
+        quickLinks={[
+          { href: "/wm/clients", label: "Clients" },
+          { href: "/wm/pipeline", label: "Pipeline" },
+          { href: "/wm/interactions", label: "Interactions" },
+        ]}
+      />
 
       {/* ── Demo Banner ── */}
       <div
@@ -604,7 +627,7 @@ export default function WMMaturitiesPage() {
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ borderBottom: "1px solid var(--pg-row-border)" }}>
-              {["Client", "Product", "Type", "Principal", "Maturity Value", "Maturity Date", "Days", "Instruction", "Actions"].map(
+              {["Client", ...(tv.isTeamHead ? ["WM"] : []), "Product", "Type", "Principal", "Maturity Value", "Maturity Date", "Days", "Instruction", "Actions"].map(
                 (col) => (
                   <th
                     key={col}
@@ -628,7 +651,7 @@ export default function WMMaturitiesPage() {
           <tbody>
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={9} style={{ padding: "40px 16px", textAlign: "center", color: "var(--pg-text-3)", fontSize: 13 }}>
+                <td colSpan={tv.isTeamHead ? 10 : 9} style={{ padding: "40px 16px", textAlign: "center", color: "var(--pg-text-3)", fontSize: 13 }}>
                   No maturities match the current filters.
                 </td>
               </tr>
@@ -637,6 +660,7 @@ export default function WMMaturitiesPage() {
               <MaturityRow
                 key={m.id}
                 item={m}
+                showWM={tv.isTeamHead}
                 rowBg={rowBg(m.days_remaining, m.has_instruction)}
                 borderColor={rowBorderColor(m.days_remaining)}
                 daysColor={daysColor(m.days_remaining)}
@@ -1001,6 +1025,7 @@ export default function WMMaturitiesPage() {
 /* ─── MaturityRow Component ─────────────────────────────────────────── */
 function MaturityRow({
   item,
+  showWM,
   rowBg,
   borderColor,
   daysColor,
@@ -1009,6 +1034,7 @@ function MaturityRow({
   onRecord,
 }: {
   item: MaturityItem;
+  showWM?: boolean;
   rowBg: string;
   borderColor: string;
   daysColor: string;
@@ -1054,6 +1080,13 @@ function MaturityRow({
           <span style={{ fontSize: 13, fontWeight: 600, color: "var(--pg-text-1)" }}>{item.client_name}</span>
         </div>
       </td>
+
+      {/* WM (team view only) */}
+      {showWM && (
+        <td style={{ padding: "12px 16px" }}>
+          <span style={{ fontSize: 13, color: "var(--pg-text-2)", fontWeight: 500 }}>{item.wm_name || "—"}</span>
+        </td>
+      )}
 
       {/* Product */}
       <td style={{ padding: "12px 16px" }}>

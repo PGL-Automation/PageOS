@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { usePosition, roleFamily } from "@/lib/position";
+import { useTeamView, TeamViewBar } from "@/lib/team-view";
 import { cn } from "@/lib/utils";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
@@ -665,6 +666,7 @@ export default function MyLeavePage() {
   const { activePosition } = usePosition();
   const family = roleFamily(activePosition?.code);
   const isHR = family === "hr" || family === "md";
+  const tv = useTeamView();
 
   const [showApply, setShowApply] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<LeaveRequest | null>(null);
@@ -707,13 +709,24 @@ export default function MyLeavePage() {
   return (
     <div className="max-w-[1100px] mx-auto space-y-6">
 
+      {/* Team view bar — Group Head only */}
+      <TeamViewBar tv={tv} quickLinks={[
+        { href: "/wm/clients",       label: "Clients" },
+        { href: "/wm/interactions",  label: "Interactions" },
+        { href: "/wm/maturities",    label: "Maturities" },
+      ]} />
+
       {/* Page header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-[20px] font-bold" style={{ color: "var(--pg-text-1)" }}>My Leave</h1>
+          <h1 className="text-[20px] font-bold" style={{ color: "var(--pg-text-1)" }}>
+            {tv.isTeamHead ? "Team Leave" : "My Leave"}
+          </h1>
           <p className="text-[12px] mt-0.5" style={{ color: "var(--pg-text-3)" }}>
-            Apply for leave and track your balances
-            {!balancesLoading && balances.length > 0 && (
+            {tv.isTeamHead
+              ? "Leave requests across the Wealth Management team"
+              : "Apply for leave and track your balances"}
+            {!tv.isTeamHead && !balancesLoading && balances.length > 0 && (
               <span className="ml-2 font-semibold" style={{ color: "var(--pg-text-2)" }}>
                 · {totalDaysLeft} days remaining in total
               </span>

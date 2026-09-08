@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
+import { useTeamView, TeamViewBar } from "@/lib/team-view";
 import {
   Users, TrendingUp, TrendingDown, Plus, Search,
   Loader2, AlertCircle, ChevronRight, X, ChevronDown,
@@ -270,6 +271,7 @@ function OpenAccountModal({ funds, onClose }: { funds: Fund[]; onClose: () => vo
 export default function ClientAccountsPage() {
   const [search, setSearch] = useState("");
   const [showOpen, setShowOpen] = useState(false);
+  const tv = useTeamView();
 
   const { data: accounts = [], isLoading } = useQuery<ClientAccount[]>({
     queryKey: ["all-client-accounts"],
@@ -297,6 +299,15 @@ export default function ClientAccountsPage() {
 
   return (
     <div className="max-w-[1000px] mx-auto space-y-5">
+
+      <TeamViewBar
+        tv={tv}
+        quickLinks={[
+          { href: "/wm/clients",      label: "Clients" },
+          { href: "/wm/pipeline",     label: "Pipeline" },
+          { href: "/wm/interactions", label: "Interactions" },
+        ]}
+      />
 
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-3">
@@ -357,7 +368,7 @@ export default function ClientAccountsPage() {
             <table className="w-full text-[12px]">
               <thead>
                 <tr style={{ borderBottom: "1px solid var(--pg-row-border)", background: "var(--pg-muted-bg)" }}>
-                  {["Account No.", "Client", "Fund", "Invested", "Current Value", "Unrealized P&L", "Status", ""].map(h => (
+                  {["Account No.", "Client", ...(tv.isTeamHead ? ["RM"] : []), "Fund", "Invested", "Current Value", "Unrealized P&L", "Status", ""].map(h => (
                     <th key={h} className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider"
                         style={{ color: "var(--pg-text-3)" }}>{h}</th>
                   ))}
@@ -373,6 +384,11 @@ export default function ClientAccountsPage() {
                         onClick={() => window.location.href = `/wm/portfolio/accounts/${acc.id}`}>
                       <td className="px-4 py-3 font-mono font-semibold" style={{ color: "#FF6600" }}>{acc.account_number}</td>
                       <td className="px-4 py-3 font-medium" style={{ color: "var(--pg-text-1)" }}>{acc.client_name}</td>
+                      {tv.isTeamHead && (
+                        <td className="px-4 py-3 text-[12px]" style={{ color: "var(--pg-text-2)" }}>
+                          {acc.rm_name || <span style={{ color: "var(--pg-text-4)" }}>—</span>}
+                        </td>
+                      )}
                       <td className="px-4 py-3">
                         <div style={{ color: "var(--pg-text-2)" }}>{acc.fund_name}</div>
                         <div className="text-[10px]" style={{ color: "var(--pg-text-4)" }}>{acc.fund_type}</div>

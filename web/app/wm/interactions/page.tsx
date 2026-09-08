@@ -428,6 +428,8 @@ export default function InteractionsPage() {
   const [filterPeriod, setFilterPeriod]     = useState("month");
   const [searchQ, setSearchQ]               = useState("");
   const [form, setForm]                     = useState<FormData>(defaultForm);
+  const [clientSearch, setClientSearch]     = useState("");
+  const [clientDropOpen, setClientDropOpen] = useState(false);
   const [attachments, setAttachments]       = useState<Attachment[]>([]);
   const [hoveredRow, setHoveredRow]         = useState<string | null>(null);
   // Interactions created this session (stored locally until backend is available)
@@ -585,6 +587,8 @@ export default function InteractionsPage() {
     // Close modal and reset immediately — don't make the user wait
     setShowModal(false);
     setForm(defaultForm);
+    setClientSearch("");
+    setClientDropOpen(false);
     setAttachments([]);
     setSubmitting(false);
     toast({ title: "Interaction logged", description: `${form.subject || "Interaction"} recorded successfully.` });
@@ -1519,6 +1523,8 @@ export default function InteractionsPage() {
             if (e.target === e.currentTarget) {
               setShowModal(false);
               setForm(defaultForm);
+              setClientSearch("");
+              setClientDropOpen(false);
               setAttachments([]);
             }
           }}
@@ -1561,6 +1567,8 @@ export default function InteractionsPage() {
                   onClick={() => {
                     setShowModal(false);
                     setForm(defaultForm);
+                    setClientSearch("");
+                    setClientDropOpen(false);
                     setAttachments([]);
                   }}
                   style={{
@@ -1587,30 +1595,66 @@ export default function InteractionsPage() {
                 >
                   <div>
                     <label style={labelStyle}>Client *</label>
-                    {clientOptions.length > 0 ? (
-                      <select
-                        required
-                        value={form.client_name}
-                        onChange={(e) => setForm({ ...form, client_name: e.target.value })}
-                        style={inputStyle}
-                      >
-                        <option value="">Select client…</option>
-                        {clientOptions.map((c) => (
-                          <option key={c.id} value={c.name}>
-                            {c.name}{c.state === "approved" ? "" : " (pending)"}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
+                    <div style={{ position: "relative" }}>
                       <input
                         type="text"
-                        required
-                        placeholder="Client name"
-                        value={form.client_name}
-                        onChange={(e) => setForm({ ...form, client_name: e.target.value })}
+                        placeholder={clientOptions.length > 0 ? "Search clients…" : "Client name"}
+                        value={clientSearch || form.client_name}
+                        onChange={e => {
+                          setClientSearch(e.target.value);
+                          setForm({ ...form, client_name: e.target.value });
+                          setClientDropOpen(true);
+                        }}
+                        onFocus={() => setClientDropOpen(true)}
+                        onBlur={() => setTimeout(() => setClientDropOpen(false), 150)}
                         style={inputStyle}
+                        autoComplete="off"
                       />
-                    )}
+                      {clientDropOpen && clientOptions.length > 0 && (
+                        <div style={{
+                          position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0,
+                          background: "var(--pg-card)", border: "1px solid var(--pg-card-border)",
+                          borderRadius: 12, boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+                          maxHeight: 200, overflowY: "auto", zIndex: 1100,
+                        }}>
+                          {clientOptions
+                            .filter(c =>
+                              !clientSearch ||
+                              c.name.toLowerCase().includes(clientSearch.toLowerCase())
+                            )
+                            .map(c => (
+                              <div
+                                key={c.id}
+                                onMouseDown={() => {
+                                  setForm({ ...form, client_name: c.name });
+                                  setClientSearch("");
+                                  setClientDropOpen(false);
+                                }}
+                                style={{
+                                  padding: "8px 12px", cursor: "pointer", fontSize: 13,
+                                  display: "flex", justifyContent: "space-between", alignItems: "center",
+                                }}
+                                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--pg-row-hover)"}
+                                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}
+                              >
+                                <span style={{ color: "var(--pg-text-1)", fontWeight: c.state === "approved" ? 500 : 400 }}>
+                                  {c.name}
+                                </span>
+                                {c.state !== "approved" && (
+                                  <span style={{ fontSize: 10, color: "var(--pg-text-3)" }}>pending</span>
+                                )}
+                              </div>
+                            ))}
+                          {clientOptions.filter(c =>
+                            !clientSearch || c.name.toLowerCase().includes(clientSearch.toLowerCase())
+                          ).length === 0 && (
+                            <div style={{ padding: "10px 12px", fontSize: 12, color: "var(--pg-text-3)" }}>
+                              No matching clients
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <div>
                     <label style={labelStyle}>Date *</label>
@@ -1919,6 +1963,8 @@ export default function InteractionsPage() {
                     onClick={() => {
                       setShowModal(false);
                       setForm(defaultForm);
+                      setClientSearch("");
+                      setClientDropOpen(false);
                       setAttachments([]);
                     }}
                     style={{

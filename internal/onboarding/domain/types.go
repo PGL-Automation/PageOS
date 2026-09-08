@@ -30,6 +30,7 @@ type OnboardingCase struct {
 	ReturnCount           int32      `json:"ReturnCount"`
 	ReturnNotes           string     `json:"ReturnNotes,omitempty"`
 	InitiatedBy           uuid.UUID  `json:"InitiatedBy"`
+	InitiatedByName       string     `json:"InitiatedByName,omitempty"`
 	TNCVersion            string     `json:"TNCVersion,omitempty"`
 	TNCAcceptedAt         *time.Time `json:"TNCAcceptedAt,omitempty"`
 	SubmittedAt           *time.Time `json:"SubmittedAt,omitempty"`

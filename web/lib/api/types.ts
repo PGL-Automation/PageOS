@@ -355,6 +355,7 @@ export interface components {
             ReturnCount?: number;
             RequirementSetVersion?: number;
             InitiatedBy?: string;
+            InitiatedByName?: string;
             TNCVersion?: string;
             TNCAcceptedAt?: string;
             SubmittedAt?: string;
