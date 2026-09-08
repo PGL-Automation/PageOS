@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
+import { usePosition } from "@/lib/position";
+import { api } from "@/lib/api/client";
 import { useToast } from "@/hooks/use-toast";
 import {
   MessageSquare,
@@ -413,8 +415,10 @@ const defaultForm: FormData = {
 };
 
 export default function InteractionsPage() {
-  const { user } = useAuth();
+  const { user, subsidiary } = useAuth();
+  const { activePosition } = usePosition();
   const { toast } = useToast();
+  const isGroupHead = activePosition?.code === "GROUP_HEAD_WEALTH_MGMT";
 
   const [showModal, setShowModal]           = useState(false);
   const [submitting, setSubmitting]         = useState(false);
@@ -428,6 +432,8 @@ export default function InteractionsPage() {
   const [hoveredRow, setHoveredRow]         = useState<string | null>(null);
   // Interactions created this session (stored locally until backend is available)
   const [localInteractions, setLocalInteractions] = useState<Interaction[]>([]);
+  // Group Head: filter by specific WM ("all" = show everyone)
+  const [filterWM, setFilterWM] = useState("all");
 
   const { data: rawInteractions = [] } = useQuery<Interaction[]>({
     queryKey: ["wm-interactions"],
@@ -437,15 +443,49 @@ export default function InteractionsPage() {
         .catch(() => []),
   });
 
+  // Fetch WM's clients for the "Client" dropdown in the modal
+  type CaseRow = { id: string; name: string; state: string };
+  const subsidId = subsidiary?.ID ?? "";
+  const { data: clientCases = [] } = useQuery<CaseRow[]>({
+    queryKey: ["wm-client-cases", subsidId, user?.ID],
+    enabled: Boolean(subsidId) && Boolean(user?.ID),
+    queryFn: async () => {
+      const { data: cases, error } = await api.GET("/onboarding/cases", {
+        params: { query: { subsidiary_id: subsidId } },
+      });
+      if (error || !cases) return [];
+      // Filter to this WM's cases and fetch names in parallel
+      const mine = (cases as any[]).filter((c: any) => c.InitiatedBy === user!.ID);
+      const details = await Promise.all(
+        mine.map(async (c: any) => {
+          const { data } = await api.GET("/onboarding/cases/{id}", {
+            params: { path: { id: c.ID } },
+          });
+          return { id: c.ID, name: (data as any)?.application?.full_name ?? c.ID.slice(0, 8), state: c.State };
+        })
+      );
+      return details;
+    },
+  });
+
+  // Sort: approved first, then others
+  const clientOptions = [...clientCases].sort((a, b) =>
+    a.state === "approved" ? -1 : b.state === "approved" ? 1 : 0
+  );
+
   // Prefer server data; fall back to local + demo when backend isn't available yet
   const interactions: Interaction[] =
     rawInteractions.length > 0
       ? rawInteractions
       : [...localInteractions, ...DEMO_INTERACTIONS];
 
+  // Unique WM names for Group Head filter
+  const wmNames = [...new Set(interactions.map(i => i.wm_name).filter(Boolean))];
+
   const filtered = interactions.filter((i) => {
     if (filterCategory !== "all" && i.category !== filterCategory) return false;
     if (filterStatus !== "all" && i.status !== filterStatus) return false;
+    if (isGroupHead && filterWM !== "all" && i.wm_name !== filterWM) return false;
     const q = searchQ.toLowerCase();
     if (q && !i.client_name.toLowerCase().includes(q) && !i.subject.toLowerCase().includes(q))
       return false;
@@ -597,12 +637,25 @@ export default function InteractionsPage() {
               color: "var(--pg-text-1)",
               margin: 0,
               lineHeight: 1.2,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
             }}
           >
             Interaction Log
+            {isGroupHead && (
+              <span style={{
+                fontSize: 11, fontWeight: 700, color: "#1d4ed8",
+                background: "#dbeafe", padding: "3px 8px", borderRadius: 8,
+              }}>
+                Team View
+              </span>
+            )}
           </h1>
           <p style={{ fontSize: 13, color: "var(--pg-text-3)", margin: "4px 0 0" }}>
-            Client and prospect interaction history
+            {isGroupHead
+              ? "All wealth manager client interactions — filter by WM below"
+              : "Client and prospect interaction history"}
           </p>
         </div>
         <div style={{ display: "flex", gap: 10 }}>
@@ -750,6 +803,20 @@ export default function InteractionsPage() {
           <option value="escalated">Escalated</option>
         </select>
 
+        {/* WM filter — Group Head only */}
+        {isGroupHead && wmNames.length > 0 && (
+          <select
+            value={filterWM}
+            onChange={(e) => setFilterWM(e.target.value)}
+            style={{ ...inputStyle, width: 160, height: 32 }}
+          >
+            <option value="all">All Wealth Managers</option>
+            {wmNames.map(name => (
+              <option key={name} value={name}>{name}</option>
+            ))}
+          </select>
+        )}
+
         {/* Search */}
         <div style={{ position: "relative", flex: 1, minWidth: 180 }}>
           <Search
@@ -771,12 +838,13 @@ export default function InteractionsPage() {
           />
         </div>
 
-        {(filterCategory !== "all" || filterStatus !== "all" || searchQ) && (
+        {(filterCategory !== "all" || filterStatus !== "all" || searchQ || (isGroupHead && filterWM !== "all")) && (
           <button
             onClick={() => {
               setFilterCategory("all");
               setFilterStatus("all");
               setSearchQ("");
+              setFilterWM("all");
             }}
             style={{
               height: 30,
@@ -1002,7 +1070,7 @@ export default function InteractionsPage() {
                           )}
                         </div>
 
-                        {/* Right: date + status + priority */}
+                        {/* Right: date + status + WM name (group head) */}
                         <div
                           style={{
                             display: "flex",
@@ -1017,6 +1085,14 @@ export default function InteractionsPage() {
                           </span>
                           <StatusBadge status={interaction.status} />
                           <PriorityDot priority={interaction.priority} />
+                          {isGroupHead && interaction.wm_name && interaction.wm_name !== "Me" && (
+                            <span style={{
+                              fontSize: 10, fontWeight: 600, color: "#1d4ed8",
+                              background: "#dbeafe", padding: "2px 6px", borderRadius: 6,
+                            }}>
+                              {interaction.wm_name}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1511,14 +1587,30 @@ export default function InteractionsPage() {
                 >
                   <div>
                     <label style={labelStyle}>Client *</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Client name"
-                      value={form.client_name}
-                      onChange={(e) => setForm({ ...form, client_name: e.target.value })}
-                      style={inputStyle}
-                    />
+                    {clientOptions.length > 0 ? (
+                      <select
+                        required
+                        value={form.client_name}
+                        onChange={(e) => setForm({ ...form, client_name: e.target.value })}
+                        style={inputStyle}
+                      >
+                        <option value="">Select client…</option>
+                        {clientOptions.map((c) => (
+                          <option key={c.id} value={c.name}>
+                            {c.name}{c.state === "approved" ? "" : " (pending)"}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        required
+                        placeholder="Client name"
+                        value={form.client_name}
+                        onChange={(e) => setForm({ ...form, client_name: e.target.value })}
+                        style={inputStyle}
+                      />
+                    )}
                   </div>
                   <div>
                     <label style={labelStyle}>Date *</label>
