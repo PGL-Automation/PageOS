@@ -10,7 +10,7 @@ import {
   DollarSign, UserSearch, CheckSquare, Shield, AlertTriangle, Search,
   ShoppingCart, FolderOpen, Zap, BarChart, PieChart, Settings,
   Bell, Command, ChevronDown, Check, Building2, LogOut, Loader2,
-  PanelLeft, ChevronRight, Inbox, Sun, Moon, X, Clock,
+  PanelLeft, ChevronRight, Inbox, Sun, Moon, X, Clock, MessageSquare,
   CheckCircle2, AlertCircle, Info, FileBarChart, CalendarDays,
   Star, User, ClipboardList, Lock, Package, Briefcase, Activity,
   TrendingDown, Layers,
@@ -37,9 +37,11 @@ const WM_NAV: NavGroup[] = [
     { href: "/crm/tasks",    label: "Tasks",      icon: ClipboardList },
   ]},
   { id: "clients", label: "My Clients", items: [
-    { href: "/wm/clients",            label: "Client List",    icon: Users },
-    { href: "/wm/pipeline",           label: "Pipeline",       icon: LineChart },
-    { href: "/investments/onboarding",label: "New Onboarding", icon: UserPlus },
+    { href: "/wm/clients",            label: "Client List",      icon: Users },
+    { href: "/wm/pipeline",           label: "Pipeline",         icon: LineChart },
+    { href: "/wm/interactions",       label: "Interactions",     icon: MessageSquare },
+    { href: "/wm/maturities",         label: "Maturities",       icon: Clock },
+    { href: "/investments/onboarding",label: "New Onboarding",   icon: UserPlus },
   ]},
   { id: "portfolio", label: "Portfolios", items: [
     { href: "/wm/portfolio",          label: "Funds & Mandates",  icon: BarChart2 },
