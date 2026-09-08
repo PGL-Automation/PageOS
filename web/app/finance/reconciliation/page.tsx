@@ -11,6 +11,7 @@ import {
   Settings, Loader2, FileText, Building2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useTeamView, TeamViewBar } from "@/lib/team-view";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -766,6 +767,7 @@ function MatchRowContent({
 
 export default function ReconciliationPage() {
   const { subsidiary }  = useAuth();
+  const tv = useTeamView();
   const { toast }       = useToast();
   const queryClient     = useQueryClient();
   const [selectedAccountId, setSelectedAccountId]   = useState<string | null>(null);
@@ -972,6 +974,12 @@ export default function ReconciliationPage() {
 
   return (
     <div className="max-w-[1400px] mx-auto space-y-5">
+      <TeamViewBar tv={tv} quickLinks={[
+        { href: "/finance",          label: "Overview" },
+        { href: "/finance/journals", label: "Journals" },
+        { href: "/finance/ledger",   label: "Ledger" },
+        { href: "/leave",            label: "Team Leave" },
+      ]} />
 
       {/* Page header */}
       <div className="flex items-start justify-between">

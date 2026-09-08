@@ -12,6 +12,7 @@ import {
   ArrowDownLeft, DollarSign, BarChart2, Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useTeamView, TeamViewBar } from "@/lib/team-view";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
 
@@ -242,6 +243,8 @@ export default function FinanceDashboard() {
     },
   });
 
+  const tv = useTeamView();
+
   // ── Live: approval queue ─────────────────────────────────────────────────────
   const { data: queue = [] } = useQuery<QueueItem[]>({
     queryKey: ["approval-queue"],
@@ -280,6 +283,13 @@ export default function FinanceDashboard() {
 
   return (
     <div className="max-w-[1400px] mx-auto space-y-6">
+      <TeamViewBar tv={tv} quickLinks={[
+        { href: "/finance/reconciliation", label: "Reconciliation" },
+        { href: "/finance/journals",       label: "Journals" },
+        { href: "/finance/ledger",         label: "General Ledger" },
+        { href: "/finance/payables",       label: "Payables" },
+        { href: "/leave",                  label: "Team Leave" },
+      ]} />
 
       {/* ── Header ──────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between">

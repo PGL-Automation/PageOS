@@ -22,25 +22,92 @@ export const ALL_SENTINEL = "__all__";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
 
-// Role codes whose holders are loaded as "team members" for a given head.
+// ── Position-code groups by department ────────────────────────────────────────
+
 export const WM_POSITION_CODES = [
-  "WEALTH_MANAGER",
-  "RELATIONSHIP_MANAGER",
-  "EQUITY_TRADER",
-  "PORTFOLIO_MANAGER",
-  "PORTFOLIO_MGMT_ASSISTANT",
+  "WEALTH_MANAGER", "RELATIONSHIP_MANAGER", "EQUITY_TRADER",
+  "PORTFOLIO_MANAGER", "PORTFOLIO_MGMT_ASSISTANT",
 ];
 
+export const INVESTMENT_POSITION_CODES = [
+  "PORTFOLIO_MANAGER", "EQUITY_TRADER", "PORTFOLIO_MGMT_ASSISTANT",
+  "TRADING_RESEARCH_ANALYST", "QUANT_MARKET_ANALYST", "INVESTMENT_RESEARCH_TRAINEE",
+];
+
+export const FINANCE_POSITION_CODES = [
+  "FINANCE_OPS_ASSOCIATE", "FINANCE_OPS_INTERN", "DATA_ANALYST_INTERN",
+  "OPERATIONS_EXECUTIVE", "OPERATIONS_ASSOCIATE", "FUND_TREASURY_OPERATIONS",
+  "RECONCILIATION_OFFICER", "TREASURY_ANALYST", "FINANCE_OFFICER", "FINOPS_MANAGER",
+];
+
+export const COMPLIANCE_POSITION_CODES = [
+  "COMPLIANCE_MANAGER", "INTERNAL_CONTROL_OFFICER",
+  "TL_RESEARCH_RISK_MGMT", "TRADING_RESEARCH_ANALYST",
+  "QUANT_MARKET_ANALYST", "INVESTMENT_RESEARCH_TRAINEE",
+];
+
+export const HR_POSITION_CODES = [
+  "HR_OFFICER", "HR_ADMIN", "HR_OPS_MANAGER",
+  "ADMIN_OFFICER", "BRAND_STRATEGY_MANAGER", "IT_SUPPORT",
+];
+
+// ── Head-of-department role registry ──────────────────────────────────────────
+// Add new head roles here — pages that import useTeamView() will automatically
+// show the TeamViewBar for any code listed below.
+
 const HEAD_CODES: Record<string, { label: string; teamLabel: string; memberCodes: string[] }> = {
+  // ── Wealth Management ──────────────────────────────────────────────────────
   GROUP_HEAD_WEALTH_MGMT: {
-    label:       "Group Head, WM",
-    teamLabel:   "Wealth Management Team",
+    label: "Group Head, WM", teamLabel: "Wealth Management Team",
     memberCodes: WM_POSITION_CODES,
   },
+
+  // ── Investment ─────────────────────────────────────────────────────────────
   HEAD_OF_INVESTMENT: {
-    label:       "Head of Investment",
-    teamLabel:   "Investment Team",
-    memberCodes: WM_POSITION_CODES,
+    label: "Head of Investment", teamLabel: "Investment Team",
+    memberCodes: INVESTMENT_POSITION_CODES,
+  },
+  HEAD_INVESTMENT_MGMT: {
+    label: "Head, Investment Mgmt", teamLabel: "Investment Management Team",
+    memberCodes: INVESTMENT_POSITION_CODES,
+  },
+
+  // ── Finance / Operations ───────────────────────────────────────────────────
+  HEAD_OF_OPERATIONS: {
+    label: "Head of Operations", teamLabel: "Operations Team",
+    memberCodes: FINANCE_POSITION_CODES,
+  },
+  TREASURY_OPS_FINANCE_MGR: {
+    label: "Treasury Ops Manager", teamLabel: "Treasury & Finance Team",
+    memberCodes: FINANCE_POSITION_CODES,
+  },
+  TL_FINANCIAL_REPORTING: {
+    label: "TL, Financial Reporting", teamLabel: "Financial Reporting Team",
+    memberCodes: FINANCE_POSITION_CODES,
+  },
+
+  // ── Compliance / Risk ──────────────────────────────────────────────────────
+  HEAD_CORPORATE_COMPLIANCE: {
+    label: "Head, Corporate Compliance", teamLabel: "Compliance Team",
+    memberCodes: COMPLIANCE_POSITION_CODES,
+  },
+  HEAD_RISK_TRADE_MGMT: {
+    label: "Head, Risk & Trade Mgmt", teamLabel: "Risk & Trade Team",
+    memberCodes: COMPLIANCE_POSITION_CODES,
+  },
+
+  // ── Human Resources ────────────────────────────────────────────────────────
+  HEAD_HUMAN_CAPITAL: {
+    label: "Head, Human Capital", teamLabel: "HR Team",
+    memberCodes: HR_POSITION_CODES,
+  },
+  HR_MANAGER: {
+    label: "HR Manager", teamLabel: "HR Team",
+    memberCodes: HR_POSITION_CODES,
+  },
+  HR_OPS_MANAGER: {
+    label: "HR Ops Manager", teamLabel: "HR Ops Team",
+    memberCodes: HR_POSITION_CODES,
   },
 };
 

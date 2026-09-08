@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
+import { useTeamView, TeamViewBar } from "@/lib/team-view";
 import {
   Shield, Clock, CheckCircle2, XCircle,
   ChevronRight, Loader2, Search,
@@ -41,6 +42,7 @@ function initials(name: string) {
 
 export default function ComplianceQueuePage() {
   const { subsidiaries } = useAuth();
+  const tv = useTeamView();
   const [search, setSearch] = useState("");
   const [tab, setTab]       = useState<FilterTab>("pending");
 
@@ -92,6 +94,11 @@ export default function ComplianceQueuePage() {
 
   return (
     <div className="max-w-[1000px] mx-auto space-y-5">
+      <TeamViewBar tv={tv} quickLinks={[
+        { href: "/risk",  label: "Risk" },
+        { href: "/audit", label: "Audit" },
+        { href: "/leave", label: "Team Leave" },
+      ]} />
 
       {/* Header */}
       <div>

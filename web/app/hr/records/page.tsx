@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
 import { usePosition } from "@/lib/position";
+import { useTeamView, TeamViewBar } from "@/lib/team-view";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -1163,6 +1164,7 @@ export default function HRRecordsPage() {
   const queryClient = useQueryClient();
   const { subsidiary } = useAuth();
   const { activePosition } = usePosition();
+  const tv = useTeamView();
   const [search, setSearch]         = useState("");
   const [filter, setFilter]         = useState<"all"|"active"|"inactive"|"unassigned">("all");
   const [subFilter, setSubFilter]   = useState("all");
@@ -1225,6 +1227,12 @@ export default function HRRecordsPage() {
 
   return (
     <div className="max-w-[1200px] mx-auto space-y-5">
+      <TeamViewBar tv={tv} quickLinks={[
+        { href: "/hr/dashboard", label: "HR Dashboard" },
+        { href: "/hr/documents", label: "Document Requests" },
+        { href: "/hr/leave",     label: "Leave Management" },
+        { href: "/leave",        label: "Team Leave" },
+      ]} />
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>

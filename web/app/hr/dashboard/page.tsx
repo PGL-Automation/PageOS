@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { usePosition } from "@/lib/position";
+import { useTeamView, TeamViewBar } from "@/lib/team-view";
 import {
   Users, UserPlus, UserCheck, UserX, ArrowRight,
   CheckSquare, Clock, Brain, Building2, AlertTriangle,
@@ -176,6 +177,7 @@ type Subsidiary = { id: string; code: string; name: string };
 export default function HRDashboard() {
   const { user, subsidiary } = useAuth();
   const { activePosition } = usePosition();
+  const tv = useTeamView();
   const [selectedSubId, setSelectedSubId] = useState<string>("all");
   const [now, setNow] = useState<Date | null>(null);
   useEffect(() => { setNow(new Date()); }, []);
@@ -253,6 +255,12 @@ export default function HRDashboard() {
 
   return (
     <div className="max-w-[1100px] mx-auto space-y-6">
+      <TeamViewBar tv={tv} quickLinks={[
+        { href: "/hr/records",   label: "Employee Directory" },
+        { href: "/hr/documents", label: "Document Requests" },
+        { href: "/hr/leave",     label: "Leave Management" },
+        { href: "/leave",        label: "Team Leave" },
+      ]} />
 
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
