@@ -65,6 +65,16 @@ type Interaction = {
   updated_at: string;
 };
 
+type Attachment = {
+  id:        string;   // document ID from API (set after upload)
+  localId:   string;   // temp ID for tracking before upload completes
+  name:      string;   // original filename
+  mimeType:  string;
+  size:      number;
+  uploading: boolean;
+  error?:    string;
+};
+
 const DEMO_INTERACTIONS: Interaction[] = [
   {
     id: "i1",
@@ -406,6 +416,7 @@ export default function InteractionsPage() {
   const [filterPeriod, setFilterPeriod] = useState("month");
   const [searchQ, setSearchQ] = useState("");
   const [form, setForm] = useState<FormData>(defaultForm);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [hoveredRow, setHoveredRow] = useState<string | null>(null);
 
   const { data: rawInteractions = [], isLoading } = useQuery<Interaction[]>({
@@ -432,6 +443,7 @@ export default function InteractionsPage() {
       toast({ title: "Interaction logged", description: "Successfully recorded." });
       setShowModal(false);
       setForm(defaultForm);
+      setAttachments([]);
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to log interaction.", variant: "destructive" });
@@ -454,9 +466,50 @@ export default function InteractionsPage() {
   const overdueActions = interactions.filter((i) => i.status === "overdue").length;
   const complaints = interactions.filter((i) => i.is_complaint).length;
 
+  async function uploadFile(file: File): Promise<string> {
+    const fd = new globalThis.FormData();
+    fd.append("file", file);
+    fd.append("vault_type", "personal");
+    fd.append("category", "wm_interaction");
+    const res = await fetch(`${BASE}/api/v1/documents/`, {
+      method: "POST",
+      credentials: "include",
+      body: fd,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error((err as any)?.error?.message ?? "Upload failed");
+    }
+    const { id } = await res.json() as { id: string };
+    return id;
+  }
+
+  function handleFileSelect(files: FileList | null) {
+    if (!files) return;
+    Array.from(files).forEach(file => {
+      if (file.size > 20 * 1024 * 1024) {
+        toast({ title: "File too large", description: `${file.name} exceeds 20 MB limit`, variant: "destructive" });
+        return;
+      }
+      const localId = Math.random().toString(36).slice(2);
+      const att: Attachment = { id: "", localId, name: file.name, mimeType: file.type, size: file.size, uploading: true };
+      setAttachments(prev => [...prev, att]);
+      uploadFile(file)
+        .then(docId => {
+          setAttachments(prev => prev.map(a => a.localId === localId ? { ...a, id: docId, uploading: false } : a));
+        })
+        .catch(err => {
+          setAttachments(prev => prev.map(a => a.localId === localId ? { ...a, uploading: false, error: (err as Error).message } : a));
+        });
+    });
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    createMutation.mutate(form);
+    createMutation.mutate({
+      ...form,
+      document_ids: attachments.filter(a => a.id).map(a => a.id),
+    } as any);
   }
 
   const inputStyle: React.CSSProperties = {
@@ -1191,6 +1244,50 @@ export default function InteractionsPage() {
                 </div>
               )}
 
+              {/* Attachments */}
+              {(selectedInteraction as any).document_ids?.length > 0 && (
+                <div style={{ marginBottom: 16 }}>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.08em",
+                      color: "var(--pg-text-3)",
+                      marginBottom: 8,
+                    }}
+                  >
+                    Attachments
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {((selectedInteraction as any).document_ids as string[]).map((docId: string) => (
+                      <a
+                        key={docId}
+                        href={`${BASE}/api/v1/documents/${docId}/download`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          padding: "8px 12px",
+                          borderRadius: 10,
+                          background: "var(--pg-muted-bg)",
+                          border: "1px solid var(--pg-card-border)",
+                          fontSize: 12,
+                          color: "#FF6600",
+                          fontWeight: 600,
+                          textDecoration: "none",
+                        }}
+                      >
+                        <Paperclip size={13} />
+                        Document {docId.slice(0, 8)}…
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Audit trail */}
               <div
                 style={{
@@ -1269,6 +1366,7 @@ export default function InteractionsPage() {
             if (e.target === e.currentTarget) {
               setShowModal(false);
               setForm(defaultForm);
+              setAttachments([]);
             }
           }}
         >
@@ -1310,6 +1408,7 @@ export default function InteractionsPage() {
                   onClick={() => {
                     setShowModal(false);
                     setForm(defaultForm);
+                    setAttachments([]);
                   }}
                   style={{
                     background: "none",
@@ -1551,6 +1650,91 @@ export default function InteractionsPage() {
                   </select>
                 </div>
 
+                {/* ── Attachments ───────────────────────────────────────────────────── */}
+                <div style={{ marginTop: 20, borderTop: "1px solid var(--pg-card-border)", paddingTop: 16 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "var(--pg-text-3)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>
+                    Attachments (optional)
+                  </div>
+                  <p style={{ fontSize: 11, color: "var(--pg-text-3)", marginBottom: 10 }}>
+                    Attach screenshots, WhatsApp conversations, emails or supporting documents.
+                  </p>
+
+                  {/* Drop zone */}
+                  <label
+                    htmlFor="attachment-input"
+                    style={{
+                      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                      gap: 6, padding: "16px 12px", borderRadius: 12, cursor: "pointer",
+                      border: "2px dashed var(--pg-card-border)", background: "var(--pg-muted-bg)",
+                      transition: "border-color 0.15s",
+                    }}
+                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.borderColor = "#FF6600"}
+                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.borderColor = "var(--pg-card-border)"}
+                  >
+                    <Paperclip size={18} style={{ color: "var(--pg-text-3)" }} />
+                    <span style={{ fontSize: 12, color: "var(--pg-text-3)", textAlign: "center" }}>
+                      Drop files here or <span style={{ color: "#FF6600", fontWeight: 600 }}>click to browse</span>
+                    </span>
+                    <span style={{ fontSize: 10, color: "var(--pg-text-4)" }}>PNG, JPG, PDF, DOCX — max 20 MB each</span>
+                  </label>
+                  <input
+                    id="attachment-input"
+                    type="file"
+                    multiple
+                    accept="image/*,.pdf,.doc,.docx"
+                    style={{ display: "none" }}
+                    onChange={e => handleFileSelect(e.target.files)}
+                  />
+
+                  {/* Attachment list */}
+                  {attachments.length > 0 && (
+                    <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+                      {attachments.map(att => (
+                        <div key={att.localId} style={{
+                          display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
+                          borderRadius: 10, background: "var(--pg-card)", border: "1px solid var(--pg-card-border)",
+                        }}>
+                          {/* Icon based on mime type */}
+                          <div style={{
+                            width: 32, height: 32, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center",
+                            background: att.mimeType.startsWith("image/") ? "#dbeafe" : att.mimeType === "application/pdf" ? "#fee2e2" : "#f1f5f9",
+                            flexShrink: 0,
+                          }}>
+                            {att.mimeType.startsWith("image/")
+                              ? <span style={{ fontSize: 14 }}>🖼</span>
+                              : att.mimeType === "application/pdf"
+                              ? <span style={{ fontSize: 14 }}>📄</span>
+                              : <span style={{ fontSize: 14 }}>📎</span>}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--pg-text-1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {att.name}
+                            </div>
+                            <div style={{ fontSize: 10, color: "var(--pg-text-3)" }}>
+                              {att.uploading
+                                ? "Uploading…"
+                                : att.error
+                                ? <span style={{ color: "#dc2626" }}>{att.error}</span>
+                                : `${(att.size / 1024).toFixed(0)} KB · Uploaded`}
+                            </div>
+                          </div>
+                          {att.uploading
+                            ? <Loader2 size={14} style={{ color: "var(--pg-text-3)", animation: "spin 1s linear infinite", flexShrink: 0 }} />
+                            : <button
+                                type="button"
+                                onClick={() => setAttachments(prev => prev.filter(a => a.localId !== att.localId))}
+                                style={{ background: "none", border: "none", cursor: "pointer", padding: 4, borderRadius: 6, flexShrink: 0 }}
+                                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#fee2e2"}
+                                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "none"}
+                              >
+                                <X size={14} style={{ color: "#dc2626" }} />
+                              </button>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 {/* Modal footer buttons */}
                 <div
                   style={{
@@ -1566,6 +1750,7 @@ export default function InteractionsPage() {
                     onClick={() => {
                       setShowModal(false);
                       setForm(defaultForm);
+                      setAttachments([]);
                     }}
                     style={{
                       height: 36,

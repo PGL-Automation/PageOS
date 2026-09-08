@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import {
   UserPlus, FileText, Upload, CheckCircle2,
   ChevronRight, Loader2, ArrowLeft, Send,
-  User, Building2,
+  User, Building2, FileScan, AlertCircle, X, CheckCircle,
 } from "lucide-react";
 import { components } from "@/lib/api/types";
 
@@ -202,6 +202,114 @@ function StepClientSetup({
   );
 }
 
+/* ─── PDF field extraction ──────────────────────────────────────── */
+
+type ExtractedField = { value: string; confidence: "high" | "medium" | "low" };
+type ExtractedFields = {
+  full_name?: ExtractedField;
+  email?: ExtractedField;
+  phone_numbers?: ExtractedField;
+  bvn?: ExtractedField;
+  bank_account_number?: ExtractedField;
+  bank_name?: ExtractedField;
+  investment_amount?: ExtractedField;
+  source_of_funds?: ExtractedField;
+  residential_address?: ExtractedField;
+  date_of_birth?: ExtractedField;
+};
+
+const FIELD_LABELS: Record<keyof ExtractedFields, string> = {
+  full_name: "Full Name", email: "Email Address", phone_numbers: "Phone Number",
+  bvn: "BVN", bank_account_number: "Account Number", bank_name: "Bank Name",
+  investment_amount: "Investment Amount", source_of_funds: "Source of Funds",
+  residential_address: "Residential Address", date_of_birth: "Date of Birth",
+};
+
+const NIGERIAN_BANKS = [
+  "access bank", "zenith bank", "gtbank", "guaranty trust",
+  "uba", "united bank for africa", "first bank", "sterling bank",
+  "fcmb", "stanbic ibtc", "polaris bank", "keystone bank",
+  "jaiz bank", "heritage bank", "union bank", "ecobank",
+  "fidelity bank", "providus bank", "moniepoint", "opay", "kuda bank",
+  "wema bank", "citibank", "standard chartered",
+];
+
+async function extractFieldsFromPDF(file: File): Promise<ExtractedFields> {
+  const text = await new Promise<string>((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const buf = e.target?.result as ArrayBuffer;
+      const bytes = new Uint8Array(buf);
+      let out = "";
+      for (let i = 0; i < bytes.length; i++) {
+        const c = bytes[i];
+        if (c >= 32 && c <= 126) out += String.fromCharCode(c);
+        else if (c === 10 || c === 13) out += " ";
+      }
+      resolve(out);
+    };
+    reader.readAsArrayBuffer(file);
+  });
+
+  // Strip PDF operators and collapse whitespace
+  const clean = text
+    .replace(/\b(stream|endstream|obj|endobj|xref|trailer|startxref|BT|ET|Tf|Tj|TJ|Td|TD|Tm|q|Q|cm|cs|CS|sc|SC|rg|RG|re|m|l|h|f|s|n|w|J|j|d|i|gs)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const result: ExtractedFields = {};
+
+  // Email
+  const email = clean.match(/\b[\w.+%-]+@[\w.-]+\.[a-zA-Z]{2,}\b/)?.[0];
+  if (email) result.email = { value: email, confidence: "high" };
+
+  // Nigerian phone
+  const phone = clean.match(/(?:\+?234|0)[789]\d{9}/)?.[0];
+  if (phone) result.phone_numbers = { value: phone, confidence: "high" };
+
+  // BVN (11 digits)
+  const allEleven = [...clean.matchAll(/\b(\d{11})\b/g)].map(m => m[1]);
+  if (allEleven.length > 0) result.bvn = { value: allEleven[0], confidence: "medium" };
+
+  // Account number (10 digits, not the BVN)
+  const allTen = [...clean.matchAll(/\b(\d{10})\b/g)].map(m => m[1])
+    .filter(n => !allEleven.includes(n.padStart(11, "0")));
+  if (allTen.length > 0) result.bank_account_number = { value: allTen[0], confidence: "medium" };
+
+  // Bank name
+  const lc = clean.toLowerCase();
+  for (const bank of NIGERIAN_BANKS) {
+    if (lc.includes(bank)) {
+      const title = bank.split(" ").map(w => w[0].toUpperCase() + w.slice(1)).join(" ");
+      result.bank_name = { value: title, confidence: "high" };
+      break;
+    }
+  }
+
+  // Investment amount (NGN figures)
+  const amtMatch = clean.match(/(?:NGN|₦|N)\s*([\d,]+(?:\.\d{2})?)/);
+  if (amtMatch) {
+    const raw = parseInt(amtMatch[1].replace(/,/g, ""), 10);
+    if (!isNaN(raw)) result.investment_amount = { value: String(raw), confidence: "medium" };
+  }
+
+  // Full name (after common labels)
+  const nameMatch = clean.match(/(?:full\s*name|surname|client\s*name|applicant\s*name|name\s*of\s*client)\s*[:\-]?\s*([A-Z][A-Za-z,.\s]{4,50})/i);
+  if (nameMatch) {
+    result.full_name = { value: nameMatch[1].trim().replace(/\s+/g, " "), confidence: "medium" };
+  }
+
+  // Source of funds
+  const sofMatch = clean.match(/(?:source of funds?|source of income)\s*[:\-]?\s*([A-Za-z\s&/]{5,60}?)(?:\.|,|$)/i);
+  if (sofMatch) result.source_of_funds = { value: sofMatch[1].trim(), confidence: "medium" };
+
+  // Date of birth (DD/MM/YYYY or YYYY-MM-DD)
+  const dobMatch = clean.match(/\b((?:\d{2}[\/\-]\d{2}[\/\-]\d{4}|\d{4}[\/\-]\d{2}[\/\-]\d{2}))\b/);
+  if (dobMatch) result.date_of_birth = { value: dobMatch[1], confidence: "low" };
+
+  return result;
+}
+
 /* ─── Step 2: Application Form ──────────────────────────────────── */
 function StepApplicationForm({
   caseId,
@@ -212,6 +320,13 @@ function StepApplicationForm({
   initialData?:  Record<string, unknown>;
   onSaved:       () => void;
 }) {
+  const [mode, setMode]                   = useState<"manual" | "upload">("manual");
+  const [extracting, setExtracting]       = useState(false);
+  const [extracted, setExtracted]         = useState<ExtractedFields | null>(null);
+  const [pendingPrefill, setPendingPrefill] = useState<Record<string, unknown> | null>(null);
+  // Track which extracted fields the user wants to apply (all by default)
+  const [selected, setSelected]           = useState<Set<string>>(new Set());
+
   // Fetch any previously-saved application data so the form is pre-populated
   // when the user returns to this step after navigating forward and back.
   const { data: caseDetails, isLoading } = useQuery({
@@ -233,11 +348,52 @@ function StepApplicationForm({
     );
   }
 
-  // Server data wins (reflects last save); prop supplies the client name on first visit.
+  // Server data wins; prop supplies name on first visit; pendingPrefill overlays PDF extraction.
   const merged: Record<string, unknown> = {
     ...initialData,
     ...(caseDetails?.application ?? {}),
+    ...(pendingPrefill ?? {}),
   };
+
+  async function handlePdfFile(file: File) {
+    if (!file.name.toLowerCase().endsWith(".pdf")) return;
+    setExtracting(true);
+    setExtracted(null);
+    try {
+      const fields = await extractFieldsFromPDF(file);
+      setExtracted(fields);
+      setSelected(new Set(Object.keys(fields)));
+    } finally {
+      setExtracting(false);
+    }
+  }
+
+  function applyExtracted() {
+    if (!extracted) return;
+    const prefill: Record<string, unknown> = {};
+    for (const [key, field] of Object.entries(extracted)) {
+      if (selected.has(key) && field) {
+        if (key === "investment_amount") {
+          // Convert string amount to kobo integer
+          prefill.investment_amount_kobo = parseInt((field as ExtractedField).value, 10) * 100;
+        } else if (key === "date_of_birth") {
+          // Normalise to YYYY-MM-DD if DD/MM/YYYY
+          const raw = (field as ExtractedField).value;
+          const ddmm = raw.match(/^(\d{2})[\/\-](\d{2})[\/\-](\d{4})$/);
+          prefill.date_of_birth = ddmm ? `${ddmm[3]}-${ddmm[2]}-${ddmm[1]}` : raw;
+        } else {
+          prefill[key] = (field as ExtractedField).value;
+        }
+      }
+    }
+    setPendingPrefill(prefill);
+    setMode("manual");
+  }
+
+  const confidenceColor = (c: "high" | "medium" | "low") =>
+    c === "high" ? "#059669" : c === "medium" ? "#d97706" : "#dc2626";
+  const confidenceBg = (c: "high" | "medium" | "low") =>
+    c === "high" ? "#d1fae5" : c === "medium" ? "#fef3c7" : "#fee2e2";
 
   return (
     <div className="space-y-4">
@@ -247,7 +403,9 @@ function StepApplicationForm({
             Application Form
           </h2>
           <p className="text-[13px] mt-0.5" style={{ color: "var(--pg-text-3)" }}>
-            Fill in the client&apos;s details, then click <strong>Save &amp; Continue</strong>.
+            {mode === "manual"
+              ? <>Fill in the client&apos;s details, then click <strong>Save &amp; Continue</strong>.</>
+              : "Upload a completed PDF form to auto-fill the fields."}
           </p>
         </div>
         <Button
@@ -258,8 +416,223 @@ function StepApplicationForm({
           Skip for now <ChevronRight className="ml-1 w-3.5 h-3.5" />
         </Button>
       </div>
-      {/* onSaveSuccess wires the form's submit button to save then advance. */}
-      <ApplicationForm caseId={caseId} initialData={merged} onSaveSuccess={onSaved} />
+
+      {/* Mode toggle */}
+      <div className="flex items-center gap-1 p-1 rounded-xl w-fit" style={{ background: "var(--pg-muted-bg)" }}>
+        {(["manual", "upload"] as const).map(m => (
+          <button
+            key={m}
+            onClick={() => setMode(m)}
+            className="flex items-center gap-1.5 h-8 px-4 rounded-lg text-[12px] font-semibold transition-all"
+            style={{
+              background: mode === m ? "var(--pg-card)" : "transparent",
+              color: mode === m ? "var(--pg-text-1)" : "var(--pg-text-3)",
+              boxShadow: mode === m ? "0 1px 4px rgba(0,0,0,0.08)" : "none",
+            }}
+          >
+            {m === "manual" ? <FileText className="w-3.5 h-3.5" /> : <FileScan className="w-3.5 h-3.5" />}
+            {m === "manual" ? "Fill Manually" : "Upload PDF"}
+          </button>
+        ))}
+      </div>
+
+      {/* ── PDF Upload Panel ── */}
+      {mode === "upload" && (
+        <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid var(--pg-card-border)", background: "var(--pg-card)" }}>
+          <div className="h-[3px]" style={{ background: "#7c3aed" }} />
+          <div className="p-5 space-y-4">
+
+            {/* Info banner */}
+            <div className="flex items-start gap-3 p-3 rounded-xl" style={{ background: "#eff6ff", border: "1px solid #bfdbfe" }}>
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" style={{ color: "#1d4ed8" }} />
+              <div>
+                <p className="text-[12px] font-semibold" style={{ color: "#1d4ed8" }}>
+                  PDF text extraction — review before applying
+                </p>
+                <p className="text-[11px] mt-0.5" style={{ color: "#3b82f6" }}>
+                  PageOS will read text from the PDF and pre-fill matching fields. Works best with digital (not scanned) forms.
+                  Always verify extracted values before saving.
+                </p>
+              </div>
+            </div>
+
+            {/* Drop zone */}
+            {!extracted && !extracting && (
+              <label
+                htmlFor="pdf-upload-input"
+                className="flex flex-col items-center justify-center gap-3 p-8 rounded-xl cursor-pointer transition-all"
+                style={{ border: "2px dashed var(--pg-card-border)", background: "var(--pg-muted-bg)" }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.borderColor = "#7c3aed"}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.borderColor = "var(--pg-card-border)"}
+                onDragOver={e => { e.preventDefault(); (e.currentTarget as HTMLElement).style.borderColor = "#7c3aed"; }}
+                onDragLeave={e => (e.currentTarget as HTMLElement).style.borderColor = "var(--pg-card-border)"}
+                onDrop={e => {
+                  e.preventDefault();
+                  (e.currentTarget as HTMLElement).style.borderColor = "var(--pg-card-border)";
+                  const f = e.dataTransfer.files[0];
+                  if (f) handlePdfFile(f);
+                }}
+              >
+                <div className="w-12 h-12 rounded-2xl flex items-center justify-center" style={{ background: "#ede9fe" }}>
+                  <FileScan className="w-6 h-6" style={{ color: "#7c3aed" }} />
+                </div>
+                <div className="text-center">
+                  <p className="text-[13px] font-semibold" style={{ color: "var(--pg-text-1)" }}>
+                    Drop PDF here or <span style={{ color: "#7c3aed" }}>click to browse</span>
+                  </p>
+                  <p className="text-[11px] mt-1" style={{ color: "var(--pg-text-3)" }}>
+                    Completed client application form in PDF format
+                  </p>
+                </div>
+                <input
+                  id="pdf-upload-input"
+                  type="file"
+                  accept=".pdf,application/pdf"
+                  className="hidden"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) handlePdfFile(f); }}
+                />
+              </label>
+            )}
+
+            {/* Extracting state */}
+            {extracting && (
+              <div className="flex flex-col items-center gap-3 py-8">
+                <Loader2 className="w-6 h-6 animate-spin" style={{ color: "#7c3aed" }} />
+                <p className="text-[13px]" style={{ color: "var(--pg-text-2)" }}>Reading PDF and extracting fields…</p>
+              </div>
+            )}
+
+            {/* Extraction results */}
+            {extracted && !extracting && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-[13px] font-semibold" style={{ color: "var(--pg-text-1)" }}>
+                    Extracted Fields — select which to apply
+                  </p>
+                  <button
+                    onClick={() => { setExtracted(null); setSelected(new Set()); }}
+                    className="text-[12px] font-medium"
+                    style={{ color: "var(--pg-text-3)" }}
+                  >
+                    Try another file
+                  </button>
+                </div>
+
+                {Object.keys(extracted).length === 0 ? (
+                  <div className="text-center py-6">
+                    <p className="text-[13px]" style={{ color: "var(--pg-text-3)" }}>
+                      No readable fields detected. The PDF may be scanned or image-based.
+                    </p>
+                    <p className="text-[11px] mt-1" style={{ color: "var(--pg-text-4)" }}>
+                      Please fill the form manually.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="divide-y" style={{ borderColor: "var(--pg-card-border)" }}>
+                    {(Object.entries(extracted) as [keyof ExtractedFields, ExtractedField][]).map(([key, field]) => (
+                      <div key={key} className="flex items-center gap-3 py-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = new Set(selected);
+                            if (next.has(key)) next.delete(key);
+                            else next.add(key);
+                            setSelected(next);
+                          }}
+                          className="w-5 h-5 rounded-md flex items-center justify-center shrink-0 transition-colors"
+                          style={{
+                            background: selected.has(key) ? "#FF6600" : "var(--pg-muted-bg)",
+                            border: `1.5px solid ${selected.has(key) ? "#FF6600" : "var(--pg-card-border)"}`,
+                          }}
+                        >
+                          {selected.has(key) && <CheckCircle className="w-3 h-3 text-white" />}
+                        </button>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--pg-text-3)" }}>
+                            {FIELD_LABELS[key] ?? key}
+                          </p>
+                          <p className="text-[13px] font-medium truncate" style={{ color: "var(--pg-text-1)" }}>
+                            {field.value}
+                          </p>
+                        </div>
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0"
+                          style={{ background: confidenceBg(field.confidence), color: confidenceColor(field.confidence) }}>
+                          {field.confidence}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {Object.keys(extracted).length > 0 && (
+                  <div className="flex items-center gap-3 pt-2">
+                    <button
+                      onClick={() => setSelected(new Set(Object.keys(extracted)))}
+                      className="text-[12px] font-medium"
+                      style={{ color: "#FF6600" }}
+                    >
+                      Select all
+                    </button>
+                    <button
+                      onClick={() => setSelected(new Set())}
+                      className="text-[12px] font-medium"
+                      style={{ color: "var(--pg-text-3)" }}
+                    >
+                      Deselect all
+                    </button>
+                    <div className="flex-1" />
+                    <button
+                      onClick={() => setMode("manual")}
+                      className="h-9 px-4 rounded-xl text-[13px] font-semibold"
+                      style={{ background: "var(--pg-muted-bg)", color: "var(--pg-text-2)", border: "1px solid var(--pg-card-border)" }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={applyExtracted}
+                      disabled={selected.size === 0}
+                      className="h-9 px-5 rounded-xl text-[13px] font-semibold text-white"
+                      style={{
+                        background: selected.size > 0 ? "linear-gradient(135deg,#FF6600,#E05500)" : "var(--pg-muted-bg)",
+                        color: selected.size > 0 ? "#fff" : "var(--pg-text-3)",
+                      }}
+                    >
+                      Apply {selected.size} field{selected.size !== 1 ? "s" : ""} to form
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Manual entry panel ── */}
+      {mode === "manual" && (
+        <div className="space-y-3">
+          {pendingPrefill && (
+            <div className="flex items-start gap-3 p-3 rounded-xl" style={{ background: "#fef3c7", border: "1px solid #d97706" }}>
+              <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" style={{ color: "#d97706" }} />
+              <div className="flex-1">
+                <p className="text-[12px] font-semibold" style={{ color: "#92400e" }}>
+                  Form pre-filled from PDF — please review all fields before saving
+                </p>
+                <p className="text-[11px] mt-0.5" style={{ color: "#b45309" }}>
+                  Extracted values are shown below. Correct anything that looks wrong.
+                </p>
+              </div>
+              <button
+                onClick={() => setPendingPrefill(null)}
+                className="shrink-0"
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#92400e" }}
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+          <ApplicationForm caseId={caseId} initialData={merged} onSaveSuccess={onSaved} />
+        </div>
+      )}
     </div>
   );
 }
