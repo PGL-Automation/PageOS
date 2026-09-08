@@ -91,7 +91,7 @@ export default function WMCommissionPage() {
   }, [cases.length, tv.isTeamHead]);
 
   const filteredCases = tv.isTeamHead
-    ? cases.filter(c => tv.shouldInclude(c.InitiatedBy))
+    ? cases.filter(c => tv.shouldInclude(c.InitiatedBy ?? ""))
     : cases.filter(c => c.InitiatedBy === user!.ID);
 
   const { data: rows = [], isLoading: rowsLoading } = useQuery<ClientRow[]>({
