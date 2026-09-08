@@ -195,6 +195,7 @@ export default function WMMaturitiesPage() {
   const subsidName = subsidiary?.Name ?? "WM";
 
   const tv = useTeamView();
+  const myName = user?.DisplayName ?? "";
 
   useEffect(() => {
     if (!tv.isTeamHead) return;
@@ -269,8 +270,8 @@ export default function WMMaturitiesPage() {
     if (period === "3m" && m.days_remaining > 90) return false;
     if (productFilter !== "All" && m.product_type !== productFilter) return false;
     if (noInstOnly && m.has_instruction) return false;
-    // Team view: filter by selected member (demo data uses name strings, so show all when selected)
-    // tv.selectedMemberId matches wm_name in demo — keep all for now as names ≠ IDs in real data
+    // Team view: filter by selected member using shouldIncludeName (demo data has string wm_name)
+    if (tv.isTeamHead && !tv.shouldIncludeName(m.wm_name, myName)) return false;
     return true;
   });
 

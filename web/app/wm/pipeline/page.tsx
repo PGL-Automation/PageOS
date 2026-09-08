@@ -315,7 +315,7 @@ export default function WMPipelinePage() {
 
   // ── Filter by team view or own cases ──
   const displayCases = tv.isTeamHead
-    ? cases.filter(c => !tv.selectedMemberId || c.initiatedById === tv.selectedMemberId)
+    ? cases.filter(c => tv.shouldInclude(c.initiatedById))
     : cases.filter(c => c.initiatedById === user!.ID);
 
   // ── Stats ──

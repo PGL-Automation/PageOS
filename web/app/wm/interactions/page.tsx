@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
-import { usePosition } from "@/lib/position";
+import { useTeamView, TeamViewBar, ME_SENTINEL, ALL_SENTINEL } from "@/lib/team-view";
 import { api } from "@/lib/api/client";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -416,9 +416,8 @@ const defaultForm: FormData = {
 
 export default function InteractionsPage() {
   const { user, subsidiary } = useAuth();
-  const { activePosition } = usePosition();
   const { toast } = useToast();
-  const isGroupHead = activePosition?.code === "GROUP_HEAD_WEALTH_MGMT";
+  const tv = useTeamView();
 
   const [showModal, setShowModal]           = useState(false);
   const [submitting, setSubmitting]         = useState(false);
@@ -434,8 +433,6 @@ export default function InteractionsPage() {
   const [hoveredRow, setHoveredRow]         = useState<string | null>(null);
   // Interactions created this session (stored locally until backend is available)
   const [localInteractions, setLocalInteractions] = useState<Interaction[]>([]);
-  // Group Head: filter by specific WM ("all" = show everyone)
-  const [filterWM, setFilterWM] = useState("all");
 
   const { data: rawInteractions = [] } = useQuery<Interaction[]>({
     queryKey: ["wm-interactions"],
@@ -481,13 +478,27 @@ export default function InteractionsPage() {
       ? rawInteractions
       : [...localInteractions, ...DEMO_INTERACTIONS];
 
-  // Unique WM names for Group Head filter
-  const wmNames = [...new Set(interactions.map(i => i.wm_name).filter(Boolean))];
+  // Populate team-view member options from unique WM names in the interaction list
+  useEffect(() => {
+    if (!tv.isTeamHead || !interactions.length) return;
+    const seen = new Map<string, string>();
+    interactions.forEach(i => {
+      const name = i.wm_name;
+      if (name && name !== "Me") seen.set(name, name); // use name as id for demo data
+    });
+    tv.setMemberOptions([...seen.entries()].map(([id, name]) => ({ id, name })));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [interactions.length, tv.isTeamHead]);
+
+  const myDisplayName = user?.DisplayName ?? "";
 
   const filtered = interactions.filter((i) => {
+    // Team-head WM filter
+    if (tv.isTeamHead) {
+      if (!tv.shouldIncludeName(i.wm_name, myDisplayName)) return false;
+    }
     if (filterCategory !== "all" && i.category !== filterCategory) return false;
     if (filterStatus !== "all" && i.status !== filterStatus) return false;
-    if (isGroupHead && filterWM !== "all" && i.wm_name !== filterWM) return false;
     const q = searchQ.toLowerCase();
     if (q && !i.client_name.toLowerCase().includes(q) && !i.subject.toLowerCase().includes(q))
       return false;
@@ -624,6 +635,15 @@ export default function InteractionsPage() {
 
   return (
     <div style={{ padding: 28, background: "var(--pg-bg)", minHeight: "100vh" }}>
+
+      {/* TEAM VIEW BAR — Group Head only */}
+      <TeamViewBar tv={tv} quickLinks={[
+        { href: "/wm/clients",     label: "Clients" },
+        { href: "/wm/pipeline",    label: "Pipeline" },
+        { href: "/wm/maturities",  label: "Maturities" },
+        { href: "/wm/commission",  label: "Commission" },
+      ]} />
+
       {/* HEADER */}
       <div
         style={{
@@ -641,24 +661,17 @@ export default function InteractionsPage() {
               color: "var(--pg-text-1)",
               margin: 0,
               lineHeight: 1.2,
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
             }}
           >
             Interaction Log
-            {isGroupHead && (
-              <span style={{
-                fontSize: 11, fontWeight: 700, color: "#1d4ed8",
-                background: "#dbeafe", padding: "3px 8px", borderRadius: 8,
-              }}>
-                Team View
-              </span>
-            )}
           </h1>
           <p style={{ fontSize: 13, color: "var(--pg-text-3)", margin: "4px 0 0" }}>
-            {isGroupHead
-              ? "All wealth manager client interactions — filter by WM below"
+            {tv.isTeamHead
+              ? tv.selectedMemberId === ME_SENTINEL
+                ? "Showing your own interactions — switch to All or a specific WM above"
+                : tv.selectedMemberId === ALL_SENTINEL
+                ? "All wealth manager client interactions"
+                : `Interactions for ${tv.memberOptions.find(m => m.id === tv.selectedMemberId)?.name ?? "selected WM"}`
               : "Client and prospect interaction history"}
           </p>
         </div>
@@ -807,20 +820,6 @@ export default function InteractionsPage() {
           <option value="escalated">Escalated</option>
         </select>
 
-        {/* WM filter — Group Head only */}
-        {isGroupHead && wmNames.length > 0 && (
-          <select
-            value={filterWM}
-            onChange={(e) => setFilterWM(e.target.value)}
-            style={{ ...inputStyle, width: 160, height: 32 }}
-          >
-            <option value="all">All Wealth Managers</option>
-            {wmNames.map(name => (
-              <option key={name} value={name}>{name}</option>
-            ))}
-          </select>
-        )}
-
         {/* Search */}
         <div style={{ position: "relative", flex: 1, minWidth: 180 }}>
           <Search
@@ -842,13 +841,12 @@ export default function InteractionsPage() {
           />
         </div>
 
-        {(filterCategory !== "all" || filterStatus !== "all" || searchQ || (isGroupHead && filterWM !== "all")) && (
+        {(filterCategory !== "all" || filterStatus !== "all" || searchQ) && (
           <button
             onClick={() => {
               setFilterCategory("all");
               setFilterStatus("all");
               setSearchQ("");
-              setFilterWM("all");
             }}
             style={{
               height: 30,
@@ -1089,7 +1087,7 @@ export default function InteractionsPage() {
                           </span>
                           <StatusBadge status={interaction.status} />
                           <PriorityDot priority={interaction.priority} />
-                          {isGroupHead && interaction.wm_name && interaction.wm_name !== "Me" && (
+                          {tv.isTeamHead && tv.selectedMemberId === ALL_SENTINEL && interaction.wm_name && (
                             <span style={{
                               fontSize: 10, fontWeight: 600, color: "#1d4ed8",
                               background: "#dbeafe", padding: "2px 6px", borderRadius: 6,

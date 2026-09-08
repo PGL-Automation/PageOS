@@ -98,7 +98,7 @@ export default function WMClientsPage() {
     if (filter === "individual" && c.type !== "individual") return false;
     if (filter === "corporate"  && c.type !== "corporate")  return false;
     if (filter === "attention"  && !c.riskFlag && c.state !== "returned") return false;
-    if (tv.isTeamHead && tv.selectedMemberId && c.initiatedBy !== tv.selectedMemberId) return false;
+    if (tv.isTeamHead && !tv.shouldInclude(c.initiatedBy)) return false;
     return true;
   });
 
