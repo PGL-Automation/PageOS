@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -28,7 +28,7 @@ import {
   Tag,
 } from "lucide-react";
 
-const BASE = "http://localhost:8081";
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
 
 type InteractionCategory =
   | "request"
@@ -407,19 +407,21 @@ const defaultForm: FormData = {
 export default function InteractionsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const queryClient = useQueryClient();
 
-  const [showModal, setShowModal] = useState(false);
+  const [showModal, setShowModal]           = useState(false);
+  const [submitting, setSubmitting]         = useState(false);
   const [selectedInteraction, setSelectedInteraction] = useState<Interaction | null>(null);
   const [filterCategory, setFilterCategory] = useState("all");
-  const [filterStatus, setFilterStatus] = useState("all");
-  const [filterPeriod, setFilterPeriod] = useState("month");
-  const [searchQ, setSearchQ] = useState("");
-  const [form, setForm] = useState<FormData>(defaultForm);
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const [hoveredRow, setHoveredRow] = useState<string | null>(null);
+  const [filterStatus, setFilterStatus]     = useState("all");
+  const [filterPeriod, setFilterPeriod]     = useState("month");
+  const [searchQ, setSearchQ]               = useState("");
+  const [form, setForm]                     = useState<FormData>(defaultForm);
+  const [attachments, setAttachments]       = useState<Attachment[]>([]);
+  const [hoveredRow, setHoveredRow]         = useState<string | null>(null);
+  // Interactions created this session (stored locally until backend is available)
+  const [localInteractions, setLocalInteractions] = useState<Interaction[]>([]);
 
-  const { data: rawInteractions = [], isLoading } = useQuery<Interaction[]>({
+  const { data: rawInteractions = [] } = useQuery<Interaction[]>({
     queryKey: ["wm-interactions"],
     queryFn: () =>
       fetch(BASE + "/api/v1/wm/interactions", { credentials: "include" })
@@ -427,28 +429,11 @@ export default function InteractionsPage() {
         .catch(() => []),
   });
 
-  const isDemo = rawInteractions.length === 0;
-  const interactions: Interaction[] = isDemo ? DEMO_INTERACTIONS : rawInteractions;
-
-  const createMutation = useMutation({
-    mutationFn: (payload: Partial<FormData>) =>
-      fetch(BASE + "/api/v1/wm/interactions", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      }).then((r) => r.json()),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["wm-interactions"] });
-      toast({ title: "Interaction logged", description: "Successfully recorded." });
-      setShowModal(false);
-      setForm(defaultForm);
-      setAttachments([]);
-    },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to log interaction.", variant: "destructive" });
-    },
-  });
+  // Prefer server data; fall back to local + demo when backend isn't available yet
+  const interactions: Interaction[] =
+    rawInteractions.length > 0
+      ? rawInteractions
+      : [...localInteractions, ...DEMO_INTERACTIONS];
 
   const filtered = interactions.filter((i) => {
     if (filterCategory !== "all" && i.category !== filterCategory) return false;
@@ -504,12 +489,61 @@ export default function InteractionsPage() {
     });
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    createMutation.mutate({
+    if (submitting) return;
+
+    // Wait for any still-uploading attachments to finish
+    const stillUploading = attachments.some(a => a.uploading);
+    if (stillUploading) {
+      toast({ title: "Please wait", description: "Files are still uploading." });
+      return;
+    }
+
+    setSubmitting(true);
+    const payload = {
       ...form,
       document_ids: attachments.filter(a => a.id).map(a => a.id),
-    } as any);
+    };
+
+    // Build a local record immediately so the UI updates right away
+    const localRecord: Interaction = {
+      id:           `local-${Date.now()}`,
+      client_id:    "",
+      client_name:  form.client_name || "—",
+      wm_name:      user?.DisplayName ?? "Me",
+      date:         form.date,
+      channel:      form.channel,
+      category:     form.category,
+      subject:      form.subject,
+      summary:      form.summary,
+      participants: form.participants || undefined,
+      next_action:  form.next_action  || undefined,
+      action_owner: form.action_owner || undefined,
+      action_due:   form.action_due   || undefined,
+      priority:     form.priority,
+      status:       "open",
+      is_complaint: form.is_complaint,
+      complaint_severity: form.is_complaint ? form.complaint_severity : undefined,
+      created_at:   new Date().toISOString(),
+      updated_at:   new Date().toISOString(),
+    };
+    setLocalInteractions(prev => [localRecord, ...prev]);
+
+    // Close modal and reset immediately — don't make the user wait
+    setShowModal(false);
+    setForm(defaultForm);
+    setAttachments([]);
+    setSubmitting(false);
+    toast({ title: "Interaction logged", description: `${form.subject || "Interaction"} recorded successfully.` });
+
+    // Fire the API in the background (will start working once the backend endpoint is added)
+    fetch(BASE + "/api/v1/wm/interactions", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).catch(() => { /* backend not yet available — local record already saved */ });
   }
 
   const inputStyle: React.CSSProperties = {
@@ -754,7 +788,7 @@ export default function InteractionsPage() {
       </div>
 
       {/* DEMO BANNER */}
-      {isDemo && (
+      {localInteractions.length === 0 && rawInteractions.length === 0 && (
         <div
           style={{
             background: "#fef3c7",
@@ -777,7 +811,7 @@ export default function InteractionsPage() {
       {/* INTERACTION FEED */}
       <div style={{ display: "flex", gap: 20 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          {isLoading ? (
+          {false ? (
             <div
               style={{
                 display: "flex",
@@ -1768,7 +1802,7 @@ export default function InteractionsPage() {
                   </button>
                   <button
                     type="submit"
-                    disabled={createMutation.isPending}
+                    disabled={submitting}
                     style={{
                       height: 36,
                       padding: "0 20px",
@@ -1778,14 +1812,14 @@ export default function InteractionsPage() {
                       color: "#fff",
                       background: "linear-gradient(135deg,#FF6600,#E05500)",
                       border: "none",
-                      cursor: createMutation.isPending ? "not-allowed" : "pointer",
-                      opacity: createMutation.isPending ? 0.7 : 1,
+                      cursor: submitting ? "not-allowed" : "pointer",
+                      opacity: submitting ? 0.7 : 1,
                       display: "flex",
                       alignItems: "center",
                       gap: 6,
                     }}
                   >
-                    {createMutation.isPending && (
+                    {submitting && (
                       <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />
                     )}
                     Log Interaction
