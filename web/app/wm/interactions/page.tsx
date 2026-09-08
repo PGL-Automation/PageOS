@@ -43,6 +43,13 @@ type InteractionStatus = "open" | "closed" | "pending" | "overdue" | "escalated"
 type InteractionChannel = "phone" | "email" | "in_person" | "video" | "whatsapp" | "other";
 type InteractionPriority = "low" | "normal" | "high" | "urgent";
 
+type AttachmentMeta = {
+  id:       string;  // document ID
+  name:     string;  // original filename
+  mimeType: string;
+  size:     number;  // bytes
+};
+
 type Interaction = {
   id: string;
   client_id: string;
@@ -63,6 +70,7 @@ type Interaction = {
   complaint_severity?: "low" | "medium" | "high" | "critical";
   created_at: string;
   updated_at: string;
+  attachments_meta?: AttachmentMeta[];  // full metadata for each attached file
 };
 
 type Attachment = {
@@ -527,6 +535,10 @@ export default function InteractionsPage() {
       complaint_severity: form.is_complaint ? form.complaint_severity : undefined,
       created_at:   new Date().toISOString(),
       updated_at:   new Date().toISOString(),
+      // Store full file metadata so the detail panel can show names/icons/sizes
+      attachments_meta: attachments
+        .filter(a => a.id)
+        .map(a => ({ id: a.id, name: a.name, mimeType: a.mimeType, size: a.size })),
     };
     setLocalInteractions(prev => [localRecord, ...prev]);
 
@@ -1279,45 +1291,76 @@ export default function InteractionsPage() {
               )}
 
               {/* Attachments */}
-              {(selectedInteraction as any).document_ids?.length > 0 && (
+              {selectedInteraction.attachments_meta && selectedInteraction.attachments_meta.length > 0 && (
                 <div style={{ marginBottom: 16 }}>
-                  <div
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 700,
-                      textTransform: "uppercase",
-                      letterSpacing: "0.08em",
-                      color: "var(--pg-text-3)",
-                      marginBottom: 8,
-                    }}
-                  >
-                    Attachments
+                  <div style={{
+                    fontSize: 11, fontWeight: 700, textTransform: "uppercase",
+                    letterSpacing: "0.08em", color: "var(--pg-text-3)", marginBottom: 8,
+                  }}>
+                    Attachments ({selectedInteraction.attachments_meta.length})
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    {((selectedInteraction as any).document_ids as string[]).map((docId: string) => (
-                      <a
-                        key={docId}
-                        href={`${BASE}/api/v1/documents/${docId}/download`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 8,
-                          padding: "8px 12px",
-                          borderRadius: 10,
-                          background: "var(--pg-muted-bg)",
-                          border: "1px solid var(--pg-card-border)",
-                          fontSize: 12,
-                          color: "#FF6600",
-                          fontWeight: 600,
-                          textDecoration: "none",
-                        }}
-                      >
-                        <Paperclip size={13} />
-                        Document {docId.slice(0, 8)}…
-                      </a>
-                    ))}
+                    {selectedInteraction.attachments_meta.map((att) => {
+                      const isImage = att.mimeType.startsWith("image/");
+                      const isPdf   = att.mimeType === "application/pdf";
+                      const icon    = isImage ? "🖼" : isPdf ? "📄" : "📎";
+                      const iconBg  = isImage ? "#dbeafe" : isPdf ? "#fee2e2" : "#f1f5f9";
+                      const url     = `${BASE}/api/v1/documents/${att.id}/download`;
+                      const sizeKb  = (att.size / 1024).toFixed(0);
+
+                      return (
+                        <a
+                          key={att.id}
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            padding: "10px 12px",
+                            borderRadius: 10,
+                            background: "var(--pg-muted-bg)",
+                            border: "1px solid var(--pg-card-border)",
+                            textDecoration: "none",
+                            transition: "border-color 0.15s",
+                          }}
+                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.borderColor = "#FF6600"}
+                          onMouseLeave={e => (e.currentTarget as HTMLElement).style.borderColor = "var(--pg-card-border)"}
+                        >
+                          {/* File type icon */}
+                          <div style={{
+                            width: 34, height: 34, borderRadius: 8,
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            background: iconBg, fontSize: 16, flexShrink: 0,
+                          }}>
+                            {icon}
+                          </div>
+
+                          {/* Filename + size */}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{
+                              fontSize: 12, fontWeight: 600,
+                              color: "var(--pg-text-1)",
+                              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                            }}>
+                              {att.name}
+                            </div>
+                            <div style={{ fontSize: 11, color: "var(--pg-text-3)", marginTop: 1 }}>
+                              {sizeKb} KB · {isImage ? "Image" : isPdf ? "PDF" : "File"}
+                            </div>
+                          </div>
+
+                          {/* Open indicator */}
+                          <div style={{
+                            fontSize: 11, fontWeight: 600, color: "#FF6600",
+                            display: "flex", alignItems: "center", gap: 3, flexShrink: 0,
+                          }}>
+                            Open ↗
+                          </div>
+                        </a>
+                      );
+                    })}
                   </div>
                 </div>
               )}
