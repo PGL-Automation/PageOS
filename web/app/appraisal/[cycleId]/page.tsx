@@ -8,7 +8,7 @@ import { useAuth } from "@/lib/auth";
 import { usePosition, roleFamily } from "@/lib/position";
 import {
   ChevronLeft, CheckCircle2, Clock, Save, Send, Lock,
-  Loader2, Settings2, RotateCcw, Award, ClipboardList,
+  Loader2, Settings2, RotateCcw, Award, ClipboardList, AlertCircle, ThumbsUp, ThumbsDown,
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -29,6 +29,8 @@ type KPI = {
 
 type BSCSubmission = {
   id: string; cycle_id: string; appraisee_id: string; status: string;
+  manager_id?: string;   // identity user UUID of the line manager
+  manager_name?: string;
   scorecard: KPI[];
   self_json: Record<string, number>;
   agreed_json: Record<string, number>;
@@ -43,6 +45,7 @@ type BSCSubmission = {
   self_submitted_at?: string;
   manager_submitted_at?: string;
   reviewer_name?: string;
+  target_status?: string; // not_set | set | accepted | rejected
 };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -167,6 +170,100 @@ function ScoreCard({ label, value, color }: { label: string; value?: number; col
   );
 }
 
+// ─── Target Review Banner (employee accepts or rejects their KPI targets) ─────
+
+function TargetReviewBanner({ submissionId, onAction }: { submissionId: string; onAction: () => void }) {
+  const { toast } = useToast();
+  const [acting, setActing] = useState(false);
+  const [showReject, setShowReject] = useState(false);
+  const [reason, setReason] = useState("");
+
+  async function act(action: "accept-targets" | "reject-targets", body?: object) {
+    setActing(true);
+    try {
+      const res = await fetch(`${BASE}/api/v1/appraisal/submissions/${submissionId}/${action}`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any)?.error?.message ?? "Action failed");
+      }
+      toast({ title: action === "accept-targets" ? "Targets accepted" : "Targets rejected", description: action === "accept-targets" ? "Your targets are confirmed. You can now complete your self-assessment." : "Your manager has been notified to revise the targets." });
+      setShowReject(false);
+      onAction();
+    } catch (e) {
+      toast({ title: "Error", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setActing(false);
+    }
+  }
+
+  return (
+    <div className="rounded-2xl overflow-hidden" style={{ background: "var(--pg-card)", border: "1px solid #fcd34d" }}>
+      <div className="h-[3px]" style={{ background: "#d97706" }} />
+      <div className="px-5 py-4">
+        <div className="flex items-start gap-3 mb-4">
+          <Clock className="w-5 h-5 mt-0.5 shrink-0" style={{ color: "#d97706" }} />
+          <div>
+            <p className="text-[14px] font-bold" style={{ color: "var(--pg-text-1)" }}>Your performance targets are ready to review</p>
+            <p className="text-[12px] mt-1" style={{ color: "var(--pg-text-3)" }}>
+              Your line manager has set your KPIs and targets for this appraisal cycle.
+              Review the scorecard below, then accept or request a revision.
+            </p>
+          </div>
+        </div>
+        {!showReject ? (
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => act("accept-targets")}
+              disabled={acting}
+              className="flex items-center gap-1.5 h-9 px-5 rounded-xl text-[13px] font-semibold text-white disabled:opacity-60"
+              style={{ background: "linear-gradient(135deg,#059669,#047857)" }}
+            >
+              <ThumbsUp className="w-3.5 h-3.5" />
+              Accept Targets
+            </button>
+            <button
+              onClick={() => setShowReject(true)}
+              disabled={acting}
+              className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold"
+              style={{ border: "1px solid #fca5a5", color: "#dc2626" }}
+            >
+              <ThumbsDown className="w-3.5 h-3.5" />
+              Request Revision
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <textarea
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              placeholder="Briefly explain what you'd like revised (optional)…"
+              rows={2}
+              className="w-full px-3 py-2 rounded-xl text-[13px] outline-none resize-none"
+              style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)", color: "var(--pg-text-1)" }}
+            />
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => act("reject-targets", { reason })}
+                disabled={acting}
+                className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold text-white disabled:opacity-60"
+                style={{ background: "linear-gradient(135deg,#dc2626,#b91c1c)" }}
+              >
+                {acting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ThumbsDown className="w-3.5 h-3.5" />}
+                Send Revision Request
+              </button>
+              <button onClick={() => setShowReject(false)} className="text-[12px]" style={{ color: "var(--pg-text-3)" }}>Cancel</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function CyclePage() {
@@ -241,11 +338,13 @@ export default function CyclePage() {
   const isClosed = cycle?.status === "closed" || cycle?.status === "archived";
 
   // Permissions by stage & role:
-  // Employee can edit self ratings + employee comments when stage === 0
-  // Manager can edit agreed ratings + manager comments + dev plan when stage === 1
-  // HC can finalize when stage === 2
-  const canEditSelf    = !isHR && stage === 0 && !isClosed;
-  const canEditManager = isHR && stage === 1 && !isClosed;
+  // Employee can edit self ratings + employee comments when stage === 0 and targets accepted (or not set)
+  // Manager (or HR) can edit agreed ratings when stage === 1
+  // HC finalizes when stage === 2
+  const targetOk = !bsc?.target_status || bsc.target_status === "not_set" || bsc.target_status === "accepted";
+  const isManager = bsc?.manager_id ? user?.ID === bsc.manager_id : false;
+  const canEditSelf    = !isHR && stage === 0 && !isClosed && targetOk;
+  const canEditManager = (isHR || isManager) && stage === 1 && !isClosed;
   const canEditHC      = isHR && stage === 2 && !isClosed;
 
   const allSelfRated = scorecard.length > 0 && scorecard.every(k => (selfRatings[k.id] ?? 0) > 0);
@@ -476,6 +575,32 @@ export default function CyclePage() {
           </div>
         );
       })()}
+
+      {/* ── Target Review — employee accept/reject when targets are 'set' ── */}
+      {bsc?.target_status === "set" && !isHR && scorecard.length > 0 && (
+        <TargetReviewBanner submissionId={bsc.id} onAction={() => queryClient.invalidateQueries({ queryKey: ["bsc-submission", bsc.id] })} />
+      )}
+      {bsc?.target_status === "accepted" && !isHR && (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl"
+             style={{ background: "#ecfdf5", border: "1px solid #a7f3d0" }}>
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <p className="text-[13px] font-medium text-emerald-800">You have accepted these targets. You can now complete your self-assessment.</p>
+        </div>
+      )}
+      {bsc?.target_status === "rejected" && !isHR && (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl"
+             style={{ background: "#fef2f2", border: "1px solid #fecaca" }}>
+          <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+          <p className="text-[13px] font-medium text-red-700">You rejected these targets. Your manager has been notified and will revise them.</p>
+        </div>
+      )}
+      {bsc?.target_status === "set" && isHR && (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl"
+             style={{ background: "#fffbeb", border: "1px solid #fcd34d" }}>
+          <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+          <p className="text-[13px] font-medium text-amber-800">Waiting for employee to review and accept their targets.</p>
+        </div>
+      )}
 
       {/* ── BSC Scorecard — empty state when no KPIs set yet ── */}
       {scorecard.length === 0 && (

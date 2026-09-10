@@ -345,6 +345,118 @@ func (s *Service) SaveIndividualScorecard(ctx context.Context, cycleID, employee
 	return tx.Commit(ctx)
 }
 
+// HEAD_POSITION_CODES are role codes considered department heads for KPI purposes.
+var HEAD_POSITION_CODES = []string{
+	"GROUP_HEAD_WEALTH_MGMT", "HEAD_OF_INVESTMENT", "HEAD_INVESTMENT_MGMT",
+	"HEAD_OF_OPERATIONS", "TREASURY_OPS_FINANCE_MGR", "TL_FINANCIAL_REPORTING",
+	"HEAD_CORPORATE_COMPLIANCE", "HEAD_RISK_TRADE_MGMT",
+	"HEAD_HUMAN_CAPITAL", "HR_MANAGER", "HR_OPS_MANAGER",
+}
+
+// IsDeptHead returns true if the user holds any department-head position.
+func (s *Service) IsDeptHead(ctx context.Context, userID uuid.UUID) bool {
+	const q = `
+		SELECT EXISTS(
+			SELECT 1 FROM organization.assignment a
+			JOIN organization.position p ON p.id = a.position_id
+			WHERE a.person_id = (SELECT id FROM organization.person WHERE user_id=$1 LIMIT 1)
+			  AND a.effective_to IS NULL
+			  AND p.code = ANY($2::text[])
+		)
+	`
+	var ok bool
+	_ = s.pool.QueryRow(ctx, q, userID, HEAD_POSITION_CODES).Scan(&ok)
+	return ok
+}
+
+// NotifyDeptHeadsOnCycleOpen sends an in-app notification to all department heads
+// in the subsidiary when a cycle is opened, asking them to configure KPIs.
+func (s *Service) NotifyDeptHeadsOnCycleOpen(ctx context.Context, cycleID uuid.UUID) {
+	var cycleName, subID string
+	_ = s.pool.QueryRow(ctx, `SELECT title, COALESCE(subsidiary_id::text,'') FROM appraisal.cycle WHERE id=$1`, cycleID).Scan(&cycleName, &subID)
+
+	// Fetch all dept head user IDs in the subsidiary
+	const q = `
+		SELECT DISTINCT u.id
+		FROM identity.users u
+		JOIN organization.person per ON per.user_id = u.id
+		JOIN organization.assignment a ON a.person_id = per.id AND a.effective_to IS NULL
+		JOIN organization.position pos ON pos.id = a.position_id
+		WHERE pos.code = ANY($1::text[])
+		  AND ($2 = '' OR a.subsidiary_id::text = $2)
+		  AND u.status = 'active'
+	`
+	rows, err := s.pool.Query(ctx, q, HEAD_POSITION_CODES, subID)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	cycleIDCopy := cycleID
+	for rows.Next() {
+		var userID uuid.UUID
+		if err := rows.Scan(&userID); err != nil {
+			continue
+		}
+		_ = notification.SendToUserByID(ctx, s.pool, userID, notification.InApp{
+			Type:       "appraisal_cycle_opened",
+			Title:      "Appraisal cycle opened — configure your team's KPIs",
+			Body:       fmt.Sprintf("The \"%s\" appraisal cycle is now open. Please set KPIs and targets for your direct reports before the appraisal phase begins.", cycleName),
+			Link:       fmt.Sprintf("/appraisal/%s/kpis", cycleID),
+			Priority:   "high",
+			EntityType: "appraisal_cycle",
+			EntityID:   &cycleIDCopy,
+		})
+	}
+}
+
+// SetTargetStatus updates the target_status field on a submission.
+func (s *Service) SetTargetStatus(ctx context.Context, cycleID, employeeID uuid.UUID, status string) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE appraisal.submission SET target_status=$1, updated_at=now() WHERE cycle_id=$2 AND appraisee_id=$3`,
+		status, cycleID, employeeID,
+	)
+	return err
+}
+
+// NotifyManagerOnTargetRejection notifies the manager when an employee rejects their targets.
+func (s *Service) NotifyManagerOnTargetRejection(ctx context.Context, cycleID, employeeID uuid.UUID, reason string) {
+	var empName, cycleName, managerID string
+	_ = s.pool.QueryRow(ctx,
+		`SELECT COALESCE(u.display_name, u.email), c.title, COALESCE(s.manager_id::text,'')
+		 FROM appraisal.submission s
+		 JOIN identity.users u ON u.id = s.appraisee_id
+		 JOIN appraisal.cycle c ON c.id = s.cycle_id
+		 WHERE s.cycle_id=$1 AND s.appraisee_id=$2`,
+		cycleID, employeeID,
+	).Scan(&empName, &cycleName, &managerID)
+
+	if managerID == "" {
+		return
+	}
+	mgrID, err := uuid.Parse(managerID)
+	if err != nil {
+		return
+	}
+
+	body := fmt.Sprintf("%s has rejected their KPI targets for the \"%s\" cycle.", empName, cycleName)
+	if reason != "" {
+		body += " Reason: " + reason
+	}
+	body += " Please review and update the targets."
+
+	cycleIDCopy := cycleID
+	_ = notification.SendToUserByID(ctx, s.pool, mgrID, notification.InApp{
+		Type:       "appraisal_targets_rejected",
+		Title:      "Employee rejected their targets — revision required",
+		Body:       body,
+		Link:       fmt.Sprintf("/appraisal/%s/targets/%s", cycleID, employeeID),
+		Priority:   "high",
+		EntityType: "appraisal_cycle",
+		EntityID:   &cycleIDCopy,
+	})
+}
+
 // NotifyTargetsSet sends an in-app notification to the employee when their
 // line manager saves their individual KPI scorecard.
 func (s *Service) NotifyTargetsSet(ctx context.Context, cycleID, employeeID, managerID uuid.UUID) {
@@ -482,6 +594,7 @@ type BSCSubmission struct {
 	AgreedJSON      map[string]float64    `json:"agreed_json"`
 	HCSubmittedAt   *time.Time            `json:"hc_submitted_at,omitempty"`
 	FinalizedAt     *time.Time            `json:"finalized_at,omitempty"`
+	TargetStatus    string                `json:"target_status"` // not_set | set | accepted | rejected
 	Scorecard       []IndividualKPI       `json:"scorecard,omitempty"`
 	Stage           int                   `json:"stage"`
 }
@@ -508,7 +621,8 @@ func (s *Service) GetBSCSubmission(ctx context.Context, submissionID uuid.UUID) 
 			COALESCE(s.band, ''),
 			COALESCE(s.self_json, '{}')::text,
 			COALESCE(s.agreed_json, '{}')::text,
-			s.hc_submitted_at, s.finalized_at
+			s.hc_submitted_at, s.finalized_at,
+			COALESCE(s.target_status, 'not_set')
 		FROM appraisal.submission s
 		JOIN identity.users u ON u.id = s.appraisee_id
 		LEFT JOIN identity.users mu ON mu.id = s.manager_id
@@ -526,7 +640,7 @@ func (s *Service) GetBSCSubmission(ctx context.Context, submissionID uuid.UUID) 
 		&bs.Department, &bs.Grade, &bs.Level, &bs.ManagerID, &bs.ManagerName,
 		&bs.EmployeeComments, &bs.ManagerComments, &bs.DevelopmentPlan, &bs.HCComments,
 		&bs.Band, &selfJSONStr, &agreedJSONStr,
-		&bs.HCSubmittedAt, &bs.FinalizedAt,
+		&bs.HCSubmittedAt, &bs.FinalizedAt, &bs.TargetStatus,
 	)
 	if err != nil {
 		return BSCSubmission{}, fmt.Errorf("appraisal: get bsc submission: %w", err)

@@ -6,6 +6,7 @@ package appraisalhttp
 import (
 	"bytes"
 	"encoding/csv"
+	"encoding/json"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -19,12 +20,16 @@ import (
 // RegisterBSCRoutes adds BSC-specific routes to an existing router.
 // Call this from the main Routes() method.
 func (h *Handler) RegisterBSCRoutes(r chi.Router) {
-	// KPI management (HC only)
+	// KPI management (dept heads only)
 	r.Get("/cycles/{id}/kpis", h.listKPIs)
 	r.Post("/cycles/{id}/kpis", h.saveKPIs)
 	r.Get("/cycles/{id}/kpi-departments", h.listKPIDepartments)
 	r.Get("/cycles/{id}/kpi-targets", h.getKPITargets)
 	r.Post("/cycles/{id}/kpi-targets", h.saveKPITargets)
+
+	// Target accept / reject (employee self-action)
+	r.Post("/submissions/{id}/accept-targets", h.acceptTargets)
+	r.Post("/submissions/{id}/reject-targets", h.rejectTargets)
 
 	// Individual scorecard (manager + HC)
 	r.Get("/cycles/{id}/individual-scorecard/{empId}", h.getIndividualScorecard)
@@ -92,10 +97,16 @@ func (h *Handler) listKPIDepartments(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) saveKPIs(w http.ResponseWriter, r *http.Request) {
-	if !h.requireHR(w, r) {
+	// Only department heads can configure KPIs — NOT HR acting on their behalf.
+	user, ok := identityhttp.UserFrom(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
-	user, _ := identityhttp.UserFrom(r.Context())
+	if !h.svc.IsDeptHead(r.Context(), user.ID) {
+		httpx.Error(w, http.StatusForbidden, "forbidden", "only department heads can configure KPIs")
+		return
+	}
 	cycleID, ok := parseCycleID(w, r)
 	if !ok {
 		return
@@ -165,7 +176,13 @@ func (h *Handler) getKPITargets(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) saveKPITargets(w http.ResponseWriter, r *http.Request) {
-	if !h.requireHR(w, r) {
+	user, ok := identityhttp.UserFrom(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+		return
+	}
+	if !h.svc.IsDeptHead(r.Context(), user.ID) {
+		httpx.Error(w, http.StatusForbidden, "forbidden", "only department heads can configure KPI targets")
 		return
 	}
 	cycleID, ok := parseCycleID(w, r)
@@ -277,7 +294,10 @@ func (h *Handler) saveIndividualScorecard(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Notify the employee that their targets have been set — fire-and-forget
+	// Mark target_status as 'set' so employee knows to review
+	_ = h.svc.SetTargetStatus(r.Context(), cycleID, empID, "set")
+
+	// Notify the employee — fire-and-forget
 	go h.svc.NotifyTargetsSet(r.Context(), cycleID, empID, user.ID)
 
 	scorecard, _ := h.svc.GetIndividualScorecard(r.Context(), cycleID, empID)
@@ -441,6 +461,78 @@ func (h *Handler) getBSCSubmission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.JSON(w, http.StatusOK, sub)
+}
+
+// ── Target accept / reject ─────────────────────────────────────────────────────
+
+func (h *Handler) acceptTargets(w http.ResponseWriter, r *http.Request) {
+	user, ok := identityhttp.UserFrom(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+		return
+	}
+	subIDStr := chi.URLParam(r, "id")
+	subID, err := uuid.Parse(subIDStr)
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid submission id")
+		return
+	}
+
+	// Only the appraisee can accept their own targets
+	sub, err := h.svc.GetBSCSubmission(r.Context(), subID)
+	if err != nil {
+		httpx.Error(w, http.StatusNotFound, "not_found", "submission not found")
+		return
+	}
+	if user.ID != sub.AppraiseeID {
+		httpx.Error(w, http.StatusForbidden, "forbidden", "only the appraisee can accept targets")
+		return
+	}
+
+	if err := h.svc.SetTargetStatus(r.Context(), sub.CycleID, sub.AppraiseeID, "accepted"); err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]string{"target_status": "accepted"})
+}
+
+func (h *Handler) rejectTargets(w http.ResponseWriter, r *http.Request) {
+	user, ok := identityhttp.UserFrom(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+		return
+	}
+	subIDStr := chi.URLParam(r, "id")
+	subID, err := uuid.Parse(subIDStr)
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid submission id")
+		return
+	}
+
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+
+	sub, err := h.svc.GetBSCSubmission(r.Context(), subID)
+	if err != nil {
+		httpx.Error(w, http.StatusNotFound, "not_found", "submission not found")
+		return
+	}
+	if user.ID != sub.AppraiseeID {
+		httpx.Error(w, http.StatusForbidden, "forbidden", "only the appraisee can reject targets")
+		return
+	}
+
+	if err := h.svc.SetTargetStatus(r.Context(), sub.CycleID, sub.AppraiseeID, "rejected"); err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		return
+	}
+
+	// Notify manager
+	go h.svc.NotifyManagerOnTargetRejection(r.Context(), sub.CycleID, sub.AppraiseeID, body.Reason)
+
+	httpx.JSON(w, http.StatusOK, map[string]string{"target_status": "rejected"})
 }
 
 // ── CSV export ─────────────────────────────────────────────────────────────────

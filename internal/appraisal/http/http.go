@@ -238,6 +238,8 @@ func (h *Handler) openCycle(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, "open_failed", err.Error())
 		return
 	}
+	// Notify all department heads to configure their team's KPIs
+	go h.svc.NotifyDeptHeadsOnCycleOpen(r.Context(), id)
 	httpx.JSON(w, http.StatusOK, cycle)
 }
 

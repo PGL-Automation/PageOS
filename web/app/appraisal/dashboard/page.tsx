@@ -96,7 +96,7 @@ function CreateCycleDialog({ onClose }: { onClose: () => void }) {
         manager_deadline: managerDL || null,
       });
       queryClient.invalidateQueries({ queryKey: ["appraisal-cycles-all"] });
-      toast({ title: "Cycle Created", description: `"${title}" is in draft. Add questions to get started.` });
+      toast({ title: "Cycle Created", description: `"${title}" is in draft. Open it when ready to start the appraisal.` });
       onClose();
     } catch (err) {
       setError((err as Error).message);
@@ -394,8 +394,8 @@ function CycleCard({
           {cycle.status === "draft" && (
             <button
               onClick={() => onOpen(cycle.id)}
-              disabled={cycle.question_count === 0 || actionLoading === cycle.id + "-open"}
-              title={cycle.question_count === 0 ? "Add questions first" : "Open cycle"}
+              disabled={actionLoading === cycle.id + "-open"}
+              title="Open cycle for appraisals"
               className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-[12px] font-semibold text-white disabled:opacity-50"
               style={{ background: "linear-gradient(135deg,#059669,#047857)" }}
             >
