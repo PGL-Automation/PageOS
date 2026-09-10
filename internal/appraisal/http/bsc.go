@@ -276,6 +276,10 @@ func (h *Handler) saveIndividualScorecard(w http.ResponseWriter, r *http.Request
 		httpx.Error(w, http.StatusBadRequest, "validation_error", err.Error())
 		return
 	}
+
+	// Notify the employee that their targets have been set — fire-and-forget
+	go h.svc.NotifyTargetsSet(r.Context(), cycleID, empID, user.ID)
+
 	scorecard, _ := h.svc.GetIndividualScorecard(r.Context(), cycleID, empID)
 	httpx.JSON(w, http.StatusOK, map[string]any{"scorecard": scorecard})
 }

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pagegroup/pageos/internal/notification"
 )
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -342,6 +343,36 @@ func (s *Service) SaveIndividualScorecard(ctx context.Context, cycleID, employee
 		}
 	}
 	return tx.Commit(ctx)
+}
+
+// NotifyTargetsSet sends an in-app notification to the employee when their
+// line manager saves their individual KPI scorecard.
+func (s *Service) NotifyTargetsSet(ctx context.Context, cycleID, employeeID, managerID uuid.UUID) {
+	var cycleName, managerName string
+	_ = s.pool.QueryRow(ctx, `SELECT title FROM appraisal.cycle WHERE id=$1`, cycleID).Scan(&cycleName)
+	_ = s.pool.QueryRow(ctx, `SELECT COALESCE(display_name, email) FROM identity.users WHERE id=$1`, managerID).Scan(&managerName)
+
+	body := fmt.Sprintf(
+		"%s has set your performance KPIs and targets for the \"%s\" appraisal cycle. Log in to review your scorecard before the appraisal opens.",
+		managerName, cycleName,
+	)
+	if managerName == "" {
+		body = fmt.Sprintf(
+			"Your performance KPIs and targets have been set for the \"%s\" appraisal cycle. Log in to review your scorecard.",
+			cycleName,
+		)
+	}
+
+	cycleIDCopy := cycleID
+	_ = notification.SendToUserByID(ctx, s.pool, employeeID, notification.InApp{
+		Type:       "appraisal_targets_set",
+		Title:      "Your performance targets have been set",
+		Body:       body,
+		Link:       fmt.Sprintf("/appraisal/%s", cycleID),
+		Priority:   "medium",
+		EntityType: "appraisal_cycle",
+		EntityID:   &cycleIDCopy,
+	})
 }
 
 // ── Phase management ───────────────────────────────────────────────────────────
