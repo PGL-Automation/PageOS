@@ -2,23 +2,42 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import {
   Plus, ClipboardList, X, AlertCircle, Lock, BarChart2,
   ChevronRight, Settings2, Eye, Play, Users, Archive,
-  CheckCircle2, Clock, Calendar, Loader2,
+  CheckCircle2, Clock, Calendar, Loader2, Download,
+  Target, RefreshCw, Building2, ArrowRightLeft,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
 
 type Cycle = {
-  id: string; title: string; description: string; status: string;
-  self_deadline?: string; manager_deadline?: string;
-  question_count: number; submission_count: number;
-  self_submitted_count: number; completed_count: number;
-  opened_at?: string; closed_at?: string; created_at: string;
+  id: string;
+  title: string;
+  description: string;
+  status: string;
+  phase?: string;
+  self_deadline?: string;
+  manager_deadline?: string;
+  question_count: number;
+  submission_count: number;
+  self_submitted_count: number;
+  completed_count: number;
+  opened_at?: string;
+  closed_at?: string;
+  created_at: string;
+};
+
+type KpiDepartment = {
+  department: string;
+  kpi_count: number;
+};
+
+type TargetsProgress = {
+  total_employees: number;
+  employees_with_targets: number;
 };
 
 function cycleStatusBadge(status: string) {
@@ -31,9 +50,15 @@ function cycleStatusBadge(status: string) {
   }
 }
 
+function phaseBadge(phase?: string) {
+  if (phase === "appraisal") return { label: "Appraisal", color: "#1d4ed8", bg: "#eff6ff" };
+  return { label: "Target Setting", color: "#d97706", bg: "#fffbeb" };
+}
+
 async function apiPost(path: string, body?: object) {
   const res = await fetch(`${BASE}/api/v1/appraisal${path}`, {
-    method: "POST", credentials: "include",
+    method: "POST",
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
   });
@@ -43,6 +68,17 @@ async function apiPost(path: string, body?: object) {
   }
   return res.json();
 }
+
+async function apiGet<T>(path: string): Promise<T> {
+  const res = await fetch(`${BASE}/api/v1/appraisal${path}`, { credentials: "include" });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: "Request failed" }));
+    throw new Error(err.message ?? err.error?.message ?? "Request failed");
+  }
+  return res.json();
+}
+
+// ─── Create Cycle Dialog ────────────────────────────────────────────────────
 
 function CreateCycleDialog({ onClose }: { onClose: () => void }) {
   const { toast } = useToast();
@@ -76,12 +112,16 @@ function CreateCycleDialog({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-         style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(6px)" }}
-         onClick={onClose}>
-      <div className="w-full max-w-lg rounded-2xl overflow-hidden"
-           style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)", boxShadow: "0 24px 64px rgba(0,0,0,0.3)" }}
-           onClick={e => e.stopPropagation()}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(6px)" }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg rounded-2xl overflow-hidden"
+        style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)", boxShadow: "0 24px 64px rgba(0,0,0,0.3)" }}
+        onClick={e => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: "1px solid var(--pg-row-border)" }}>
           <div>
             <h2 className="text-[15px] font-bold" style={{ color: "var(--pg-text-1)" }}>New Appraisal Cycle</h2>
@@ -92,30 +132,38 @@ function CreateCycleDialog({ onClose }: { onClose: () => void }) {
         <form onSubmit={submit} className="p-6 space-y-4">
           <div>
             <label className="block text-[12px] font-medium mb-1.5" style={{ color: "var(--pg-text-2)" }}>Cycle Title *</label>
-            <input value={title} onChange={e => setTitle(e.target.value)} required
-                   placeholder="e.g. H1 2026 Performance Review"
-                   className="w-full h-10 px-3 rounded-xl text-[13px] outline-none"
-                   style={{ background: "var(--pg-input)", border: "1px solid var(--pg-input-border)", color: "var(--pg-text-1)" }} />
+            <input
+              value={title} onChange={e => setTitle(e.target.value)} required
+              placeholder="e.g. H1 2026 Performance Review"
+              className="w-full h-10 px-3 rounded-xl text-[13px] outline-none"
+              style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)", color: "var(--pg-text-1)" }}
+            />
           </div>
           <div>
             <label className="block text-[12px] font-medium mb-1.5" style={{ color: "var(--pg-text-2)" }}>Description</label>
-            <textarea value={desc} onChange={e => setDesc(e.target.value)} rows={2}
-                      placeholder="Brief description of this appraisal cycle…"
-                      className="w-full px-3 py-2.5 rounded-xl text-[13px] outline-none resize-none"
-                      style={{ background: "var(--pg-input)", border: "1px solid var(--pg-input-border)", color: "var(--pg-text-1)" }} />
+            <textarea
+              value={desc} onChange={e => setDesc(e.target.value)} rows={2}
+              placeholder="Brief description of this appraisal cycle…"
+              className="w-full px-3 py-2.5 rounded-xl text-[13px] outline-none resize-none"
+              style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)", color: "var(--pg-text-1)" }}
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[12px] font-medium mb-1.5" style={{ color: "var(--pg-text-2)" }}>Self-Assessment Deadline</label>
-              <input type="date" value={selfDL} onChange={e => setSelfDL(e.target.value)}
-                     className="w-full h-10 px-3 rounded-xl text-[13px] outline-none"
-                     style={{ background: "var(--pg-input)", border: "1px solid var(--pg-input-border)", color: "var(--pg-text-1)" }} />
+              <input
+                type="date" value={selfDL} onChange={e => setSelfDL(e.target.value)}
+                className="w-full h-10 px-3 rounded-xl text-[13px] outline-none"
+                style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)", color: "var(--pg-text-1)" }}
+              />
             </div>
             <div>
               <label className="block text-[12px] font-medium mb-1.5" style={{ color: "var(--pg-text-2)" }}>Manager Review Deadline</label>
-              <input type="date" value={managerDL} onChange={e => setManagerDL(e.target.value)}
-                     className="w-full h-10 px-3 rounded-xl text-[13px] outline-none"
-                     style={{ background: "var(--pg-input)", border: "1px solid var(--pg-input-border)", color: "var(--pg-text-1)" }} />
+              <input
+                type="date" value={managerDL} onChange={e => setManagerDL(e.target.value)}
+                className="w-full h-10 px-3 rounded-xl text-[13px] outline-none"
+                style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)", color: "var(--pg-text-1)" }}
+              />
             </div>
           </div>
           {error && (
@@ -125,12 +173,16 @@ function CreateCycleDialog({ onClose }: { onClose: () => void }) {
             </div>
           )}
           <div className="flex justify-end gap-2 pt-2" style={{ borderTop: "1px solid var(--pg-row-border)" }}>
-            <button type="button" onClick={onClose}
-                    className="h-9 px-4 rounded-xl text-[13px] font-medium"
-                    style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}>Cancel</button>
-            <button type="submit" disabled={saving}
-                    className="h-9 px-5 rounded-xl text-[13px] font-semibold text-white disabled:opacity-60"
-                    style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
+            <button
+              type="button" onClick={onClose}
+              className="h-9 px-4 rounded-xl text-[13px] font-medium"
+              style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}
+            >Cancel</button>
+            <button
+              type="submit" disabled={saving}
+              className="h-9 px-5 rounded-xl text-[13px] font-semibold text-white disabled:opacity-60"
+              style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}
+            >
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Create Cycle"}
             </button>
           </div>
@@ -139,6 +191,399 @@ function CreateCycleDialog({ onClose }: { onClose: () => void }) {
     </div>
   );
 }
+
+// ─── Targets Progress Panel ─────────────────────────────────────────────────
+
+function TargetsProgressPanel({ cycleId }: { cycleId: string }) {
+  const { data, isLoading } = useQuery<TargetsProgress>({
+    queryKey: ["appraisal-targets-progress", cycleId],
+    queryFn: () => apiGet(`/cycles/${cycleId}/targets-progress`),
+    retry: false,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 py-2">
+        <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: "var(--pg-text-4)" }} />
+        <span className="text-[11px]" style={{ color: "var(--pg-text-4)" }}>Loading targets…</span>
+      </div>
+    );
+  }
+
+  if (!data) return null;
+
+  const pct = data.total_employees > 0
+    ? Math.round((data.employees_with_targets / data.total_employees) * 100)
+    : 0;
+
+  return (
+    <div>
+      <p className="text-[10px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "var(--pg-text-3)" }}>Targets Set</p>
+      <div className="flex items-center gap-2">
+        <div className="flex-1 h-1.5 rounded-full" style={{ background: "var(--pg-muted-bg)" }}>
+          <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, background: "#d97706" }} />
+        </div>
+        <span className="text-[11px] font-bold tabular-nums" style={{ color: "#d97706" }}>
+          {data.employees_with_targets}/{data.total_employees}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ─── KPI Departments Panel ──────────────────────────────────────────────────
+
+function KpiDepartmentsPanel({ cycleId }: { cycleId: string }) {
+  const { data, isLoading } = useQuery<KpiDepartment[]>({
+    queryKey: ["appraisal-kpi-departments", cycleId],
+    queryFn: () => apiGet(`/cycles/${cycleId}/kpi-departments`),
+    retry: false,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 py-2">
+        <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: "var(--pg-text-4)" }} />
+        <span className="text-[11px]" style={{ color: "var(--pg-text-4)" }}>Loading departments…</span>
+      </div>
+    );
+  }
+
+  if (!data || data.length === 0) {
+    return (
+      <p className="text-[11px]" style={{ color: "var(--pg-text-4)" }}>No departments configured yet.</p>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {data.map(d => (
+        <span
+          key={d.department}
+          className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full"
+          style={{ background: "#eff6ff", color: "#1d4ed8" }}
+        >
+          <Building2 className="w-3 h-3" />
+          {d.department}
+          <span className="opacity-60">({d.kpi_count})</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+// ─── Cycle Card ─────────────────────────────────────────────────────────────
+
+function CycleCard({
+  cycle,
+  actionLoading,
+  onOpen,
+  onClose,
+  onArchive,
+  onSwitchPhase,
+  onGenerateSubmissions,
+  onExport,
+}: {
+  cycle: Cycle;
+  actionLoading: string | null;
+  onOpen: (id: string) => void;
+  onClose: (id: string) => void;
+  onArchive: (id: string) => void;
+  onSwitchPhase: (id: string, phase: "target" | "appraisal") => void;
+  onGenerateSubmissions: (id: string) => void;
+  onExport: (id: string) => void;
+}) {
+  const cs = cycleStatusBadge(cycle.status);
+  const pb = phaseBadge(cycle.phase);
+
+  const completion = cycle.submission_count > 0
+    ? Math.round((cycle.completed_count / cycle.submission_count) * 100)
+    : 0;
+  const selfPct = cycle.submission_count > 0
+    ? Math.round((cycle.self_submitted_count / cycle.submission_count) * 100)
+    : 0;
+
+  const isTargetPhase = !cycle.phase || cycle.phase === "target";
+  const nextPhase: "target" | "appraisal" = isTargetPhase ? "appraisal" : "target";
+  const nextPhaseLabel = isTargetPhase ? "Switch to Appraisal" : "Switch to Target Setting";
+
+  const showBscPanels = cycle.status === "open" || cycle.status === "draft";
+
+  return (
+    <div
+      className="rounded-2xl overflow-hidden"
+      style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)", boxShadow: "0 1px 4px rgba(0,0,0,0.05)" }}
+    >
+      {/* Accent bar — blue for appraisal phase, amber for target setting */}
+      <div className="h-[3px]" style={{ background: isTargetPhase ? "#d97706" : "#1d4ed8" }} />
+
+      {/* Header row */}
+      <div
+        className="flex items-center gap-4 px-5 py-4"
+        style={{ borderBottom: "1px solid var(--pg-row-border)" }}
+      >
+        {/* Status icon */}
+        <div
+          className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+          style={{
+            background: cycle.status === "open" ? "#ecfdf5"
+              : cycle.status === "closed" ? "#f1f5f9"
+              : "#fffbeb",
+          }}
+        >
+          {cycle.status === "open"     && <Play     className="w-[18px] h-[18px] text-emerald-600" />}
+          {cycle.status === "closed"   && <Lock     className="w-[18px] h-[18px] text-slate-500" />}
+          {cycle.status === "draft"    && <Settings2 className="w-[18px] h-[18px] text-amber-500" />}
+          {cycle.status === "archived" && <Lock     className="w-[18px] h-[18px] text-slate-400" />}
+        </div>
+
+        {/* Title + badges */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-[14px] font-bold truncate" style={{ color: "var(--pg-text-1)" }}>{cycle.title}</p>
+            {/* Status badge */}
+            <span
+              className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0"
+              style={{ background: cs.bg, color: cs.color }}
+            >{cs.label}</span>
+            {/* Phase badge */}
+            <span
+              className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 flex items-center gap-1"
+              style={{ background: pb.bg, color: pb.color }}
+            >
+              <Target className="w-2.5 h-2.5" />
+              {pb.label}
+            </span>
+          </div>
+          <p className="text-[11px] mt-0.5" style={{ color: "var(--pg-text-3)" }}>
+            {cycle.question_count} question{cycle.question_count !== 1 ? "s" : ""}
+            {cycle.submission_count > 0 && ` · ${cycle.submission_count} participants`}
+            {cycle.self_deadline && ` · Self due: ${new Date(cycle.self_deadline).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`}
+          </p>
+        </div>
+
+        {/* Action buttons */}
+        <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+
+          {/* Phase switcher (not for archived) */}
+          {cycle.status !== "archived" && (
+            <button
+              onClick={() => onSwitchPhase(cycle.id, nextPhase)}
+              disabled={actionLoading === cycle.id + "-phase"}
+              className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-[12px] font-semibold"
+              style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}
+              title={nextPhaseLabel}
+            >
+              {actionLoading === cycle.id + "-phase"
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : <ArrowRightLeft className="w-3.5 h-3.5" />}
+              {nextPhaseLabel}
+            </button>
+          )}
+
+          {/* Generate Submissions (draft/open only) */}
+          {(cycle.status === "draft" || cycle.status === "open") && (
+            <button
+              onClick={() => onGenerateSubmissions(cycle.id)}
+              disabled={actionLoading === cycle.id + "-generate"}
+              className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-[12px] font-semibold"
+              style={{ border: "1px solid #a5b4fc", color: "#4f46e5" }}
+              title="Generate submissions for all active employees"
+            >
+              {actionLoading === cycle.id + "-generate"
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : <Users className="w-3.5 h-3.5" />}
+              Generate
+            </button>
+          )}
+
+          {/* Status transition buttons */}
+          {cycle.status === "draft" && (
+            <button
+              onClick={() => onOpen(cycle.id)}
+              disabled={cycle.question_count === 0 || actionLoading === cycle.id + "-open"}
+              title={cycle.question_count === 0 ? "Add questions first" : "Open cycle"}
+              className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-[12px] font-semibold text-white disabled:opacity-50"
+              style={{ background: "linear-gradient(135deg,#059669,#047857)" }}
+            >
+              {actionLoading === cycle.id + "-open"
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : <Play className="w-3.5 h-3.5" />}
+              Open
+            </button>
+          )}
+          {cycle.status === "open" && (
+            <button
+              onClick={() => onClose(cycle.id)}
+              disabled={actionLoading === cycle.id + "-close"}
+              className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-[12px] font-semibold"
+              style={{ border: "1px solid #fca5a5", color: "#dc2626" }}
+            >
+              {actionLoading === cycle.id + "-close"
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : <Lock className="w-3.5 h-3.5" />}
+              Close
+            </button>
+          )}
+          {cycle.status === "closed" && (
+            <button
+              onClick={() => onArchive(cycle.id)}
+              disabled={actionLoading === cycle.id + "-archive"}
+              className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-[12px] font-semibold"
+              style={{ border: "1px solid #c4b5fd", color: "#7c3aed" }}
+            >
+              {actionLoading === cycle.id + "-archive"
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : <CheckCircle2 className="w-3.5 h-3.5" />}
+              Archive
+            </button>
+          )}
+
+          {/* Export CSV */}
+          <button
+            onClick={() => onExport(cycle.id)}
+            className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-[12px] font-semibold"
+            style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}
+            title="Export cycle data as CSV"
+          >
+            <Download className="w-3.5 h-3.5" />
+            CSV
+          </button>
+
+          {/* Manage / View */}
+          {cycle.status !== "archived" ? (
+            <Link
+              href={`/appraisal/${cycle.id}/manage`}
+              className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-[12px] font-semibold"
+              style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}
+            >
+              <Settings2 className="w-3.5 h-3.5" /> Manage
+            </Link>
+          ) : (
+            <Link
+              href={`/appraisal/${cycle.id}/manage`}
+              className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-[12px] font-semibold"
+              style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-4)" }}
+            >
+              <Eye className="w-3.5 h-3.5" /> View
+            </Link>
+          )}
+        </div>
+      </div>
+
+      {/* BSC progress panels (open + draft) */}
+      {showBscPanels && (
+        <div className="px-5 py-4 grid gap-4" style={{ gridTemplateColumns: "1fr 1fr 1fr 1fr" }}>
+          {/* Self-submitted */}
+          {cycle.submission_count > 0 && (
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "var(--pg-text-3)" }}>Self-submitted</p>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 h-1.5 rounded-full" style={{ background: "var(--pg-muted-bg)" }}>
+                  <div className="h-1.5 rounded-full transition-all" style={{ width: `${selfPct}%`, background: "#FF6600" }} />
+                </div>
+                <span className="text-[11px] font-bold tabular-nums" style={{ color: "#FF6600" }}>
+                  {cycle.self_submitted_count}/{cycle.submission_count}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Completed */}
+          {cycle.submission_count > 0 && (
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "var(--pg-text-3)" }}>Completed</p>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 h-1.5 rounded-full" style={{ background: "var(--pg-muted-bg)" }}>
+                  <div className="h-1.5 rounded-full transition-all" style={{ width: `${completion}%`, background: "#059669" }} />
+                </div>
+                <span className="text-[11px] font-bold tabular-nums" style={{ color: "#059669" }}>
+                  {cycle.completed_count}/{cycle.submission_count}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Targets progress */}
+          <TargetsProgressPanel cycleId={cycle.id} />
+
+          {/* View submissions link */}
+          {cycle.status === "open" && cycle.submission_count > 0 && (
+            <div className="flex items-center justify-end">
+              <Link
+                href={`/appraisal/${cycle.id}/manage`}
+                className="text-[11px] font-medium text-orange-600 hover:underline flex items-center gap-0.5"
+              >
+                View submissions <ChevronRight className="w-3 h-3" />
+              </Link>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Departments with KPIs */}
+      {showBscPanels && (
+        <div className="px-5 pb-4" style={{ borderTop: "1px solid var(--pg-row-border)" }}>
+          <div className="pt-3">
+            <p className="text-[10px] font-bold uppercase tracking-wider mb-2 flex items-center gap-1.5" style={{ color: "var(--pg-text-3)" }}>
+              <Building2 className="w-3 h-3" />
+              Departments with KPIs
+            </p>
+            <KpiDepartmentsPanel cycleId={cycle.id} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Cycle Section ───────────────────────────────────────────────────────────
+
+function CycleSection({
+  title,
+  items,
+  actionLoading,
+  onOpen,
+  onClose,
+  onArchive,
+  onSwitchPhase,
+  onGenerateSubmissions,
+  onExport,
+}: {
+  title: string;
+  items: Cycle[];
+  actionLoading: string | null;
+  onOpen: (id: string) => void;
+  onClose: (id: string) => void;
+  onArchive: (id: string) => void;
+  onSwitchPhase: (id: string, phase: "target" | "appraisal") => void;
+  onGenerateSubmissions: (id: string) => void;
+  onExport: (id: string) => void;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <div>
+      <p className="text-[11px] font-bold uppercase tracking-widest mb-3" style={{ color: "var(--pg-text-3)" }}>{title}</p>
+      <div className="space-y-3">
+        {items.map(cycle => (
+          <CycleCard
+            key={cycle.id}
+            cycle={cycle}
+            actionLoading={actionLoading}
+            onOpen={onOpen}
+            onClose={onClose}
+            onArchive={onArchive}
+            onSwitchPhase={onSwitchPhase}
+            onGenerateSubmissions={onGenerateSubmissions}
+            onExport={onExport}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Dashboard ──────────────────────────────────────────────────────────
 
 export default function AppraisalDashboard() {
   const { toast } = useToast();
@@ -161,8 +606,11 @@ export default function AppraisalDashboard() {
       await apiPost(`/cycles/${id}/open`);
       queryClient.invalidateQueries({ queryKey: ["appraisal-cycles-all"] });
       toast({ title: "Cycle Opened", description: "Employees can now submit their self-assessments." });
-    } catch (e) { toast({ title: "Failed", description: (e as Error).message, variant: "destructive" }); }
-    finally { setActionLoading(null); }
+    } catch (e) {
+      toast({ title: "Failed", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setActionLoading(null);
+    }
   }
 
   async function closeCycle(id: string) {
@@ -172,8 +620,11 @@ export default function AppraisalDashboard() {
       await apiPost(`/cycles/${id}/close`);
       queryClient.invalidateQueries({ queryKey: ["appraisal-cycles-all"] });
       toast({ title: "Cycle Closed", description: "The appraisal cycle has been closed." });
-    } catch (e) { toast({ title: "Failed", description: (e as Error).message, variant: "destructive" }); }
-    finally { setActionLoading(null); }
+    } catch (e) {
+      toast({ title: "Failed", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setActionLoading(null);
+    }
   }
 
   async function archiveCycle(id: string) {
@@ -183,141 +634,73 @@ export default function AppraisalDashboard() {
       await apiPost(`/cycles/${id}/archive`);
       queryClient.invalidateQueries({ queryKey: ["appraisal-cycles-all"] });
       toast({ title: "Cycle Archived", description: "The cycle has been archived for historical record." });
-    } catch (e) { toast({ title: "Failed", description: (e as Error).message, variant: "destructive" }); }
-    finally { setActionLoading(null); }
+    } catch (e) {
+      toast({ title: "Failed", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function switchPhase(id: string, phase: "target" | "appraisal") {
+    setActionLoading(id + "-phase");
+    try {
+      await apiPost(`/cycles/${id}/phase`, { phase });
+      queryClient.invalidateQueries({ queryKey: ["appraisal-cycles-all"] });
+      const label = phase === "appraisal" ? "Appraisal" : "Target Setting";
+      toast({ title: "Phase Updated", description: `Cycle switched to ${label} phase.` });
+    } catch (e) {
+      toast({ title: "Failed", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function generateSubmissions(id: string) {
+    setActionLoading(id + "-generate");
+    try {
+      await apiPost(`/cycles/${id}/generate-submissions`);
+      queryClient.invalidateQueries({ queryKey: ["appraisal-cycles-all"] });
+      toast({ title: "Submissions Generated", description: "Submissions have been created for all active employees." });
+    } catch (e) {
+      toast({ title: "Failed", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  function exportCsv(id: string) {
+    const url = `${BASE}/api/v1/appraisal/cycles/${id}/export.csv`;
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `appraisal-cycle-${id}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   }
 
   const draftCycles  = cycles.filter(c => c.status === "draft");
   const openCycles   = cycles.filter(c => c.status === "open");
   const closedCycles = cycles.filter(c => c.status === "closed" || c.status === "archived");
 
+  const targetPhaseCount   = cycles.filter(c => !c.phase || c.phase === "target").length;
+  const appraisalPhaseCount = cycles.filter(c => c.phase === "appraisal").length;
+
   const STATS = [
-    { label: "Total Cycles",   value: cycles.length,   color: "#FF6600", bg: "#fff7f0",  icon: ClipboardList },
-    { label: "Open",           value: openCycles.length, color: "#059669", bg: "#ecfdf5", icon: Play },
-    { label: "Draft",          value: draftCycles.length, color: "#d97706", bg: "#fffbeb", icon: Settings2 },
-    { label: "Closed",         value: closedCycles.length, color: "#64748b", bg: "#f1f5f9", icon: Lock },
+    { label: "Total Cycles",     value: cycles.length,       color: "#FF6600", bg: "#fff7f0", icon: ClipboardList },
+    { label: "Open",             value: openCycles.length,   color: "#059669", bg: "#ecfdf5", icon: Play },
+    { label: "Target Setting",   value: targetPhaseCount,    color: "#d97706", bg: "#fffbeb", icon: Target },
+    { label: "Appraisal Phase",  value: appraisalPhaseCount, color: "#1d4ed8", bg: "#eff6ff", icon: BarChart2 },
   ];
 
-  function CycleSection({ title, items }: { title: string; items: Cycle[] }) {
-    if (items.length === 0) return null;
-    return (
-      <div>
-        <p className="text-[11px] font-bold uppercase tracking-widest mb-3" style={{ color: "var(--pg-text-3)" }}>{title}</p>
-        <div className="space-y-3">
-          {items.map(cycle => {
-            const cs = cycleStatusBadge(cycle.status);
-            const completion = cycle.submission_count > 0
-              ? Math.round((cycle.completed_count / cycle.submission_count) * 100)
-              : 0;
-            const selfPct = cycle.submission_count > 0
-              ? Math.round((cycle.self_submitted_count / cycle.submission_count) * 100)
-              : 0;
-            return (
-              <div key={cycle.id} className="rounded-2xl overflow-hidden"
-                   style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)", boxShadow: "0 1px 4px var(--pg-card-shadow)" }}>
-                <div className="flex items-center gap-4 px-5 py-4"
-                     style={{ borderBottom: cycle.status !== "draft" ? "1px solid var(--pg-row-border)" : undefined }}>
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-                       style={{ background: cycle.status === "open" ? "#ecfdf5" : cycle.status === "closed" ? "#f1f5f9" : "#fffbeb" }}>
-                    {cycle.status === "open"   && <Play className="w-4.5 h-4.5 text-emerald-600" />}
-                    {cycle.status === "closed" && <Lock className="w-4.5 h-4.5 text-slate-500" />}
-                    {cycle.status === "draft"  && <Settings2 className="w-4.5 h-4.5 text-amber-500" />}
-                    {cycle.status === "archived" && <Lock className="w-4.5 h-4.5 text-slate-400" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-[14px] font-bold truncate" style={{ color: "var(--pg-text-1)" }}>{cycle.title}</p>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0"
-                            style={{ background: cs.bg, color: cs.color }}>{cs.label}</span>
-                    </div>
-                    <p className="text-[11px] mt-0.5" style={{ color: "var(--pg-text-3)" }}>
-                      {cycle.question_count} question{cycle.question_count !== 1 ? "s" : ""}
-                      {cycle.submission_count > 0 && ` · ${cycle.submission_count} participants`}
-                      {cycle.self_deadline && ` · Self due: ${new Date(cycle.self_deadline).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {cycle.status === "draft" && (
-                      <button onClick={() => openCycle(cycle.id)}
-                              disabled={cycle.question_count === 0 || actionLoading === cycle.id + "-open"}
-                              title={cycle.question_count === 0 ? "Add questions first" : "Open cycle"}
-                              className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-[12px] font-semibold text-white disabled:opacity-50"
-                              style={{ background: "linear-gradient(135deg,#059669,#047857)" }}>
-                        {actionLoading === cycle.id + "-open" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
-                        Open
-                      </button>
-                    )}
-                    {cycle.status === "open" && (
-                      <button onClick={() => closeCycle(cycle.id)}
-                              disabled={actionLoading === cycle.id + "-close"}
-                              className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-[12px] font-semibold"
-                              style={{ border: "1px solid #fca5a5", color: "#dc2626" }}>
-                        {actionLoading === cycle.id + "-close" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Lock className="w-3.5 h-3.5" />}
-                        Close
-                      </button>
-                    )}
-                    {cycle.status === "closed" && (
-                      <button onClick={() => archiveCycle(cycle.id)}
-                              disabled={actionLoading === cycle.id + "-archive"}
-                              className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-[12px] font-semibold"
-                              style={{ border: "1px solid #c4b5fd", color: "#7c3aed" }}>
-                        {actionLoading === cycle.id + "-archive" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                        Archive
-                      </button>
-                    )}
-                    {cycle.status !== "archived" && (
-                      <Link href={`/appraisal/${cycle.id}/manage`}
-                            className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-[12px] font-semibold"
-                            style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}>
-                        <Settings2 className="w-3.5 h-3.5" /> Manage
-                      </Link>
-                    )}
-                    {cycle.status === "archived" && (
-                      <Link href={`/appraisal/${cycle.id}/manage`}
-                            className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-[12px] font-semibold"
-                            style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-4)" }}>
-                        <Eye className="w-3.5 h-3.5" /> View
-                      </Link>
-                    )}
-                  </div>
-                </div>
-
-                {/* Progress bar for open cycles */}
-                {cycle.status === "open" && cycle.submission_count > 0 && (
-                  <div className="px-5 py-3 grid grid-cols-3 gap-4">
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "var(--pg-text-3)" }}>Self-submitted</p>
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 h-1.5 rounded-full" style={{ background: "var(--pg-muted-bg)" }}>
-                          <div className="h-1.5 rounded-full transition-all" style={{ width: `${selfPct}%`, background: "#FF6600" }} />
-                        </div>
-                        <span className="text-[11px] font-bold tabular" style={{ color: "#FF6600" }}>{cycle.self_submitted_count}/{cycle.submission_count}</span>
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "var(--pg-text-3)" }}>Completed</p>
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 h-1.5 rounded-full" style={{ background: "var(--pg-muted-bg)" }}>
-                          <div className="h-1.5 rounded-full transition-all" style={{ width: `${completion}%`, background: "#059669" }} />
-                        </div>
-                        <span className="text-[11px] font-bold tabular" style={{ color: "#059669" }}>{cycle.completed_count}/{cycle.submission_count}</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-end">
-                      <Link href={`/appraisal/${cycle.id}/manage`}
-                            className="text-[11px] font-medium text-orange-600 hover:underline flex items-center gap-0.5">
-                        View submissions <ChevronRight className="w-3 h-3" />
-                      </Link>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
-  }
+  const sharedProps = {
+    actionLoading,
+    onOpen: openCycle,
+    onClose: closeCycle,
+    onArchive: archiveCycle,
+    onSwitchPhase: switchPhase,
+    onGenerateSubmissions: generateSubmissions,
+    onExport: exportCsv,
+  };
 
   return (
     <div className="max-w-[1100px] mx-auto space-y-6">
@@ -326,12 +709,14 @@ export default function AppraisalDashboard() {
         <div>
           <h1 className="text-[18px] font-bold" style={{ color: "var(--pg-text-1)" }}>Appraisal Management</h1>
           <p className="text-[12px] mt-0.5" style={{ color: "var(--pg-text-3)" }}>
-            Create and manage performance appraisal cycles
+            Create and manage BSC-aligned performance appraisal cycles
           </p>
         </div>
-        <button onClick={() => setShowCreate(true)}
-                className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold text-white"
-                style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
+        <button
+          onClick={() => setShowCreate(true)}
+          className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold text-white"
+          style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}
+        >
           <Plus className="w-3.5 h-3.5" /> New Cycle
         </button>
       </div>
@@ -340,12 +725,12 @@ export default function AppraisalDashboard() {
       <div className="grid grid-cols-4 gap-4">
         {STATS.map(s => (
           <div key={s.label} className="rounded-2xl overflow-hidden"
-               style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}>
+               style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)", boxShadow: "0 1px 4px rgba(0,0,0,0.05)" }}>
             <div className="h-[3px]" style={{ background: s.color }} />
             <div className="p-4 flex items-start justify-between">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: s.color }}>{s.label}</p>
-                <p className="text-[26px] font-bold tabular leading-none mt-1.5" style={{ color: "var(--pg-text-1)" }}>{s.value}</p>
+                <p className="text-[22px] font-bold leading-none mt-1.5" style={{ color: "var(--pg-text-1)" }}>{s.value}</p>
               </div>
               <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: s.bg }}>
                 <s.icon className="w-4 h-4" style={{ color: s.color }} />
@@ -355,27 +740,51 @@ export default function AppraisalDashboard() {
         ))}
       </div>
 
+      {/* BSC Perspective Legend */}
+      <div
+        className="rounded-2xl px-5 py-3 flex items-center gap-6 flex-wrap"
+        style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}
+      >
+        <p className="text-[10px] font-bold uppercase tracking-wider shrink-0" style={{ color: "var(--pg-text-3)" }}>BSC Perspectives</p>
+        {[
+          { label: "Financial",                color: "#1d4ed8" },
+          { label: "Client / Customer",        color: "#059669" },
+          { label: "Internal Business Process", color: "#7c3aed" },
+          { label: "Learning & Growth",         color: "#d97706" },
+        ].map(p => (
+          <div key={p.label} className="flex items-center gap-1.5">
+            <div className="w-2 h-2 rounded-full shrink-0" style={{ background: p.color }} />
+            <span className="text-[11px] font-medium" style={{ color: "var(--pg-text-2)" }}>{p.label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Cycle lists */}
       {isLoading ? (
         <div className="flex justify-center py-12">
           <Loader2 className="w-5 h-5 animate-spin" style={{ color: "var(--pg-text-4)" }} />
         </div>
       ) : cycles.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 rounded-2xl"
-             style={{ background: "var(--pg-card)", border: "1px dashed var(--pg-card-border)" }}>
+        <div
+          className="flex flex-col items-center justify-center py-20 rounded-2xl"
+          style={{ background: "var(--pg-card)", border: "1px dashed var(--pg-card-border)" }}
+        >
           <ClipboardList className="w-10 h-10 mb-3" style={{ color: "var(--pg-text-4)" }} />
           <p className="text-[14px] font-semibold" style={{ color: "var(--pg-text-2)" }}>No appraisal cycles yet</p>
           <p className="text-[12px] mt-1 mb-4" style={{ color: "var(--pg-text-4)" }}>Create your first cycle to start evaluating performance.</p>
-          <button onClick={() => setShowCreate(true)}
-                  className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold text-white"
-                  style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold text-white"
+            style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}
+          >
             <Plus className="w-3.5 h-3.5" /> New Cycle
           </button>
         </div>
       ) : (
         <div className="space-y-6">
-          <CycleSection title="Open" items={openCycles} />
-          <CycleSection title="Draft" items={draftCycles} />
-          <CycleSection title="Closed & Archived" items={closedCycles} />
+          <CycleSection title="Open"             items={openCycles}   {...sharedProps} />
+          <CycleSection title="Draft"            items={draftCycles}  {...sharedProps} />
+          <CycleSection title="Closed & Archived" items={closedCycles} {...sharedProps} />
         </div>
       )}
 

@@ -1,85 +1,191 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { usePosition, roleFamily } from "@/lib/position";
 import {
-  ChevronLeft, CheckCircle2, AlertCircle, Clock, Save,
-  Send, Lock, Star, MessageSquare, Loader2, ChevronRight,
-  BarChart2, Users, Settings2,
+  ChevronLeft, CheckCircle2, Clock, Save, Send, Lock,
+  Loader2, Settings2, RotateCcw, Award,
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 type Cycle = {
   id: string; title: string; description: string; status: string;
   self_deadline?: string; manager_deadline?: string;
-  question_count: number; submission_count: number;
-  self_submitted_count: number; completed_count: number;
 };
 
-type Question = {
-  id: string; cycle_id: string; category: string; text: string;
-  description: string; max_score: number; weight: number; order_index: number;
+type KPI = {
+  id: string; perspective: string; seq: number;
+  objective: string; measure: string; weight: number; target: string;
 };
 
-type Response = { question_id: string; score: number; comment: string; scorer_type: string };
-
-type SubmissionDetail = {
+type BSCSubmission = {
   id: string; cycle_id: string; appraisee_id: string; status: string;
-  self_score?: number; manager_score?: number;
-  self_submitted_at?: string; manager_submitted_at?: string;
-  questions: Question[];
-  self_responses: Response[];
-  manager_responses: Response[];
+  scorecard: KPI[];
+  self_json: Record<string, number>;
+  agreed_json: Record<string, number>;
+  self_score?: number;
+  manager_score?: number;
+  band?: string;
+  employee_comments?: string;
+  manager_comments?: string;
+  development_plan?: string;
+  hc_comments?: string;
+  stage: number; // 0=self, 1=manager, 2=hc, 3=finalized
+  self_submitted_at?: string;
+  manager_submitted_at?: string;
   reviewer_name?: string;
 };
 
-function ScoreSelector({
-  value, max, onChange, disabled,
-}: { value: number; max: number; onChange: (v: number) => void; disabled: boolean }) {
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const PERSPECTIVE_COLORS: Record<string, string> = {
+  "Financial": "#1d4ed8",
+  "Client": "#059669",
+  "Customer": "#059669",
+  "Internal Business Process": "#7c3aed",
+  "Learning & Growth": "#d97706",
+  "Learning and Growth": "#d97706",
+};
+
+function perspectiveColor(p: string): string {
+  for (const [key, val] of Object.entries(PERSPECTIVE_COLORS)) {
+    if (p.toLowerCase().includes(key.toLowerCase())) return val;
+  }
+  return "#6b7280";
+}
+
+const RATING_COLORS: Record<number, string> = {
+  1: "#dc2626",
+  2: "#FF6600",
+  3: "#1d4ed8",
+  4: "#0d9488",
+  5: "#065f46",
+};
+
+const RATING_LABELS: Record<number, string> = {
+  1: "Unsatisfactory",
+  2: "Needs Improvement",
+  3: "Meets Expectations",
+  4: "Exceeds Expectations",
+  5: "Outstanding",
+};
+
+const BAND_COLORS: Record<string, string> = {
+  "Outstanding": "#059669",
+  "Exceeds Expectations": "#1d4ed8",
+  "Meets Expectations": "#d97706",
+  "Needs Improvement": "#dc2626",
+  "Unsatisfactory": "#b91c1c",
+};
+
+const STAGE_LABELS = ["Self Assessment", "Line Manager", "Human Capital", "Complete"];
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function StageRail({ stage }: { stage: number }) {
   return (
-    <div className="flex items-center gap-1.5">
-      {Array.from({ length: max }, (_, i) => i + 1).map(n => (
-        <button key={n} type="button" disabled={disabled}
-                onClick={() => onChange(n)}
-                className={cn(
-                  "w-9 h-9 rounded-xl text-[13px] font-bold border-2 transition-all disabled:cursor-not-allowed",
-                  value === n
-                    ? "border-orange-500 bg-orange-500 text-white scale-110"
-                    : "border-slate-200 dark:border-slate-600 hover:border-blue-300 hover:bg-orange-50"
-                )}
-                style={value === n ? {} : { color: "var(--pg-text-2)" }}>
-          {n}
-        </button>
-      ))}
+    <div className="flex items-center gap-0 rounded-2xl overflow-hidden"
+         style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}>
+      {STAGE_LABELS.map((label, i) => {
+        const done = i < stage;
+        const active = i === stage;
+        return (
+          <div key={label} className="flex-1 flex flex-col items-center py-3 px-2 relative"
+               style={{
+                 background: active ? "rgba(255,102,0,0.06)" : done ? "rgba(5,150,105,0.04)" : undefined,
+                 borderRight: i < STAGE_LABELS.length - 1 ? "1px solid var(--pg-row-border)" : undefined,
+               }}>
+            <div className="w-7 h-7 rounded-full flex items-center justify-center mb-1.5 text-[11px] font-bold text-white"
+                 style={{
+                   background: done ? "#059669" : active ? "#FF6600" : "var(--pg-muted-bg)",
+                   color: done || active ? "white" : "var(--pg-text-4)",
+                 }}>
+              {done ? <CheckCircle2 className="w-4 h-4" /> : i + 1}
+            </div>
+            <span className="text-[10px] font-semibold text-center leading-tight"
+                  style={{ color: active ? "#FF6600" : done ? "#059669" : "var(--pg-text-3)" }}>
+              {label}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function RatingButtons({
+  value, onChange, disabled,
+}: { value: number; onChange: (v: number) => void; disabled: boolean }) {
+  return (
+    <div className="flex items-center gap-1">
+      {[1, 2, 3, 4, 5].map(n => {
+        const active = value === n;
+        const color = RATING_COLORS[n];
+        return (
+          <button key={n} type="button" disabled={disabled}
+                  title={RATING_LABELS[n]}
+                  onClick={() => onChange(n)}
+                  className="w-8 h-8 rounded-lg text-[12px] font-bold border-2 transition-all disabled:cursor-not-allowed"
+                  style={{
+                    borderColor: active ? color : "var(--pg-card-border)",
+                    background: active ? color : "transparent",
+                    color: active ? "white" : "var(--pg-text-3)",
+                    transform: active ? "scale(1.1)" : undefined,
+                  }}>
+            {n}
+          </button>
+        );
+      })}
       {value > 0 && (
-        <span className="ml-2 text-[11px] font-medium" style={{ color: "var(--pg-text-3)" }}>
-          {value}/{max}
+        <span className="ml-1.5 text-[10px] font-medium" style={{ color: RATING_COLORS[value] }}>
+          {RATING_LABELS[value]}
         </span>
       )}
     </div>
   );
 }
 
+function ScoreCard({ label, value, color }: { label: string; value?: number; color: string }) {
+  if (value == null) return null;
+  return (
+    <div className="rounded-2xl overflow-hidden" style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}>
+      <div className="h-[3px]" style={{ background: color }} />
+      <div className="px-4 py-3">
+        <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: "var(--pg-text-3)" }}>{label}</p>
+        <p className="text-[22px] font-bold leading-none" style={{ color }}>{value.toFixed(2)} <span className="text-[13px] font-medium" style={{ color: "var(--pg-text-3)" }}>/ 5</span></p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
 export default function CyclePage() {
   const { cycleId } = useParams<{ cycleId: string }>();
-  const router      = useRouter();
   const { toast }   = useToast();
   const queryClient = useQueryClient();
-  const { user }          = useAuth();
-  const { primaryCode }   = usePosition();
+  const { user }    = useAuth();
+  const { primaryCode } = usePosition();
   const isHR = roleFamily(primaryCode) === "hr" || roleFamily(primaryCode) === "md";
 
-  const [responses, setResponses]       = useState<Record<string, { score: number; comment: string }>>({});
-  const [saving, setSaving]             = useState(false);
-  const [submitting, setSubmitting]     = useState(false);
-  const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  // Local editable state
+  const [selfRatings, setSelfRatings]       = useState<Record<string, number>>({});
+  const [agreedRatings, setAgreedRatings]   = useState<Record<string, number>>({});
+  const [employeeComments, setEmployeeComments] = useState("");
+  const [managerComments, setManagerComments]   = useState("");
+  const [developmentPlan, setDevelopmentPlan]   = useState("");
+  const [acting, setActing]                 = useState(false);
+
+  // ── Queries ──────────────────────────────────────────────────────────────────
 
   const { data: cycle } = useQuery<Cycle>({
     queryKey: ["cycle", cycleId],
@@ -90,8 +196,9 @@ export default function CyclePage() {
     },
   });
 
-  const { data: submission, isLoading } = useQuery<SubmissionDetail | null>({
-    queryKey: ["my-submission", cycleId],
+  // Step 1: load the base submission to get the id
+  const { data: baseSubmission, isLoading: loadingBase } = useQuery<{ id: string; status: string } | null>({
+    queryKey: ["my-submission-base", cycleId],
     queryFn: async () => {
       const res = await fetch(`${BASE}/api/v1/appraisal/cycles/${cycleId}/my-submission`, { credentials: "include" });
       if (res.status === 404) return null;
@@ -101,84 +208,131 @@ export default function CyclePage() {
     enabled: Boolean(cycleId),
   });
 
-  // Pre-fill responses from saved self_responses
+  // Step 2: load BSC detail
+  const { data: bsc, isLoading: loadingBSC } = useQuery<BSCSubmission | null>({
+    queryKey: ["bsc-submission", baseSubmission?.id],
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/v1/appraisal/submissions/${baseSubmission!.id}/bsc`, { credentials: "include" });
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error("Failed to load BSC");
+      return res.json();
+    },
+    enabled: Boolean(baseSubmission?.id),
+  });
+
+  const isLoading = loadingBase || (Boolean(baseSubmission?.id) && loadingBSC);
+
+  // Pre-fill local state from server data
   useEffect(() => {
-    if (!submission?.self_responses) return;
-    const init: Record<string, { score: number; comment: string }> = {};
-    submission.self_responses.forEach(r => { init[r.question_id] = { score: r.score, comment: r.comment }; });
-    setResponses(init);
-  }, [submission?.id]);
+    if (!bsc) return;
+    setSelfRatings(bsc.self_json ?? {});
+    setAgreedRatings(bsc.agreed_json ?? {});
+    setEmployeeComments(bsc.employee_comments ?? "");
+    setManagerComments(bsc.manager_comments ?? "");
+    setDevelopmentPlan(bsc.development_plan ?? "");
+  }, [bsc?.id]);
 
-  const questions = submission?.questions ?? [];
-  const categories = [...new Set(questions.map(q => q.category))];
+  // ── Derived state ─────────────────────────────────────────────────────────────
 
-  // Set first category as active
-  useEffect(() => {
-    if (categories.length > 0 && !activeCategory) setActiveCategory(categories[0]);
-  }, [categories.length]);
+  const scorecard = bsc?.scorecard ?? [];
+  const perspectives = useMemo(() => [...new Set(scorecard.map(k => k.perspective))], [scorecard]);
 
-  const visibleQuestions = activeCategory
-    ? questions.filter(q => q.category === activeCategory)
-    : questions;
+  const stage = bsc?.stage ?? 0;
+  const isClosed = cycle?.status === "closed" || cycle?.status === "archived";
 
-  const answeredCount   = Object.values(responses).filter(r => r.score > 0).length;
-  const completionPct   = questions.length > 0 ? Math.round((answeredCount / questions.length) * 100) : 0;
-  const isSubmitted     = submission?.status === "self_submitted" || submission?.status === "manager_scoring" || submission?.status === "completed";
-  const isClosed        = cycle?.status === "closed" || cycle?.status === "archived";
-  const canEdit         = !isSubmitted && !isClosed;
+  // Permissions by stage & role:
+  // Employee can edit self ratings + employee comments when stage === 0
+  // Manager can edit agreed ratings + manager comments + dev plan when stage === 1
+  // HC can finalize when stage === 2
+  const canEditSelf    = !isHR && stage === 0 && !isClosed;
+  const canEditManager = isHR && stage === 1 && !isClosed;
+  const canEditHC      = isHR && stage === 2 && !isClosed;
 
-  async function saveDraft() {
-    if (!submission) return;
-    setSaving(true);
+  const allSelfRated = scorecard.length > 0 && scorecard.every(k => (selfRatings[k.id] ?? 0) > 0);
+  const allAgreedRated = scorecard.length > 0 && scorecard.every(k => (agreedRatings[k.id] ?? 0) > 0);
+
+  // Compute weighted scores
+  const computeScore = (ratings: Record<string, number>) => {
+    if (scorecard.length === 0) return undefined;
+    const total = scorecard.reduce((acc, k) => {
+      const r = ratings[k.id] ?? 0;
+      return acc + r * k.weight;
+    }, 0);
+    const totalWeight = scorecard.reduce((acc, k) => acc + k.weight, 0);
+    return totalWeight > 0 ? total / totalWeight : undefined;
+  };
+
+  const computedSelfScore = computeScore(selfRatings);
+  const computedAgreedScore = computeScore(agreedRatings);
+
+  // ── Actions ───────────────────────────────────────────────────────────────────
+
+  async function doAction(action: string, extraPayload: Record<string, unknown> = {}) {
+    if (!bsc) return;
+    setActing(true);
     try {
-      const payload = Object.entries(responses).map(([qid, r]) => ({
-        question_id: qid, score: r.score, comment: r.comment,
-      })).filter(r => r.score > 0);
-      const res = await fetch(`${BASE}/api/v1/appraisal/cycles/${cycleId}/my-submission/responses`, {
+      const res = await fetch(`${BASE}/api/v1/appraisal/submissions/${bsc.id}/bsc-action`, {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ responses: payload }),
+        body: JSON.stringify({
+          action,
+          self_json: selfRatings,
+          agreed_json: agreedRatings,
+          employee_comments: employeeComments,
+          manager_comments: managerComments,
+          development_plan: developmentPlan,
+          ...extraPayload,
+        }),
       });
-      if (!res.ok) throw new Error((await res.json()).error?.message ?? "Failed to save");
-      queryClient.invalidateQueries({ queryKey: ["my-submission", cycleId] });
-      toast({ title: "Draft saved" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error?.message ?? err?.message ?? "Action failed");
+      }
+      queryClient.invalidateQueries({ queryKey: ["bsc-submission", bsc.id] });
+      queryClient.invalidateQueries({ queryKey: ["my-submission-base", cycleId] });
+      queryClient.invalidateQueries({ queryKey: ["appraisal-cycles"] });
+
+      const labels: Record<string, string> = {
+        "save-self": "Draft saved",
+        "submit-self": "Submitted to manager",
+        "save-manager": "Manager scores saved",
+        "submit-manager": "Submitted to HR / Human Capital",
+        "return-to-employee": "Returned to employee",
+        "finalize": "Appraisal finalised",
+        "return-to-manager": "Returned to manager",
+      };
+      toast({ title: labels[action] ?? "Done" });
     } catch (e) {
-      toast({ title: "Save failed", description: (e as Error).message, variant: "destructive" });
+      toast({ title: "Error", description: (e as Error).message, variant: "destructive" });
     } finally {
-      setSaving(false);
+      setActing(false);
     }
   }
 
-  async function submitSelf() {
-    if (answeredCount < questions.length) {
-      toast({ title: "Incomplete", description: "Please score all questions before submitting.", variant: "destructive" });
+  function handleSubmitSelf() {
+    if (!allSelfRated) {
+      toast({ title: "Incomplete", description: "Please rate all KPIs before submitting.", variant: "destructive" });
       return;
     }
     if (!confirm("Submit your self-assessment? You cannot edit after submitting.")) return;
-    setSubmitting(true);
-    try {
-      // Save responses first, then submit
-      const payload = Object.entries(responses).map(([qid, r]) => ({
-        question_id: qid, score: r.score, comment: r.comment,
-      })).filter(r => r.score > 0);
-      await fetch(`${BASE}/api/v1/appraisal/cycles/${cycleId}/my-submission/responses`, {
-        method: "POST", credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ responses: payload }),
-      });
-      const res = await fetch(`${BASE}/api/v1/appraisal/cycles/${cycleId}/my-submission/submit`, {
-        method: "POST", credentials: "include",
-      });
-      if (!res.ok) throw new Error((await res.json()).error?.message ?? "Failed to submit");
-      queryClient.invalidateQueries({ queryKey: ["my-submission", cycleId] });
-      queryClient.invalidateQueries({ queryKey: ["appraisal-cycles"] });
-      toast({ title: "Assessment Submitted!", description: "Your self-assessment has been submitted successfully." });
-    } catch (e) {
-      toast({ title: "Submit failed", description: (e as Error).message, variant: "destructive" });
-    } finally {
-      setSubmitting(false);
-    }
+    doAction("submit-self");
   }
+
+  function handleSubmitManager() {
+    if (!allAgreedRated) {
+      toast({ title: "Incomplete", description: "Please set agreed ratings for all KPIs.", variant: "destructive" });
+      return;
+    }
+    if (!confirm("Submit to Human Capital? This will lock the agreed scores.")) return;
+    doAction("submit-manager");
+  }
+
+  function handleFinalize() {
+    if (!confirm("Finalise this appraisal? This cannot be undone.")) return;
+    doAction("finalize");
+  }
+
+  // ── Loading ───────────────────────────────────────────────────────────────────
 
   if (isLoading) {
     return (
@@ -188,8 +342,8 @@ export default function CyclePage() {
     );
   }
 
-  // HR redirect banner
-  if (isHR) {
+  // ── HR redirect (non-employee) — only if they don't have a submission themselves ──
+  if (isHR && !bsc) {
     return (
       <div className="max-w-[900px] mx-auto space-y-6">
         <Link href="/appraisal" className="flex items-center gap-1.5 text-[13px]" style={{ color: "var(--pg-text-3)" }}>
@@ -200,20 +354,19 @@ export default function CyclePage() {
             <Settings2 className="w-10 h-10 mx-auto mb-3" style={{ color: "#FF6600" }} />
             <h2 className="text-[16px] font-bold mb-1" style={{ color: "var(--pg-text-1)" }}>{cycle.title}</h2>
             <p className="text-[13px] mb-5" style={{ color: "var(--pg-text-3)" }}>You have HR access. Manage this cycle below.</p>
-            <div className="flex items-center justify-center gap-3">
-              <Link href={`/appraisal/${cycleId}/manage`}
-                    className="flex items-center gap-1.5 h-9 px-5 rounded-xl text-[13px] font-semibold text-white"
-                    style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
-                <Settings2 className="w-3.5 h-3.5" /> Manage Cycle
-              </Link>
-            </div>
+            <Link href={`/appraisal/${cycleId}/manage`}
+                  className="inline-flex items-center gap-1.5 h-9 px-5 rounded-xl text-[13px] font-semibold text-white"
+                  style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
+              <Settings2 className="w-3.5 h-3.5" /> Manage Cycle
+            </Link>
           </div>
         )}
       </div>
     );
   }
 
-  if (!submission && cycle?.status !== "open") {
+  // ── No submission / not open ──────────────────────────────────────────────────
+  if (!bsc && cycle?.status !== "open") {
     return (
       <div className="max-w-[900px] mx-auto space-y-4">
         <Link href="/appraisal" className="flex items-center gap-1.5 text-[13px]" style={{ color: "var(--pg-text-3)" }}>
@@ -230,199 +383,425 @@ export default function CyclePage() {
     );
   }
 
+  // ── Main render ───────────────────────────────────────────────────────────────
+
+  const bandColor = bsc?.band ? (BAND_COLORS[bsc.band] ?? "#6b7280") : undefined;
+
   return (
-    <div className="max-w-[960px] mx-auto space-y-5">
-      {/* Header */}
-      <div className="flex items-start justify-between">
+    <div className="max-w-[1040px] mx-auto space-y-5">
+
+      {/* ── Header ── */}
+      <div className="flex items-start justify-between gap-4">
         <div>
           <Link href="/appraisal" className="flex items-center gap-1.5 text-[12px] mb-2" style={{ color: "var(--pg-text-3)" }}>
             <ChevronLeft className="w-3.5 h-3.5" /> All Appraisals
           </Link>
-          <h1 className="text-[18px] font-bold" style={{ color: "var(--pg-text-1)" }}>
-            {cycle?.title ?? "Self Assessment"}
+          <h1 className="text-[20px] font-bold" style={{ color: "var(--pg-text-1)" }}>
+            {cycle?.title ?? "BSC Appraisal"}
           </h1>
           <p className="text-[12px] mt-0.5" style={{ color: "var(--pg-text-3)" }}>
-            {isSubmitted ? "Your assessment has been submitted." : `${answeredCount}/${questions.length} questions answered`}
-            {submission?.reviewer_name && ` · Reviewer: ${submission.reviewer_name}`}
+            Balanced Scorecard Self-Assessment
+            {bsc?.reviewer_name && ` · Reviewer: ${bsc.reviewer_name}`}
           </p>
         </div>
-        {isSubmitted && submission?.self_score != null && (
-          <div className="text-right">
-            <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--pg-text-3)" }}>Your Score</p>
-            <p className="text-[28px] font-bold" style={{ color: "#FF6600" }}>{submission.self_score.toFixed(1)}%</p>
-            {submission.manager_score != null && (
-              <>
-                <p className="text-[10px] font-bold uppercase tracking-wider mt-1" style={{ color: "var(--pg-text-3)" }}>Manager Score</p>
-                <p className="text-[18px] font-bold" style={{ color: "#059669" }}>{submission.manager_score.toFixed(1)}%</p>
-              </>
-            )}
+
+        {/* Band badge */}
+        {bsc?.band && bandColor && (
+          <div className="rounded-2xl overflow-hidden shrink-0" style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}>
+            <div className="h-[3px]" style={{ background: bandColor }} />
+            <div className="px-4 py-2.5 flex items-center gap-2">
+              <Award className="w-4 h-4" style={{ color: bandColor }} />
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--pg-text-3)" }}>Performance Band</p>
+                <p className="text-[14px] font-bold" style={{ color: bandColor }}>{bsc.band}</p>
+              </div>
+            </div>
           </div>
         )}
       </div>
 
-      {/* Status banner */}
-      {isSubmitted && (
+      {/* ── Stage Rail ── */}
+      <StageRail stage={stage} />
+
+      {/* ── Score metric cards ── */}
+      {(bsc?.self_score != null || bsc?.manager_score != null || computedSelfScore != null) && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <ScoreCard label="Self Score" value={computedSelfScore ?? bsc?.self_score} color="#FF6600" />
+          {(computedAgreedScore != null || bsc?.manager_score != null) && (
+            <ScoreCard label="Agreed Score" value={computedAgreedScore ?? bsc?.manager_score} color="#059669" />
+          )}
+        </div>
+      )}
+
+      {/* ── Status banner ── */}
+      {stage > 0 && (
         <div className="flex items-center gap-3 px-4 py-3.5 rounded-xl"
-             style={{ background: submission?.status === "completed" ? "#ecfdf5" : "#fff7f0",
-                      border: `1px solid ${submission?.status === "completed" ? "#a7f3d0" : "#fed7aa"}` }}>
-          {submission?.status === "completed"
+             style={{
+               background: stage === 3 ? "#ecfdf5" : "#fff7f0",
+               border: `1px solid ${stage === 3 ? "#a7f3d0" : "#fed7aa"}`,
+             }}>
+          {stage === 3
             ? <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
             : <Clock className="w-5 h-5 text-orange-600 shrink-0" />}
           <div>
             <p className="text-[13px] font-semibold" style={{ color: "var(--pg-text-1)" }}>
-              {submission?.status === "completed" ? "Appraisal complete — both scores are in." :
-               submission?.status === "manager_scoring" ? "Your manager is reviewing your submission." :
-               "Self-assessment submitted. Awaiting manager review."}
+              {stage === 3 ? "Appraisal finalised — all stages complete." :
+               stage === 2 ? "Awaiting Human Capital review." :
+               stage === 1 ? "Self-assessment submitted. Your line manager is reviewing." :
+               "In progress — self-assessment stage."}
             </p>
-            {submission?.self_submitted_at && (
+            {bsc?.self_submitted_at && (
               <p className="text-[11px]" style={{ color: "var(--pg-text-3)" }}>
-                Submitted {new Date(submission.self_submitted_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
+                Self submitted {new Date(bsc.self_submitted_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
               </p>
             )}
           </div>
         </div>
       )}
 
-      {/* Progress bar */}
-      {!isSubmitted && questions.length > 0 && (
-        <div className="px-5 py-3 rounded-xl" style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}>
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-[12px] font-medium" style={{ color: "var(--pg-text-2)" }}>Progress</p>
-            <p className="text-[12px] font-bold" style={{ color: completionPct === 100 ? "#059669" : "#FF6600" }}>{completionPct}%</p>
-          </div>
-          <div className="h-2 rounded-full" style={{ background: "var(--pg-muted-bg)" }}>
-            <div className="h-2 rounded-full transition-all duration-500"
-                 style={{ width: `${completionPct}%`, background: completionPct === 100 ? "#059669" : "linear-gradient(90deg,#FF6600,#7c3aed)" }} />
-          </div>
-        </div>
-      )}
-
-      <div className="grid xl:grid-cols-4 gap-5">
-        {/* Category sidebar */}
-        {categories.length > 1 && (
-          <div className="xl:col-span-1">
-            <div className="rounded-2xl overflow-hidden sticky top-4"
-                 style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}>
-              <div className="px-4 py-3" style={{ borderBottom: "1px solid var(--pg-row-border)" }}>
-                <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--pg-text-3)" }}>Categories</p>
-              </div>
-              <div className="p-2">
-                {categories.map(cat => {
-                  const catQs = questions.filter(q => q.category === cat);
-                  const answered = catQs.filter(q => responses[q.id]?.score > 0).length;
-                  const done = answered === catQs.length;
-                  return (
-                    <button key={cat} onClick={() => setActiveCategory(cat)}
-                            className="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl text-left transition-all"
-                            style={activeCategory === cat
-                              ? { background: "linear-gradient(135deg,rgba(255,102,0,0.12),rgba(255,102,0,0.06))", color: "#FF6600" }
-                              : { color: "var(--pg-text-2)" }}>
-                      <span className="text-[12px] font-medium truncate">{cat}</span>
-                      <span className={cn("text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0",
-                                          done ? "text-emerald-600 bg-emerald-50" : "text-slate-500 bg-slate-100")}>
-                        {answered}/{catQs.length}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
+      {/* ── Progress bar (self stage only) ── */}
+      {canEditSelf && scorecard.length > 0 && (() => {
+        const rated = scorecard.filter(k => (selfRatings[k.id] ?? 0) > 0).length;
+        const pct = Math.round((rated / scorecard.length) * 100);
+        return (
+          <div className="px-5 py-3 rounded-xl" style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[12px] font-medium" style={{ color: "var(--pg-text-2)" }}>Progress — {rated}/{scorecard.length} KPIs rated</p>
+              <p className="text-[12px] font-bold" style={{ color: pct === 100 ? "#059669" : "#FF6600" }}>{pct}%</p>
+            </div>
+            <div className="h-2 rounded-full" style={{ background: "var(--pg-muted-bg)" }}>
+              <div className="h-2 rounded-full transition-all duration-500"
+                   style={{ width: `${pct}%`, background: pct === 100 ? "#059669" : "linear-gradient(90deg,#FF6600,#7c3aed)" }} />
             </div>
           </div>
-        )}
+        );
+      })()}
 
-        {/* Questions */}
-        <div className={categories.length > 1 ? "xl:col-span-3" : "xl:col-span-4"}>
-          <div className="space-y-4">
-            {visibleQuestions.map((q, idx) => {
-              const resp = responses[q.id] ?? { score: 0, comment: "" };
-              const managerResp = submission?.manager_responses?.find(r => r.question_id === q.id);
-              return (
-                <div key={q.id} className="rounded-2xl overflow-hidden"
-                     style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}>
-                  {/* Question header */}
-                  <div className="px-5 py-4" style={{ borderBottom: "1px solid var(--pg-row-border)" }}>
-                    <div className="flex items-start gap-3">
-                      <span className="w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-bold text-white shrink-0 mt-0.5"
-                            style={{ background: resp.score > 0 ? "#059669" : "#94a3b8" }}>
-                        {resp.score > 0 ? <CheckCircle2 className="w-3.5 h-3.5" /> : idx + 1}
-                      </span>
-                      <div className="flex-1">
-                        <p className="text-[13px] font-semibold leading-snug" style={{ color: "var(--pg-text-1)" }}>{q.text}</p>
-                        {q.description && (
-                          <p className="text-[11px] mt-1" style={{ color: "var(--pg-text-3)" }}>{q.description}</p>
-                        )}
-                        <div className="flex items-center gap-3 mt-1.5">
-                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full"
-                                style={{ background: "var(--pg-muted-bg)", color: "var(--pg-text-3)" }}>{q.category}</span>
-                          <span className="text-[10px]" style={{ color: "var(--pg-text-4)" }}>
-                            Weight: {Math.round(q.weight * 100)}% · Max: {q.max_score}
-                          </span>
+      {/* ── BSC Scorecard ── */}
+      <div className="space-y-5">
+        {perspectives.map(persp => {
+          const kpis = scorecard.filter(k => k.perspective === persp).sort((a, b) => a.seq - b.seq);
+          const color = perspectiveColor(persp);
+          const perspWeight = kpis.reduce((s, k) => s + k.weight, 0);
+
+          return (
+            <div key={persp} className="rounded-2xl overflow-hidden" style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}>
+              {/* Perspective header */}
+              <div className="h-[3px]" style={{ background: color }} />
+              <div className="px-5 py-3.5 flex items-center justify-between" style={{ borderBottom: "1px solid var(--pg-row-border)" }}>
+                <div className="flex items-center gap-2.5">
+                  <div className="w-2 h-2 rounded-full" style={{ background: color }} />
+                  <p className="text-[13px] font-bold" style={{ color }}>{persp}</p>
+                </div>
+                <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full"
+                      style={{ background: `${color}18`, color }}>
+                  {Math.round(perspWeight * 100)}% weight
+                </span>
+              </div>
+
+              {/* KPI table header */}
+              <div className="grid gap-0" style={{ gridTemplateColumns: "2fr 2fr 1fr 120px 120px" }}>
+                {["Objective", "Measure / KPI", "Target", "Self Rating", "Agreed Rating"].map(h => (
+                  <div key={h} className="px-4 py-2 text-[10px] font-bold uppercase tracking-wider"
+                       style={{ color: "var(--pg-text-3)", borderBottom: "1px solid var(--pg-row-border)", background: "var(--pg-muted-bg)" }}>
+                    {h}
+                  </div>
+                ))}
+              </div>
+
+              {/* KPI rows */}
+              {kpis.map((kpi, idx) => {
+                const selfVal = selfRatings[kpi.id] ?? 0;
+                const agreedVal = agreedRatings[kpi.id] ?? 0;
+                const isLast = idx === kpis.length - 1;
+
+                return (
+                  <div key={kpi.id}
+                       className="grid transition-colors"
+                       style={{ gridTemplateColumns: "2fr 2fr 1fr 120px 120px",
+                                borderBottom: !isLast ? "1px solid var(--pg-row-border)" : undefined }}>
+                    {/* Objective */}
+                    <div className="px-4 py-3.5">
+                      <p className="text-[12px] font-semibold leading-snug" style={{ color: "var(--pg-text-1)" }}>{kpi.objective}</p>
+                      <p className="text-[10px] mt-0.5 font-medium" style={{ color }}>
+                        {Math.round(kpi.weight * 100)}% weight
+                      </p>
+                    </div>
+
+                    {/* Measure */}
+                    <div className="px-4 py-3.5 flex items-start">
+                      <p className="text-[12px] leading-snug" style={{ color: "var(--pg-text-2)" }}>{kpi.measure}</p>
+                    </div>
+
+                    {/* Target */}
+                    <div className="px-4 py-3.5 flex items-start">
+                      <p className="text-[11px] font-medium" style={{ color: "var(--pg-text-3)" }}>{kpi.target}</p>
+                    </div>
+
+                    {/* Self rating */}
+                    <div className="px-3 py-3.5 flex items-center">
+                      {canEditSelf ? (
+                        <div className="flex flex-col gap-1">
+                          <div className="flex gap-1">
+                            {[1, 2, 3, 4, 5].map(n => (
+                              <button key={n} type="button"
+                                      title={RATING_LABELS[n]}
+                                      onClick={() => setSelfRatings(prev => ({ ...prev, [kpi.id]: n }))}
+                                      className="w-7 h-7 rounded-lg text-[11px] font-bold border transition-all"
+                                      style={{
+                                        borderColor: selfVal === n ? RATING_COLORS[n] : "var(--pg-card-border)",
+                                        background: selfVal === n ? RATING_COLORS[n] : "transparent",
+                                        color: selfVal === n ? "white" : "var(--pg-text-4)",
+                                        transform: selfVal === n ? "scale(1.1)" : undefined,
+                                      }}>
+                                {n}
+                              </button>
+                            ))}
+                          </div>
+                          {selfVal > 0 && (
+                            <span className="text-[9px] font-medium" style={{ color: RATING_COLORS[selfVal] }}>
+                              {RATING_LABELS[selfVal]}
+                            </span>
+                          )}
                         </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Self scoring */}
-                  <div className="px-5 py-4 space-y-3">
-                    <div>
-                      <p className="text-[11px] font-semibold mb-2" style={{ color: "var(--pg-text-2)" }}>Your Score</p>
-                      <ScoreSelector value={resp.score} max={q.max_score}
-                                     onChange={v => setResponses(prev => ({ ...prev, [q.id]: { ...prev[q.id], score: v } }))}
-                                     disabled={!canEdit} />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold mb-1.5" style={{ color: "var(--pg-text-2)" }}>
-                        Comment <span style={{ color: "var(--pg-text-4)" }}>(optional)</span>
-                      </label>
-                      <textarea value={resp.comment} rows={2} disabled={!canEdit}
-                                onChange={e => setResponses(prev => ({ ...prev, [q.id]: { ...prev[q.id], comment: e.target.value } }))}
-                                placeholder="Add context or justification…"
-                                className="w-full px-3 py-2 rounded-xl text-[12px] outline-none resize-none disabled:opacity-60"
-                                style={{ background: "var(--pg-input)", border: "1px solid var(--pg-input-border)", color: "var(--pg-text-1)" }} />
-                    </div>
-                  </div>
-
-                  {/* Manager score (read-only, shown after completion) */}
-                  {managerResp && (
-                    <div className="px-5 py-3 border-t" style={{ borderColor: "var(--pg-row-border)", background: "var(--pg-muted-bg)" }}>
-                      <p className="text-[11px] font-semibold mb-1.5" style={{ color: "#7c3aed" }}>Manager Score</p>
-                      <ScoreSelector value={managerResp.score} max={q.max_score} onChange={() => {}} disabled={true} />
-                      {managerResp.comment && (
-                        <p className="text-[11px] mt-2 italic" style={{ color: "var(--pg-text-3)" }}>{managerResp.comment}</p>
+                      ) : (
+                        <div>
+                          {selfVal > 0 ? (
+                            <>
+                              <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-[12px] font-bold text-white"
+                                    style={{ background: RATING_COLORS[selfVal] }}>
+                                {selfVal}
+                              </span>
+                              <p className="text-[9px] mt-0.5 font-medium" style={{ color: RATING_COLORS[selfVal] }}>
+                                {RATING_LABELS[selfVal]}
+                              </p>
+                            </>
+                          ) : (
+                            <span className="text-[11px]" style={{ color: "var(--pg-text-4)" }}>—</span>
+                          )}
+                        </div>
                       )}
                     </div>
-                  )}
-                </div>
-              );
-            })}
+
+                    {/* Agreed rating */}
+                    <div className="px-3 py-3.5 flex items-center"
+                         style={{ background: canEditManager ? "rgba(124,58,237,0.03)" : undefined }}>
+                      {canEditManager ? (
+                        <div className="flex flex-col gap-1">
+                          <div className="flex gap-1">
+                            {[1, 2, 3, 4, 5].map(n => (
+                              <button key={n} type="button"
+                                      title={RATING_LABELS[n]}
+                                      onClick={() => setAgreedRatings(prev => ({ ...prev, [kpi.id]: n }))}
+                                      className="w-7 h-7 rounded-lg text-[11px] font-bold border transition-all"
+                                      style={{
+                                        borderColor: agreedVal === n ? "#7c3aed" : "var(--pg-card-border)",
+                                        background: agreedVal === n ? "#7c3aed" : "transparent",
+                                        color: agreedVal === n ? "white" : "var(--pg-text-4)",
+                                        transform: agreedVal === n ? "scale(1.1)" : undefined,
+                                      }}>
+                                {n}
+                              </button>
+                            ))}
+                          </div>
+                          {agreedVal > 0 && (
+                            <span className="text-[9px] font-medium" style={{ color: "#7c3aed" }}>
+                              {RATING_LABELS[agreedVal]}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <div>
+                          {agreedVal > 0 ? (
+                            <>
+                              <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-[12px] font-bold text-white"
+                                    style={{ background: "#7c3aed" }}>
+                                {agreedVal}
+                              </span>
+                              <p className="text-[9px] mt-0.5 font-medium" style={{ color: "#7c3aed" }}>
+                                {RATING_LABELS[agreedVal]}
+                              </p>
+                            </>
+                          ) : (
+                            <span className="text-[11px]" style={{ color: "var(--pg-text-4)" }}>—</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Comments & Development Plan ── */}
+      {scorecard.length > 0 && (
+        <div className="grid sm:grid-cols-2 gap-4">
+          {/* Employee Comments */}
+          <div className="rounded-2xl overflow-hidden" style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}>
+            <div className="h-[3px]" style={{ background: "#FF6600" }} />
+            <div className="p-4">
+              <label className="block text-[11px] font-bold uppercase tracking-wider mb-2" style={{ color: "var(--pg-text-3)" }}>
+                Employee Comments
+              </label>
+              <textarea
+                value={employeeComments}
+                rows={4}
+                disabled={!canEditSelf}
+                onChange={e => setEmployeeComments(e.target.value)}
+                placeholder={canEditSelf ? "Share your reflections, achievements, and challenges…" : "No comments provided."}
+                className="w-full px-3 py-2 rounded-xl text-[12px] outline-none resize-none disabled:opacity-60"
+                style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)", color: "var(--pg-text-1)" }}
+              />
+            </div>
           </div>
 
-          {/* Actions */}
-          {canEdit && questions.length > 0 && (
-            <div className="flex items-center justify-between mt-5 pt-5" style={{ borderTop: "1px solid var(--pg-row-border)" }}>
-              <p className="text-[12px]" style={{ color: "var(--pg-text-3)" }}>
-                {answeredCount < questions.length
-                  ? `${questions.length - answeredCount} question${questions.length - answeredCount > 1 ? "s" : ""} remaining`
-                  : "All questions answered — ready to submit!"}
-              </p>
-              <div className="flex gap-2">
-                <button onClick={saveDraft} disabled={saving || answeredCount === 0}
-                        className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold disabled:opacity-50"
-                        style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}>
-                  {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                  Save Draft
-                </button>
-                <button onClick={submitSelf} disabled={submitting || answeredCount < questions.length}
-                        className="flex items-center gap-1.5 h-9 px-5 rounded-xl text-[13px] font-semibold text-white disabled:opacity-50"
-                        style={{ background: answeredCount === questions.length ? "linear-gradient(135deg,#059669,#047857)" : "linear-gradient(135deg,#FF6600,#E05500)" }}>
-                  {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-                  Submit Assessment
-                </button>
+          {/* Development Plan */}
+          <div className="rounded-2xl overflow-hidden" style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}>
+            <div className="h-[3px]" style={{ background: "#1d4ed8" }} />
+            <div className="p-4">
+              <label className="block text-[11px] font-bold uppercase tracking-wider mb-2" style={{ color: "var(--pg-text-3)" }}>
+                Development Plan
+              </label>
+              <textarea
+                value={developmentPlan}
+                rows={4}
+                disabled={!canEditSelf && !canEditManager}
+                onChange={e => setDevelopmentPlan(e.target.value)}
+                placeholder={(canEditSelf || canEditManager) ? "Outline development goals and training needs…" : "No development plan provided."}
+                className="w-full px-3 py-2 rounded-xl text-[12px] outline-none resize-none disabled:opacity-60"
+                style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)", color: "var(--pg-text-1)" }}
+              />
+            </div>
+          </div>
+
+          {/* Manager Comments */}
+          {(stage >= 1 || canEditManager) && (
+            <div className="rounded-2xl overflow-hidden" style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}>
+              <div className="h-[3px]" style={{ background: "#7c3aed" }} />
+              <div className="p-4">
+                <label className="block text-[11px] font-bold uppercase tracking-wider mb-2" style={{ color: "var(--pg-text-3)" }}>
+                  Manager Comments
+                </label>
+                <textarea
+                  value={managerComments}
+                  rows={4}
+                  disabled={!canEditManager}
+                  onChange={e => setManagerComments(e.target.value)}
+                  placeholder={canEditManager ? "Provide your assessment and feedback…" : "Awaiting manager comments."}
+                  className="w-full px-3 py-2 rounded-xl text-[12px] outline-none resize-none disabled:opacity-60"
+                  style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)", color: "var(--pg-text-1)" }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* HC Comments (read-only) */}
+          {bsc?.hc_comments && (
+            <div className="rounded-2xl overflow-hidden" style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}>
+              <div className="h-[3px]" style={{ background: "#059669" }} />
+              <div className="p-4">
+                <label className="block text-[11px] font-bold uppercase tracking-wider mb-2" style={{ color: "var(--pg-text-3)" }}>
+                  Human Capital Comments
+                </label>
+                <p className="text-[12px] leading-relaxed" style={{ color: "var(--pg-text-2)" }}>{bsc.hc_comments}</p>
               </div>
             </div>
           )}
         </div>
-      </div>
+      )}
+
+      {/* ── Action Bar ── */}
+      {scorecard.length > 0 && (
+        <div className="flex items-center justify-between pt-5 pb-2" style={{ borderTop: "1px solid var(--pg-row-border)" }}>
+          <p className="text-[12px]" style={{ color: "var(--pg-text-3)" }}>
+            {canEditSelf && !allSelfRated && `${scorecard.filter(k => !(selfRatings[k.id] ?? 0)).length} KPI${scorecard.filter(k => !(selfRatings[k.id] ?? 0)).length !== 1 ? "s" : ""} remaining`}
+            {canEditSelf && allSelfRated && "All KPIs rated — ready to submit!"}
+            {canEditManager && !allAgreedRated && `${scorecard.filter(k => !(agreedRatings[k.id] ?? 0)).length} agreed rating${scorecard.filter(k => !(agreedRatings[k.id] ?? 0)).length !== 1 ? "s" : ""} remaining`}
+            {canEditManager && allAgreedRated && "All agreed ratings set — ready to submit to HC!"}
+            {!canEditSelf && !canEditManager && !canEditHC && stage < 3 && "Awaiting next stage."}
+            {stage === 3 && "Appraisal complete."}
+          </p>
+
+          <div className="flex items-center gap-2">
+            {/* Self stage actions */}
+            {canEditSelf && (
+              <>
+                <button
+                  onClick={() => doAction("save-self")}
+                  disabled={acting}
+                  className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold disabled:opacity-50"
+                  style={{ background: "var(--pg-muted-bg)", color: "var(--pg-text-2)", border: "1px solid var(--pg-card-border)" }}>
+                  {acting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                  Save Draft
+                </button>
+                <button
+                  onClick={handleSubmitSelf}
+                  disabled={acting || !allSelfRated}
+                  className="flex items-center gap-1.5 h-9 px-5 rounded-xl text-[13px] font-semibold text-white disabled:opacity-50"
+                  style={{ background: allSelfRated ? "linear-gradient(135deg,#059669,#047857)" : "linear-gradient(135deg,#FF6600,#E05500)" }}>
+                  {acting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                  Submit to Manager
+                </button>
+              </>
+            )}
+
+            {/* Manager stage actions */}
+            {canEditManager && (
+              <>
+                <button
+                  onClick={() => doAction("return-to-employee")}
+                  disabled={acting}
+                  className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold disabled:opacity-50"
+                  style={{ background: "var(--pg-muted-bg)", color: "#dc2626", border: "1px solid #fecaca" }}>
+                  {acting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                  Return to Employee
+                </button>
+                <button
+                  onClick={() => doAction("save-manager")}
+                  disabled={acting}
+                  className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold disabled:opacity-50"
+                  style={{ background: "var(--pg-muted-bg)", color: "var(--pg-text-2)", border: "1px solid var(--pg-card-border)" }}>
+                  {acting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                  Save
+                </button>
+                <button
+                  onClick={handleSubmitManager}
+                  disabled={acting || !allAgreedRated}
+                  className="flex items-center gap-1.5 h-9 px-5 rounded-xl text-[13px] font-semibold text-white disabled:opacity-50"
+                  style={{ background: "linear-gradient(135deg,#7c3aed,#6d28d9)" }}>
+                  {acting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                  Submit to HC
+                </button>
+              </>
+            )}
+
+            {/* HC stage actions */}
+            {canEditHC && (
+              <>
+                <button
+                  onClick={() => doAction("return-to-manager")}
+                  disabled={acting}
+                  className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold disabled:opacity-50"
+                  style={{ background: "var(--pg-muted-bg)", color: "#dc2626", border: "1px solid #fecaca" }}>
+                  {acting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                  Return to Manager
+                </button>
+                <button
+                  onClick={handleFinalize}
+                  disabled={acting}
+                  className="flex items-center gap-1.5 h-9 px-5 rounded-xl text-[13px] font-semibold text-white disabled:opacity-50"
+                  style={{ background: "linear-gradient(135deg,#059669,#047857)" }}>
+                  {acting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                  Finalise
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

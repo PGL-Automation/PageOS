@@ -67,6 +67,9 @@ func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	// Employee: list all their own submissions across cycles
 	r.Get("/my-submissions", h.listMySubmissions)
 
+	// BSC extensions
+	h.RegisterBSCRoutes(r)
+
 	return r
 }
 

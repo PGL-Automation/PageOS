@@ -1211,6 +1211,50 @@ func (s *Service) questionsByCycleFromSubmission(ctx context.Context, submission
 	return s.ListQuestions(ctx, cycleID)
 }
 
+// IsHR returns true if the user holds an HR or HC role in the org.
+func (s *Service) IsHR(ctx context.Context, userID uuid.UUID) bool {
+	const q = `
+		SELECT EXISTS(
+			SELECT 1 FROM organization.assignment a
+			JOIN organization.position p ON p.id = a.position_id
+			WHERE a.person_id = (SELECT id FROM organization.person WHERE user_id=$1 LIMIT 1)
+			  AND a.effective_to IS NULL
+			  AND (p.code ILIKE '%HR%' OR p.code ILIKE '%HUMAN_CAPITAL%' OR p.code ILIKE '%HEAD_HUMAN%' OR p.code ILIKE 'HR_MANAGER%')
+		)
+	`
+	var isHR bool
+	_ = s.pool.QueryRow(ctx, q, userID).Scan(&isHR)
+	return isHR
+}
+
+// IsManagerOf returns true if managerUserID is recorded as the manager of employeeUserID
+// in the current cycle's submissions or in the org assignment.
+func (s *Service) IsManagerOf(ctx context.Context, managerUserID, employeeUserID uuid.UUID) bool {
+	// Check via submission manager_id
+	var exists bool
+	_ = s.pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM appraisal.submission WHERE appraisee_id=$1 AND manager_id=$2)`,
+		employeeUserID, managerUserID,
+	).Scan(&exists)
+	if exists {
+		return true
+	}
+	// Fallback: check org reporting line
+	const q = `
+		SELECT EXISTS(
+			SELECT 1 FROM organization.person emp
+			JOIN organization.assignment a ON a.person_id = emp.id AND a.effective_to IS NULL
+			JOIN organization.position p ON p.id = a.position_id
+			JOIN organization.position rp ON rp.id = p.reports_to_position_id
+			JOIN organization.assignment ra ON ra.position_id = rp.id AND ra.effective_to IS NULL
+			JOIN organization.person mgr ON mgr.id = ra.person_id
+			WHERE emp.user_id = $1 AND mgr.user_id = $2
+		)
+	`
+	_ = s.pool.QueryRow(ctx, q, employeeUserID, managerUserID).Scan(&exists)
+	return exists
+}
+
 // Ensure fmt, errors, strings are used (they are, but this guards against
 // accidental removal during refactors).
 var _ = fmt.Sprintf
