@@ -4,11 +4,12 @@ import { useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { usePosition, roleFamily } from "@/lib/position";
+import { useTeamView } from "@/lib/team-view";
 import { useAuth } from "@/lib/auth";
 import {
   ClipboardList, ChevronRight, Clock, CheckCircle2, AlertCircle,
   Users, Star, Calendar, Lock, Eye, Settings2, UserCheck,
-  BarChart2, Loader2,
+  BarChart2, Loader2, Layers, Target,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -16,6 +17,7 @@ const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
 
 type Cycle = {
   id: string; title: string; description: string; status: string;
+  phase?: string; // "target" | "appraisal"
   self_deadline?: string; manager_deadline?: string;
   subsidiary_id?: string;
   question_count: number; submission_count: number;
@@ -64,7 +66,9 @@ function formatDeadline(d?: string) {
 export default function AppraisalPage() {
   const { user }              = useAuth();
   const { primaryCode, isLoading: posLoading } = usePosition();
-  const isHR = roleFamily(primaryCode) === "hr" || roleFamily(primaryCode) === "md";
+  const tv = useTeamView();
+  const isHR       = roleFamily(primaryCode) === "hr" || roleFamily(primaryCode) === "md";
+  const isDeptHead = tv.isTeamHead; // GROUP_HEAD_WEALTH_MGMT, HEAD_OF_INVESTMENT, etc.
 
   const { data: cycles = [], isLoading: cyclesLoading } = useQuery<Cycle[]>({
     queryKey: ["appraisal-cycles"],
@@ -96,8 +100,15 @@ export default function AppraisalPage() {
     enabled: !posLoading,
   });
 
-  const openCycles   = cycles.filter(c => c.status === "open");
-  const activeSub    = mySubmissions.find(s => openCycles.some(c => c.id === s.cycle_id));
+  const openCycles = cycles.filter(c => c.status === "open");
+
+  // Employees only see cycles in the "appraisal" phase (not target-setting phase)
+  // Dept heads and HR see all open cycles
+  const employeeVisibleCycles = openCycles.filter(c =>
+    isHR || isDeptHead || c.phase === "appraisal" || !c.phase
+  );
+
+  const activeSub = mySubmissions.find(s => employeeVisibleCycles.some(c => c.id === s.cycle_id));
   const firstName    = user?.DisplayName?.split(" ")[0] ?? "there";
 
   if (posLoading || cyclesLoading) {
@@ -130,14 +141,72 @@ export default function AppraisalPage() {
         )}
       </div>
 
-      {/* My assessment card — if there's an active open cycle */}
-      {openCycles.length > 0 && (
+      {/* ── Dept Head Tools — shown when user is GROUP_HEAD_* or HEAD_* ── */}
+      {isDeptHead && openCycles.length > 0 && (
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-widest mb-3" style={{ color: "var(--pg-text-3)" }}>
+            Team Appraisal Management
+          </p>
+          <div className="space-y-3">
+            {openCycles.map(cycle => {
+              const isTargetPhase = !cycle.phase || cycle.phase === "target";
+              return (
+                <div key={cycle.id} className="rounded-2xl overflow-hidden"
+                     style={{ background: "var(--pg-card)", border: `1px solid ${isTargetPhase ? "#fcd34d" : "#86efac"}`, boxShadow: "0 1px 4px rgba(0,0,0,0.05)" }}>
+                  <div className="h-[3px]" style={{ background: isTargetPhase ? "#d97706" : "#059669" }} />
+                  <div className="px-5 py-4">
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <p className="text-[14px] font-bold" style={{ color: "var(--pg-text-1)" }}>{cycle.title}</p>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                              style={{ background: isTargetPhase ? "#fffbeb" : "#ecfdf5", color: isTargetPhase ? "#d97706" : "#059669" }}>
+                          {isTargetPhase ? "Target Setting Phase" : "Appraisal Phase"}
+                        </span>
+                      </div>
+                      {cycle.submission_count > 0 && (
+                        <span className="text-[11px]" style={{ color: "var(--pg-text-3)" }}>{cycle.submission_count} participants</span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Link href={`/appraisal/${cycle.id}/kpis`}
+                            className="flex items-center gap-2 p-3 rounded-xl transition-all"
+                            style={{ background: "#1d4ed808", border: "1px solid #bfdbfe" }}
+                            onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#1d4ed815"}
+                            onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "#1d4ed808"}>
+                        <Layers className="w-4 h-4 shrink-0" style={{ color: "#1d4ed8" }} />
+                        <div>
+                          <p className="text-[12px] font-bold" style={{ color: "#1d4ed8" }}>Configure KPIs</p>
+                          <p className="text-[10px]" style={{ color: "var(--pg-text-3)" }}>Set BSC objectives & weights</p>
+                        </div>
+                      </Link>
+                      <Link href={`/appraisal/${cycle.id}/targets`}
+                            className="flex items-center gap-2 p-3 rounded-xl transition-all"
+                            style={{ background: "#d9770608", border: "1px solid #fcd34d" }}
+                            onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#d9770615"}
+                            onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "#d9770608"}>
+                        <Target className="w-4 h-4 shrink-0" style={{ color: "#d97706" }} />
+                        <div>
+                          <p className="text-[12px] font-bold" style={{ color: "#d97706" }}>Set Targets</p>
+                          <p className="text-[10px]" style={{ color: "var(--pg-text-3)" }}>Individual KPIs for your team</p>
+                        </div>
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* My assessment card — only shown when cycle is in appraisal phase */}
+      {employeeVisibleCycles.length > 0 && (
         <div>
           <p className="text-[11px] font-bold uppercase tracking-widest mb-3" style={{ color: "var(--pg-text-3)" }}>
             My Assessment
           </p>
           <div className="space-y-3">
-            {openCycles.map(cycle => {
+            {employeeVisibleCycles.map(cycle => {
               const mySub = mySubmissions.find(s => s.cycle_id === cycle.id);
               const st    = statusLabel(mySub?.status ?? "pending");
               const dl    = formatDeadline(cycle.self_deadline);
@@ -294,7 +363,7 @@ export default function AppraisalPage() {
       )}
 
       {/* Empty state */}
-      {!cyclesLoading && openCycles.length === 0 && pendingReviews.length === 0 && (
+      {!cyclesLoading && employeeVisibleCycles.length === 0 && pendingReviews.length === 0 && !isDeptHead && (
         <div className="flex flex-col items-center justify-center py-20 rounded-2xl"
              style={{ background: "var(--pg-card)", border: "1px dashed var(--pg-card-border)" }}>
           <ClipboardList className="w-10 h-10 mb-3" style={{ color: "var(--pg-text-4)" }} />

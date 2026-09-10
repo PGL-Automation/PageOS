@@ -324,6 +324,10 @@ func (h *Handler) setCyclePhase(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", err.Error())
 		return
 	}
+	// When switching to appraisal phase, notify all employees that they can now submit
+	if body.Phase == "appraisal" {
+		go h.svc.NotifyEmployeesOnAppraisalPhase(context.Background(), cycleID)
+	}
 	httpx.JSON(w, http.StatusOK, map[string]string{"phase": body.Phase})
 }
 

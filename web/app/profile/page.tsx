@@ -225,18 +225,12 @@ export default function ProfilePage() {
       <div className="rounded-2xl overflow-hidden"
            style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)", boxShadow: "0 1px 4px rgba(0,0,0,0.05)" }}>
 
-        {/* Banner */}
-        <div className="h-24 relative" style={{ background: "linear-gradient(135deg,#080d18,#1e3a8a)" }}>
-          <div className="absolute inset-0 opacity-[0.07]"
-               style={{ backgroundImage: "linear-gradient(rgba(255,255,255,1) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,1) 1px,transparent 1px)", backgroundSize: "32px 32px" }} />
-        </div>
-
-        <div className="px-6 pb-5">
-          <div className="flex items-end gap-4 -mt-10 mb-4">
+        <div className="px-6 pt-5 pb-5">
+          <div className="flex items-center gap-4 mb-4">
             {/* Avatar with photo-change hover */}
             <div className="relative group cursor-pointer" onClick={() => photoRef.current?.click()}>
-              <div className="w-20 h-20 rounded-2xl flex items-center justify-center text-[22px] font-bold text-white ring-4 ring-white dark:ring-[#0c1222]"
-                   style={{ background: "linear-gradient(135deg,#FF6600,#E05500)", boxShadow: "0 4px 16px rgba(255,102,0,0.4)" }}>
+              <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-[20px] font-bold text-white"
+                   style={{ background: "linear-gradient(135deg,#FF6600,#E05500)", boxShadow: "0 2px 12px rgba(255,102,0,0.3)" }}>
                 {initials}
               </div>
               <div className="absolute inset-0 rounded-2xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"

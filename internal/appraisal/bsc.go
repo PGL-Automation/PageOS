@@ -410,6 +410,40 @@ func (s *Service) NotifyDeptHeadsOnCycleOpen(ctx context.Context, cycleID uuid.U
 	}
 }
 
+// NotifyEmployeesOnAppraisalPhase sends an in-app notification to all employees
+// with submissions in the cycle when HR switches it to the "appraisal" phase.
+func (s *Service) NotifyEmployeesOnAppraisalPhase(ctx context.Context, cycleID uuid.UUID) {
+	var cycleName string
+	_ = s.pool.QueryRow(ctx, `SELECT title FROM appraisal.cycle WHERE id=$1`, cycleID).Scan(&cycleName)
+
+	const q = `
+		SELECT DISTINCT appraisee_id FROM appraisal.submission
+		WHERE cycle_id = $1 AND status NOT IN ('finalized','completed')
+	`
+	rows, err := s.pool.Query(ctx, q, cycleID)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	cycleIDCopy := cycleID
+	for rows.Next() {
+		var userID uuid.UUID
+		if err := rows.Scan(&userID); err != nil {
+			continue
+		}
+		_ = notification.SendToUserByID(ctx, s.pool, userID, notification.InApp{
+			Type:       "appraisal_now_open",
+			Title:      "Your appraisal is now open",
+			Body:       fmt.Sprintf("The \"%s\" appraisal cycle is now in the assessment phase. Log in to complete your self-assessment.", cycleName),
+			Link:       fmt.Sprintf("/appraisal/%s", cycleID),
+			Priority:   "high",
+			EntityType: "appraisal_cycle",
+			EntityID:   &cycleIDCopy,
+		})
+	}
+}
+
 // SetTargetStatus updates the target_status field on a submission.
 func (s *Service) SetTargetStatus(ctx context.Context, cycleID, employeeID uuid.UUID, status string) error {
 	_, err := s.pool.Exec(ctx,

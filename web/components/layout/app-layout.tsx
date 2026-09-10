@@ -129,6 +129,9 @@ const COMPLIANCE_NAV: NavGroup[] = [
     { href: "/risk",                  label: "Risk",           icon: AlertTriangle },
     { href: "/audit",                 label: "Internal Audit", icon: Search },
   ]},
+  { id: "appraisal", label: "Appraisal", items: [
+    { href: "/appraisal",             label: "My Appraisal",   icon: ClipboardList },
+  ]},
   { id: "actions", label: "Actions", items: [
     { href: "/approval",              label: "Approvals",      icon: CheckSquare },
     { href: "/leave",                 label: "My Leave",       icon: CalendarDays },
@@ -155,6 +158,9 @@ const FINANCE_NAV: NavGroup[] = [
     { href: "/finance/payables",      label: "Payables",       icon: CreditCard },
     { href: "/finance/receivables",   label: "Receivables",    icon: Wallet },
     { href: "/finance/assets",        label: "Fixed Assets",   icon: Package },
+  ]},
+  { id: "appraisal", label: "Appraisal", items: [
+    { href: "/appraisal",             label: "My Appraisal",   icon: ClipboardList },
   ]},
   { id: "actions", label: "Actions", items: [
     { href: "/approval",              label: "Approvals",      icon: CheckSquare },

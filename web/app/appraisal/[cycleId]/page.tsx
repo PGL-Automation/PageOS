@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { usePosition, roleFamily } from "@/lib/position";
+import { useTeamView } from "@/lib/team-view";
 import {
   ChevronLeft, CheckCircle2, Clock, Save, Send, Lock,
   Loader2, Settings2, RotateCcw, Award, ClipboardList, AlertCircle, ThumbsUp, ThumbsDown,
@@ -272,7 +273,9 @@ export default function CyclePage() {
   const queryClient = useQueryClient();
   const { user }    = useAuth();
   const { primaryCode } = usePosition();
-  const isHR = roleFamily(primaryCode) === "hr" || roleFamily(primaryCode) === "md";
+  const tv = useTeamView();
+  const isHR       = roleFamily(primaryCode) === "hr" || roleFamily(primaryCode) === "md";
+  const isDeptHead = tv.isTeamHead;
 
   // Local editable state
   const [selfRatings, setSelfRatings]       = useState<Record<string, number>>({});
@@ -460,6 +463,34 @@ export default function CyclePage() {
             </Link>
           </div>
         )}
+      </div>
+    );
+  }
+
+  // ── Phase gate — employees cannot see this during target-setting phase ───────
+  if (!isHR && !isDeptHead && cycle?.status === "open" && cycle?.phase === "target") {
+    return (
+      <div className="max-w-[900px] mx-auto space-y-4">
+        <Link href="/appraisal" className="flex items-center gap-1.5 text-[13px]" style={{ color: "var(--pg-text-3)" }}>
+          <ChevronLeft className="w-4 h-4" /> Back
+        </Link>
+        <div className="flex flex-col items-center justify-center py-20 rounded-2xl text-center"
+             style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}>
+          <Lock className="w-10 h-10 mb-3" style={{ color: "var(--pg-text-4)" }} />
+          <p className="text-[15px] font-bold" style={{ color: "var(--pg-text-1)" }}>
+            Appraisal not yet open for submissions
+          </p>
+          <p className="text-[13px] mt-2 max-w-sm" style={{ color: "var(--pg-text-3)" }}>
+            HR and your department head are currently setting targets for your team.
+            You will be notified when you can complete your self-assessment.
+          </p>
+          {cycle && (
+            <p className="text-[11px] mt-4 px-3 py-1.5 rounded-xl font-medium"
+               style={{ background: "#fffbeb", color: "#d97706" }}>
+              {cycle.title} · Target Setting Phase
+            </p>
+          )}
+        </div>
       </div>
     );
   }
