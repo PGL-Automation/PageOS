@@ -225,6 +225,8 @@ func run() error {
 			getUserDetailHandler(pool, orgSvc, appraisalSvc))
 		api.With(identityH.Authenticator).Post("/admin/users/{userId}/transfer",
 			transferEmployeeHandler(pool, orgSvc, auditWriter))
+		api.With(identityH.Authenticator).Patch("/admin/users/{userId}/profile",
+			updateProfileHandler(pool, auditWriter))
 		api.With(identityH.Authenticator).Patch("/admin/users/{userId}/grade",
 			updateGradeHandler(pool, orgSvc, auditWriter))
 		api.With(identityH.Authenticator).Get("/admin/pending-grades",
@@ -1096,6 +1098,80 @@ func vaultUpdateNote(pool *pgxpool.Pool) http.HandlerFunc {
 		if err != nil { httpx.Error(w, 500, "internal", err.Error()); return }
 		if tag.RowsAffected() == 0 { httpx.Error(w, 404, "not_found", "note not found"); return }
 		httpx.JSON(w, 200, map[string]any{"ok": true})
+	}
+}
+
+// updateProfileHandler updates personal info fields for an employee (HR/admin only).
+func updateProfileHandler(pool *pgxpool.Pool, auditWriter *audit.Writer) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, ok := identityhttp.UserFrom(r.Context())
+		if !ok || !isHROrAdmin(r.Context(), pool, caller.ID) {
+			httpx.Error(w, http.StatusForbidden, "forbidden", "HR or admin access required")
+			return
+		}
+		targetUserID, err := uuid.Parse(chi.URLParam(r, "userId"))
+		if err != nil {
+			httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid user id")
+			return
+		}
+		var in struct {
+			DisplayName                  string `json:"display_name"`
+			Phone                        string `json:"phone"`
+			DateOfBirth                  string `json:"date_of_birth"` // YYYY-MM-DD or ""
+			Gender                       string `json:"gender"`
+			Nationality                  string `json:"nationality"`
+			Address                      string `json:"address"`
+			EmergencyContactName         string `json:"emergency_contact_name"`
+			EmergencyContactRelationship string `json:"emergency_contact_relationship"`
+			EmergencyContactPhone        string `json:"emergency_contact_phone"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid JSON")
+			return
+		}
+
+		// Update display_name in identity.users
+		if in.DisplayName != "" {
+			if _, err := pool.Exec(r.Context(),
+				"UPDATE identity.users SET display_name = $1 WHERE id = $2",
+				in.DisplayName, targetUserID); err != nil {
+				httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+				return
+			}
+		}
+
+		// Update extended person fields (if person record exists)
+		var personID uuid.UUID
+		if err := pool.QueryRow(r.Context(),
+			"SELECT id FROM organization.person WHERE user_id = $1 LIMIT 1",
+			targetUserID).Scan(&personID); err == nil {
+
+			var dobVal *string
+			if in.DateOfBirth != "" {
+				dobVal = &in.DateOfBirth
+			}
+			_, _ = pool.Exec(r.Context(), `
+				UPDATE organization.person SET
+					phone                          = COALESCE(NULLIF($1, ''), phone),
+					date_of_birth                  = COALESCE($2::date, date_of_birth),
+					gender                         = CASE WHEN $3 != '' THEN $3 ELSE gender END,
+					nationality                    = COALESCE(NULLIF($4, ''), nationality),
+					address                        = COALESCE(NULLIF($5, ''), address),
+					emergency_contact_name         = COALESCE(NULLIF($6, ''), emergency_contact_name),
+					emergency_contact_relationship = COALESCE(NULLIF($7, ''), emergency_contact_relationship),
+					emergency_contact_phone        = COALESCE(NULLIF($8, ''), emergency_contact_phone)
+				WHERE id = $9`,
+				in.Phone, dobVal, in.Gender, in.Nationality, in.Address,
+				in.EmergencyContactName, in.EmergencyContactRelationship, in.EmergencyContactPhone,
+				personID)
+		}
+
+		_ = auditWriter.Write(r.Context(), audit.Entry{
+			Actor:        audit.Actor{Type: "user", ID: caller.ID.String()},
+			Action:       "identity.user.profile_updated",
+			ResourceType: "user", ResourceID: targetUserID.String(),
+		})
+		httpx.JSON(w, http.StatusOK, map[string]bool{"ok": true})
 	}
 }
 

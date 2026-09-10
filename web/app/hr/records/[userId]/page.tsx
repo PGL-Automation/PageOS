@@ -64,7 +64,6 @@ type EmployeeDocument = {
 
 type DocCategoryKey =
   | "id_documents"
-  | "bank_statements"
   | "tax_documents"
   | "employment_records"
   | "certificates"
@@ -79,7 +78,6 @@ const DOC_CATEGORIES: {
   Icon: React.ElementType;
 }[] = [
   { key: "id_documents",      label: "ID Documents",       color: "#1d4ed8", bg: "#dbeafe", Icon: Shield },
-  { key: "bank_statements",   label: "Bank Statements",    color: "#059669", bg: "#d1fae5", Icon: Wallet },
   { key: "tax_documents",     label: "Tax Documents",      color: "#d97706", bg: "#fef3c7", Icon: FileText },
   { key: "employment_records",label: "Employment Records", color: "#FF6600", bg: "#fff0e0", Icon: Briefcase },
   { key: "certificates",      label: "Certificates",       color: "#7c3aed", bg: "#ede9fe", Icon: Award },
@@ -526,6 +524,7 @@ export default function EmployeeProfilePage() {
   const [tempPwd, setTempPwd]       = useState<string | null>(null);
   const [pwdCopied, setPwdCopied]   = useState(false);
   const [toggling, setToggling]     = useState(false);
+  const [confirmAction, setConfirmAction] = useState<"deactivate" | "reactivate" | "reset" | null>(null);
   const [showTransfer, setShowTransfer] = useState(false);
   const [transferring, setTransferring] = useState(false);
   const [positions, setPositions]   = useState<{ id: string; code: string; title: string }[]>([]);
@@ -602,7 +601,6 @@ export default function EmployeeProfilePage() {
   // ── HR Admin actions ───────────────────────────────────────────────────────
 
   async function resetPassword() {
-    if (!confirm(`Reset ${profile?.display_name ?? "this user"}'s password? A temporary password will be generated.`)) return;
     setResetting(true);
     try {
       const res = await fetch(`${BASE}/api/v1/admin/users/${userId}/reset-password`, {
@@ -622,7 +620,7 @@ export default function EmployeeProfilePage() {
   async function toggleActive() {
     const isActive = profile?.user_status === "active";
     const action   = isActive ? "deactivate" : "reactivate";
-    if (!confirm(`${isActive ? "Deactivate" : "Reactivate"} ${profile?.display_name ?? "this user"}?`)) return;
+    setConfirmAction(null);
     setToggling(true);
     try {
       const res = await fetch(`${BASE}/api/v1/admin/users/${userId}/${action}`, {
@@ -644,7 +642,11 @@ export default function EmployeeProfilePage() {
       fetch(`${BASE}/api/v1/org/subsidiaries`, { credentials: "include" }),
     ]);
     if (posRes.ok) setPositions(await posRes.json());
-    if (subRes.ok) setSubsidiaries((await subRes.json()).map((s: { ID: string; Name: string }) => ({ id: s.ID, name: s.Name })));
+    if (subRes.ok) {
+      // API returns lowercase {id, name}; auth context uses uppercase {ID, Name}. Handle both.
+      const raw = await subRes.json();
+      setSubsidiaries(raw.map((s: any) => ({ id: s.id ?? s.ID ?? "", name: s.name ?? s.Name ?? "" })).filter((s: any) => s.id));
+    }
   }
 
   async function submitTransfer() {
@@ -742,9 +744,8 @@ export default function EmployeeProfilePage() {
     if (!profile) return;
     setSaving(true);
     try {
-      const personId = profile.person_id ?? userId;
       const res = await fetch(
-        `${BASE}/api/v1/org/persons/${personId}`,
+        `${BASE}/api/v1/admin/users/${userId}/profile`,
         {
           method: "PATCH",
           credentials: "include",
@@ -754,18 +755,14 @@ export default function EmployeeProfilePage() {
       );
       if (!res.ok) {
         const err = await res.json().catch(() => ({ message: "Save failed" }));
-        throw new Error(err.message ?? "Save failed");
+        throw new Error((err as any).error?.message ?? err.message ?? "Save failed");
       }
       const updated = { ...profile, ...form } as PersonProfile;
       setProfile(updated);
       setEditing(false);
-      toast({ title: "Profile updated" });
+      toast({ title: "Profile updated", description: "Employee profile has been saved." });
     } catch (err) {
-      toast({
-        title: "Save failed",
-        description: (err as Error).message,
-        variant: "destructive",
-      });
+      toast({ title: "Save failed", description: (err as Error).message, variant: "destructive" });
     } finally {
       setSaving(false);
     }
@@ -822,7 +819,7 @@ export default function EmployeeProfilePage() {
     try {
       const formData = new FormData();
       formData.append("file", file);
-      formData.append("vault_type", "profile");
+      formData.append("vault_type", "hr_employee");  // must match ListDocumentsByEmployee filter
       formData.append("category", uploadCategory);
       formData.append("for_employee_id", profile.person_id ?? userId);
       const res = await fetch(`${BASE}/api/v1/documents`, {
@@ -1535,10 +1532,43 @@ export default function EmployeeProfilePage() {
                   </p>
                 </div>
 
+                {/* In-app confirmation banner — shown instead of browser dialogs */}
+                {confirmAction && (
+                  <div className="flex items-center gap-3 px-4 py-3 rounded-xl mb-3"
+                       style={{ background: "#fffbeb", border: "1px solid #fde68a" }}>
+                    <div className="flex-1">
+                      <p className="text-[13px] font-semibold" style={{ color: "#92400e" }}>
+                        {confirmAction === "reset"
+                          ? `Reset ${profile?.display_name ?? "this user"}'s password? A temporary password will be generated.`
+                          : confirmAction === "deactivate"
+                          ? `Deactivate ${profile?.display_name ?? "this user"}'s account? They will not be able to log in.`
+                          : `Reactivate ${profile?.display_name ?? "this user"}'s account?`}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        if (confirmAction === "reset") resetPassword();
+                        else toggleActive();
+                      }}
+                      disabled={resetting || toggling}
+                      className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12px] font-semibold text-white disabled:opacity-60"
+                      style={{ background: confirmAction === "reactivate" ? "#059669" : "#dc2626", border: "none" }}
+                    >
+                      {(resetting || toggling) ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                      Confirm
+                    </button>
+                    <button onClick={() => setConfirmAction(null)}
+                            className="h-8 px-3 rounded-lg text-[12px] font-semibold"
+                            style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}>
+                      Cancel
+                    </button>
+                  </div>
+                )}
+
                 <div className="flex flex-wrap gap-2">
                   {/* Reset Password */}
                   <button
-                    onClick={resetPassword}
+                    onClick={() => setConfirmAction("reset")}
                     disabled={resetting}
                     className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold transition-all disabled:opacity-60"
                     style={{ background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe" }}
@@ -1552,7 +1582,7 @@ export default function EmployeeProfilePage() {
                   {/* Deactivate / Reactivate */}
                   {profile?.user_status === "active" ? (
                     <button
-                      onClick={toggleActive}
+                      onClick={() => setConfirmAction("deactivate")}
                       disabled={toggling}
                       className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold transition-all disabled:opacity-60"
                       style={{ background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca" }}
@@ -1564,7 +1594,7 @@ export default function EmployeeProfilePage() {
                     </button>
                   ) : (
                     <button
-                      onClick={toggleActive}
+                      onClick={() => setConfirmAction("reactivate")}
                       disabled={toggling}
                       className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold transition-all disabled:opacity-60"
                       style={{ background: "#ecfdf5", color: "#059669", border: "1px solid #a7f3d0" }}
