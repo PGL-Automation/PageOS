@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { usePosition } from "@/lib/position";
+import { usePosition, roleFamily } from "@/lib/position";
 
 // Map role codes → BSC department name (auto-populates for dept heads)
 const ROLE_TO_DEPT: Record<string, string> = {
@@ -91,7 +91,10 @@ export default function KPIConfigPage() {
   const { activePosition } = usePosition();
 
   // Derive the dept head's department from their role code
-  const myDept = activePosition?.code ? (ROLE_TO_DEPT[activePosition.code] ?? "") : "";
+  const myDept  = activePosition?.code ? (ROLE_TO_DEPT[activePosition.code] ?? "") : "";
+  const isHRRole = roleFamily(activePosition?.code) === "hr" || roleFamily(activePosition?.code) === "md";
+  // HR can view all departments but cannot save (read-only); dept heads can edit their own dept
+  const canEdit = !isHRRole && Boolean(myDept);
 
   // Cycle info
   const [cycle, setCycle] = useState<CycleInfo | null>(null);
@@ -124,7 +127,7 @@ export default function KPIConfigPage() {
   // Fetch cycle info
   useEffect(() => {
     if (!cycleId) return;
-    fetch(`${BASE}/api/v1/appraisal/cycles/${cycleId}`)
+    fetch(`${BASE}/api/v1/appraisal/cycles/${cycleId}`, { credentials: "include" })
       .then((r) => r.json())
       .then((d) => setCycle(d))
       .catch(() => {});
@@ -136,43 +139,43 @@ export default function KPIConfigPage() {
     fetch(`${BASE}/api/v1/appraisal/cycles/${cycleId}/kpi-departments`, { credentials: "include" })
       .then((r) => r.json())
       .then((data: { departments?: string[] } | string[]) => {
-        // Handle both response shapes
         const raw = Array.isArray(data) ? data : (data as { departments?: string[] }).departments ?? [];
         const list = raw.filter(Boolean);
-        setDepartments(list);
         if (list.length > 0) {
-          // Prefer the user's own department if it's in the list
+          setDepartments(list);
           const preferred = myDept && list.includes(myDept) ? myDept : list[0];
           setSelectedDept(preferred);
         } else if (myDept) {
-          // No departments configured yet — auto-add user's department and select it
+          // Dept head: no KPIs configured yet — start with their own department
           setDepartments([myDept]);
           setSelectedDept(myDept);
           setNewDeptName(myDept);
         }
+        // HR with no departments: leave empty — page will show "no KPIs configured yet"
       })
       .catch(() => {
-        // On error, still auto-select user's department if known
-        if (myDept) {
-          setDepartments([myDept]);
-          setSelectedDept(myDept);
-        }
+        if (myDept) { setDepartments([myDept]); setSelectedDept(myDept); }
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cycleId, myDept]);
 
   // Fetch KPIs for selected department
+  // API returns { department, perspectives, kpis: KPI[] } — NOT a flat array
+  const fetchedDepts = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!cycleId || !selectedDept) return;
-    if (kpiMap[selectedDept]) return; // already loaded
+    if (fetchedDepts.current.has(selectedDept)) return;
+    fetchedDepts.current.add(selectedDept);
     fetch(
-      `${BASE}/api/v1/appraisal/cycles/${cycleId}/kpis?dept=${encodeURIComponent(selectedDept)}`
+      `${BASE}/api/v1/appraisal/cycles/${cycleId}/kpis?dept=${encodeURIComponent(selectedDept)}`,
+      { credentials: "include" }
     )
       .then((r) => r.json())
-      .then((data: Omit<KPI, "id">[]) => {
-        const withIds: KPI[] = Array.isArray(data)
-          ? data.map((k) => ({ ...k, id: uid() }))
-          : [];
+      .then((data: { kpis?: Omit<KPI, "id">[] } | Omit<KPI, "id">[]) => {
+        const raw: Omit<KPI, "id">[] = Array.isArray(data)
+          ? data
+          : ((data as any).kpis ?? []);
+        const withIds: KPI[] = raw.map((k) => ({ ...k, id: uid() }));
         setKpiMap((prev) => ({ ...prev, [selectedDept]: withIds }));
       })
       .catch(() => {
@@ -240,11 +243,21 @@ export default function KPIConfigPage() {
         `${BASE}/api/v1/appraisal/cycles/${cycleId}/kpis`,
         {
           method: "POST",
+          credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         }
       );
-      if (!r.ok) throw new Error(`Server error ${r.status}`);
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error((err as any)?.error?.message ?? `Save failed (${r.status})`);
+      }
+      // Update local state with server response (which has real UUIDs)
+      const saved = await r.json();
+      const serverKPIs: KPI[] = (saved.kpis ?? []).map((k: any) => ({ ...k, id: uid() }));
+      setKpiMap((prev) => ({ ...prev, [selectedDept]: serverKPIs }));
+      // Allow this dept to be re-fetched if user switches away and back
+      fetchedDepts.current.delete(selectedDept);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (e: unknown) {
@@ -389,43 +402,38 @@ export default function KPIConfigPage() {
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span
-            style={{
-              fontSize: 11,
-              color: "var(--pg-text-3)",
-              fontStyle: "italic",
-            }}
-          >
-            KPI weights must total exactly 100%
-          </span>
+          {isHRRole && (
+            <span style={{ fontSize: 11, color: "#1d4ed8", background: "#eff6ff", padding: "3px 8px", borderRadius: 6, fontWeight: 600 }}>
+              Read-only · HR View
+            </span>
+          )}
+          {!isHRRole && (
+            <span style={{ fontSize: 11, color: "var(--pg-text-3)", fontStyle: "italic" }}>
+              KPI weights must total exactly 100%
+            </span>
+          )}
           {saveError && (
             <span style={{ fontSize: 12, color: "#dc2626" }}>{saveError}</span>
           )}
           {saveSuccess && (
             <span style={{ fontSize: 12, color: "#059669", fontWeight: 600 }}>
-              Saved!
+              ✓ KPIs saved successfully
             </span>
           )}
-          <button
-            onClick={saveKPIs}
-            disabled={saving || !selectedDept}
-            style={{
-              height: 36,
-              paddingLeft: 16,
-              paddingRight: 16,
-              borderRadius: 12,
-              fontSize: 13,
-              fontWeight: 600,
-              color: "#fff",
-              background: saving
-                ? "#aaa"
-                : "linear-gradient(135deg,#FF6600,#E05500)",
-              border: "none",
-              cursor: saving ? "not-allowed" : "pointer",
-            }}
-          >
-            {saving ? "Saving…" : "Save KPIs"}
-          </button>
+          {canEdit && (
+            <button
+              onClick={saveKPIs}
+              disabled={saving || !selectedDept}
+              style={{
+                height: 36, paddingLeft: 16, paddingRight: 16, borderRadius: 12,
+                fontSize: 13, fontWeight: 600, color: "#fff",
+                background: saving ? "#aaa" : "linear-gradient(135deg,#FF6600,#E05500)",
+                border: "none", cursor: saving ? "not-allowed" : "pointer",
+              }}
+            >
+              {saving ? "Saving…" : "Save KPIs"}
+            </button>
+          )}
         </div>
       </div>
 
@@ -554,23 +562,19 @@ export default function KPIConfigPage() {
                           {pWeight}%
                         </span>
                       </div>
-                      <button
-                        onClick={() => addKPI(perspective)}
-                        style={{
-                          height: 30,
-                          paddingLeft: 12,
-                          paddingRight: 12,
-                          borderRadius: 10,
-                          fontSize: 12,
-                          fontWeight: 600,
-                          color,
-                          background: `${color}12`,
-                          border: `1px solid ${color}40`,
-                          cursor: "pointer",
-                        }}
-                      >
-                        + Add KPI
-                      </button>
+                      {canEdit && (
+                        <button
+                          onClick={() => addKPI(perspective)}
+                          style={{
+                            height: 30, paddingLeft: 12, paddingRight: 12,
+                            borderRadius: 10, fontSize: 12, fontWeight: 600,
+                            color, background: `${color}12`, border: `1px solid ${color}40`,
+                            cursor: "pointer",
+                          }}
+                        >
+                          + Add KPI
+                        </button>
+                      )}
                     </div>
 
                     {/* KPI Table */}
@@ -655,6 +659,7 @@ export default function KPIConfigPage() {
                                 isLast={idx === rows.length - 1}
                                 onUpdate={updateKPI}
                                 onDelete={deleteKPI}
+                                readOnly={!canEdit}
                               />
                             ))}
                           </tbody>
@@ -964,11 +969,13 @@ function KPIRow({
   isLast,
   onUpdate,
   onDelete,
+  readOnly = false,
 }: {
   kpi: KPI;
   isLast: boolean;
   onUpdate: (id: string, field: keyof KPI, value: string | number) => void;
   onDelete: (id: string) => void;
+  readOnly?: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
 
@@ -987,40 +994,30 @@ function KPIRow({
       <td style={{ padding: "8px 14px" }}>
         <input
           value={kpi.objective}
-          onChange={(e) => onUpdate(kpi.id, "objective", e.target.value)}
+          onChange={(e) => !readOnly && onUpdate(kpi.id, "objective", e.target.value)}
+          readOnly={readOnly}
           placeholder="e.g. Increase revenue growth"
           style={{
-            width: "100%",
-            height: 32,
-            paddingLeft: 10,
-            paddingRight: 10,
-            borderRadius: 8,
-            fontSize: 13,
-            outline: "none",
-            background: "var(--pg-muted-bg)",
-            border: "1px solid var(--pg-card-border)",
-            color: "var(--pg-text-1)",
-            boxSizing: "border-box",
+            width: "100%", height: 32, paddingLeft: 10, paddingRight: 10,
+            borderRadius: 8, fontSize: 13, outline: "none",
+            background: readOnly ? "transparent" : "var(--pg-muted-bg)",
+            border: readOnly ? "none" : "1px solid var(--pg-card-border)",
+            color: "var(--pg-text-1)", boxSizing: "border-box",
           }}
         />
       </td>
       <td style={{ padding: "8px 14px" }}>
         <input
           value={kpi.measure}
-          onChange={(e) => onUpdate(kpi.id, "measure", e.target.value)}
+          onChange={(e) => !readOnly && onUpdate(kpi.id, "measure", e.target.value)}
+          readOnly={readOnly}
           placeholder="e.g. % growth YoY"
           style={{
-            width: "100%",
-            height: 32,
-            paddingLeft: 10,
-            paddingRight: 10,
-            borderRadius: 8,
-            fontSize: 13,
-            outline: "none",
-            background: "var(--pg-muted-bg)",
-            border: "1px solid var(--pg-card-border)",
-            color: "var(--pg-text-1)",
-            boxSizing: "border-box",
+            width: "100%", height: 32, paddingLeft: 10, paddingRight: 10,
+            borderRadius: 8, fontSize: 13, outline: "none",
+            background: readOnly ? "transparent" : "var(--pg-muted-bg)",
+            border: readOnly ? "none" : "1px solid var(--pg-card-border)",
+            color: "var(--pg-text-1)", boxSizing: "border-box",
           }}
         />
       </td>
@@ -1030,45 +1027,33 @@ function KPIRow({
           min={0}
           max={100}
           value={kpi.weight}
-          onChange={(e) =>
-            onUpdate(kpi.id, "weight", parseFloat(e.target.value) || 0)
-          }
+          onChange={(e) => !readOnly && onUpdate(kpi.id, "weight", parseFloat(e.target.value) || 0)}
+          readOnly={readOnly}
           style={{
-            width: 70,
-            height: 32,
-            paddingLeft: 10,
-            paddingRight: 10,
-            borderRadius: 8,
-            fontSize: 13,
-            outline: "none",
-            background: "var(--pg-muted-bg)",
-            border: "1px solid var(--pg-card-border)",
-            color: "var(--pg-text-1)",
-            textAlign: "right",
+            width: 70, height: 32, paddingLeft: 10, paddingRight: 10,
+            borderRadius: 8, fontSize: 13, outline: "none",
+            background: readOnly ? "transparent" : "var(--pg-muted-bg)",
+            border: readOnly ? "none" : "1px solid var(--pg-card-border)",
+            color: "var(--pg-text-1)", textAlign: "right",
           }}
         />
       </td>
-      <td style={{ padding: "8px 14px", textAlign: "center" }}>
-        <button
-          onClick={() => onDelete(kpi.id)}
-          title="Delete KPI"
-          style={{
-            height: 28,
-            width: 28,
-            borderRadius: 8,
-            border: "1px solid #dc262640",
-            background: "#dc262610",
-            color: "#dc2626",
-            cursor: "pointer",
-            fontSize: 14,
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          ×
-        </button>
-      </td>
+      {!readOnly && (
+        <td style={{ padding: "8px 14px", textAlign: "center" }}>
+          <button
+            onClick={() => onDelete(kpi.id)}
+            title="Delete KPI"
+            style={{
+              height: 28, width: 28, borderRadius: 8,
+              border: "1px solid #dc262640", background: "#dc262610",
+              color: "#dc2626", cursor: "pointer", fontSize: 14,
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
+            }}
+          >
+            ×
+          </button>
+        </td>
+      )}
     </tr>
   );
 }
