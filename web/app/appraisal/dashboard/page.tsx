@@ -30,15 +30,9 @@ type Cycle = {
   created_at: string;
 };
 
-type KpiDepartment = {
-  department: string;
-  kpi_count: number;
-};
-
-type TargetsProgress = {
-  total_employees: number;
-  employees_with_targets: number;
-};
+// API response shapes (match the Go handler output)
+type KpiDepartmentsResponse = { departments: string[]; perspectives: string[] };
+type TargetsProgressResponse = { rows: unknown[]; set: number; total: number };
 
 function cycleStatusBadge(status: string) {
   switch (status) {
@@ -195,7 +189,7 @@ function CreateCycleDialog({ onClose }: { onClose: () => void }) {
 // ─── Targets Progress Panel ─────────────────────────────────────────────────
 
 function TargetsProgressPanel({ cycleId }: { cycleId: string }) {
-  const { data, isLoading } = useQuery<TargetsProgress>({
+  const { data, isLoading } = useQuery<TargetsProgressResponse>({
     queryKey: ["appraisal-targets-progress", cycleId],
     queryFn: () => apiGet(`/cycles/${cycleId}/targets-progress`),
     retry: false,
@@ -210,11 +204,9 @@ function TargetsProgressPanel({ cycleId }: { cycleId: string }) {
     );
   }
 
-  if (!data) return null;
-
-  const pct = data.total_employees > 0
-    ? Math.round((data.employees_with_targets / data.total_employees) * 100)
-    : 0;
+  const set   = data?.set   ?? 0;
+  const total = data?.total ?? 0;
+  const pct   = total > 0 ? Math.round((set / total) * 100) : 0;
 
   return (
     <div>
@@ -224,7 +216,7 @@ function TargetsProgressPanel({ cycleId }: { cycleId: string }) {
           <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, background: "#d97706" }} />
         </div>
         <span className="text-[11px] font-bold tabular-nums" style={{ color: "#d97706" }}>
-          {data.employees_with_targets}/{data.total_employees}
+          {set}/{total}
         </span>
       </div>
     </div>
@@ -234,7 +226,7 @@ function TargetsProgressPanel({ cycleId }: { cycleId: string }) {
 // ─── KPI Departments Panel ──────────────────────────────────────────────────
 
 function KpiDepartmentsPanel({ cycleId }: { cycleId: string }) {
-  const { data, isLoading } = useQuery<KpiDepartment[]>({
+  const { data, isLoading } = useQuery<KpiDepartmentsResponse>({
     queryKey: ["appraisal-kpi-departments", cycleId],
     queryFn: () => apiGet(`/cycles/${cycleId}/kpi-departments`),
     retry: false,
@@ -249,7 +241,9 @@ function KpiDepartmentsPanel({ cycleId }: { cycleId: string }) {
     );
   }
 
-  if (!data || data.length === 0) {
+  const departments = data?.departments ?? [];
+
+  if (departments.length === 0) {
     return (
       <p className="text-[11px]" style={{ color: "var(--pg-text-4)" }}>No departments configured yet.</p>
     );
@@ -257,15 +251,14 @@ function KpiDepartmentsPanel({ cycleId }: { cycleId: string }) {
 
   return (
     <div className="flex flex-wrap gap-1.5">
-      {data.map(d => (
+      {departments.map(dept => (
         <span
-          key={d.department}
+          key={dept}
           className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full"
           style={{ background: "#eff6ff", color: "#1d4ed8" }}
         >
           <Building2 className="w-3 h-3" />
-          {d.department}
-          <span className="opacity-60">({d.kpi_count})</span>
+          {dept}
         </span>
       ))}
     </div>
