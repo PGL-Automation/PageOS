@@ -4,6 +4,25 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ChevronLeft, CheckCircle2, AlertCircle, Loader2, Users, RefreshCw } from "lucide-react";
 import Link from "next/link";
+import { usePosition } from "@/lib/position";
+
+// Map role codes → BSC department names (mirrors kpis/page.tsx)
+const ROLE_TO_DEPT: Record<string, string> = {
+  "GROUP_HEAD_WEALTH_MGMT":   "Wealth Management",
+  "HEAD_OF_INVESTMENT":       "Portfolio Management",
+  "HEAD_INVESTMENT_MGMT":     "Portfolio Management",
+  "HEAD_OF_OPERATIONS":       "Finance and Operations",
+  "TREASURY_OPS_FINANCE_MGR": "Finance and Operations",
+  "TL_FINANCIAL_REPORTING":   "Finance and Operations",
+  "FINOPS_MANAGER":           "Finance and Operations",
+  "HEAD_CORPORATE_COMPLIANCE":"Internal Control",
+  "HEAD_RISK_TRADE_MGMT":     "Risk Management",
+  "HEAD_HUMAN_CAPITAL":       "Human Capital Management",
+  "HR_MANAGER":               "Human Capital Management",
+  "HR_OPS_MANAGER":           "Human Capital Management",
+  "MANAGING_DIRECTOR":        "Executive / Leadership",
+  "GROUP_HEAD_BUSINESS_DEV":  "Business Development",
+};
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
 
@@ -45,6 +64,10 @@ function initials(name: string) {
 export default function TeamTargetsPage() {
   const { cycleId } = useParams<{ cycleId: string }>();
   const router = useRouter();
+  const { activePosition } = usePosition();
+
+  // The dept head's own department — used to filter to only their team
+  const myDept = activePosition?.code ? (ROLE_TO_DEPT[activePosition.code] ?? "") : "";
 
   const [cycle, setCycle] = useState<Cycle | null>(null);
   const [progress, setProgress] = useState<TargetsProgress | null>(null);
@@ -53,38 +76,24 @@ export default function TeamTargetsPage() {
   const [error, setError] = useState<string | null>(null);
   const [hoveredRow, setHoveredRow] = useState<string | null>(null);
 
-  async function loadData(autoGenerate = false) {
+  async function loadData() {
     setLoading(true);
     setError(null);
     try {
+      // Always auto-generate submissions first (idempotent — ON CONFLICT DO NOTHING)
+      // This ensures all employees in the org have submission rows in this cycle
+      await fetch(`${BASE}/api/v1/appraisal/cycles/${cycleId}/generate-submissions`, {
+        method: "POST", credentials: "include",
+      });
+
       const [cycleRes, progressRes] = await Promise.all([
         fetch(`${BASE}/api/v1/appraisal/cycles/${cycleId}`, { credentials: "include" }),
         fetch(`${BASE}/api/v1/appraisal/cycles/${cycleId}/targets-progress`, { credentials: "include" }),
       ]);
       if (!cycleRes.ok) throw new Error("Failed to load cycle");
-      const cycleData: Cycle = await cycleRes.json();
-      setCycle(cycleData);
+      setCycle(await cycleRes.json());
       if (!progressRes.ok) throw new Error("Failed to load targets progress");
-      const progressData: TargetsProgress = await progressRes.json();
-      setProgress(progressData);
-
-      // Auto-generate submissions on first load if none exist
-      if (autoGenerate && progressData.total === 0) {
-        setLoading(false);
-        setGenerating(true);
-        try {
-          const genRes = await fetch(`${BASE}/api/v1/appraisal/cycles/${cycleId}/generate-submissions`, {
-            method: "POST", credentials: "include",
-          });
-          if (genRes.ok) {
-            const reloadRes = await fetch(`${BASE}/api/v1/appraisal/cycles/${cycleId}/targets-progress`, { credentials: "include" });
-            if (reloadRes.ok) setProgress(await reloadRes.json());
-          }
-        } finally {
-          setGenerating(false);
-        }
-        return;
-      }
+      setProgress(await progressRes.json());
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -92,7 +101,7 @@ export default function TeamTargetsPage() {
     }
   }
 
-  useEffect(() => { if (cycleId) loadData(true); }, [cycleId]);
+  useEffect(() => { if (cycleId) loadData(); }, [cycleId]);
 
   async function generateSubmissions() {
     setGenerating(true);
@@ -111,11 +120,17 @@ export default function TeamTargetsPage() {
 
   const isTargetPhase = !cycle?.phase || cycle.phase === "target";
   const isAppraisalPhase = cycle?.phase === "appraisal";
-  const hasNoEmployees = progress && progress.total === 0;
+
+  // Filter rows to only the dept head's department (if known)
+  // HR/MD sees all departments; dept heads see only their own team
+  const isHRRole = !myDept; // no dept mapping = HR/admin = see all
+  const visibleRows = (progress?.rows ?? []).filter(row =>
+    isHRRole || !myDept || !row.department || row.department === myDept
+  );
 
   const setPct =
-    progress && progress.total > 0
-      ? Math.round((progress.set / progress.total) * 100)
+    visibleRows.length > 0
+      ? Math.round((visibleRows.filter(r => r.targets_set).length / visibleRows.length) * 100)
       : 0;
 
   if (loading) {
@@ -267,8 +282,9 @@ export default function TeamTargetsPage() {
                 className="text-[13px] font-semibold"
                 style={{ color: "var(--pg-text-1)" }}
               >
-                {progress.set} of {progress.total} employee
-                {progress.total !== 1 ? "s" : ""} have targets set
+                {visibleRows.filter(r => r.targets_set).length} of {visibleRows.length} team member
+                {visibleRows.length !== 1 ? "s" : ""} have targets set
+                {myDept && <span className="text-[11px] ml-1 opacity-60">({myDept})</span>}
               </p>
             </div>
             <span
@@ -329,7 +345,7 @@ export default function TeamTargetsPage() {
         </div>
 
         {/* Rows */}
-        {!progress || progress.rows.length === 0 ? (
+        {visibleRows.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center px-4">
             <Users className="w-10 h-10 mb-3" style={{ color: "var(--pg-text-4)" }} />
             <p className="text-[14px] font-semibold mb-1" style={{ color: "var(--pg-text-2)" }}>
@@ -354,13 +370,13 @@ export default function TeamTargetsPage() {
             </button>
           </div>
         ) : (
-          progress.rows.map((row, i) => (
+          visibleRows.map((row, i) => (
             <div
               key={row.employee_id}
               className="grid grid-cols-[1fr_140px_100px_130px_120px] px-5 py-3.5 items-center transition-colors"
               style={{
                 borderBottom:
-                  i < progress.rows.length - 1
+                  i < visibleRows.length - 1
                     ? "1px solid var(--pg-row-border)"
                     : "none",
                 background:
