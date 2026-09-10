@@ -20,6 +20,7 @@ const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
 
 type Cycle = {
   id: string; title: string; description: string; status: string;
+  phase?: string; // "target" | "appraisal"
   self_deadline?: string; manager_deadline?: string;
 };
 
