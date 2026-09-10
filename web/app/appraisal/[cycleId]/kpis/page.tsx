@@ -2,6 +2,27 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { usePosition } from "@/lib/position";
+
+// Map role codes → BSC department name (auto-populates for dept heads)
+const ROLE_TO_DEPT: Record<string, string> = {
+  "GROUP_HEAD_WEALTH_MGMT":   "Wealth Management",
+  "HEAD_OF_INVESTMENT":       "Portfolio Management",
+  "HEAD_INVESTMENT_MGMT":     "Portfolio Management",
+  "HEAD_OF_OPERATIONS":       "Finance and Operations",
+  "TREASURY_OPS_FINANCE_MGR": "Finance and Operations",
+  "TL_FINANCIAL_REPORTING":   "Finance and Operations",
+  "FINOPS_MANAGER":           "Finance and Operations",
+  "HEAD_CORPORATE_COMPLIANCE":"Internal Control",
+  "HEAD_RISK_TRADE_MGMT":     "Risk Management",
+  "HEAD_HUMAN_CAPITAL":       "Human Capital Management",
+  "HR_MANAGER":               "Human Capital Management",
+  "HR_OPS_MANAGER":           "Human Capital Management",
+  "MANAGING_DIRECTOR":        "Executive / Leadership",
+  "GROUP_HEAD_BUSINESS_DEV":  "Business Development",
+  "IT_ADMIN":                 "Technology / IT",
+  "BRAND_STRATEGY_MANAGER":   "Brand & Strategy",
+};
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
 
@@ -67,15 +88,19 @@ export default function KPIConfigPage() {
   const params = useParams();
   const router = useRouter();
   const cycleId = params?.cycleId as string;
+  const { activePosition } = usePosition();
+
+  // Derive the dept head's department from their role code
+  const myDept = activePosition?.code ? (ROLE_TO_DEPT[activePosition.code] ?? "") : "";
 
   // Cycle info
   const [cycle, setCycle] = useState<CycleInfo | null>(null);
 
-  // Department state
+  // Department state — default new dept name to user's known department
   const [departments, setDepartments] = useState<string[]>([]);
   const [selectedDept, setSelectedDept] = useState<string>("");
   const [addingDept, setAddingDept] = useState(false);
-  const [newDeptName, setNewDeptName] = useState("");
+  const [newDeptName, setNewDeptName] = useState(myDept);
 
   // KPI state keyed by department
   const [kpiMap, setKpiMap] = useState<Record<string, KPI[]>>({});
@@ -105,22 +130,36 @@ export default function KPIConfigPage() {
       .catch(() => {});
   }, [cycleId]);
 
-  // Fetch departments
+  // Fetch existing departments — API returns { departments: string[], perspectives: string[] }
   useEffect(() => {
     if (!cycleId) return;
-    fetch(`${BASE}/api/v1/appraisal/cycles/${cycleId}/kpi-departments`)
+    fetch(`${BASE}/api/v1/appraisal/cycles/${cycleId}/kpi-departments`, { credentials: "include" })
       .then((r) => r.json())
-      .then((data: string[] | { department: string }[]) => {
-        const list = Array.isArray(data)
-          ? data.map((d) => (typeof d === "string" ? d : d.department))
-          : [];
+      .then((data: { departments?: string[] } | string[]) => {
+        // Handle both response shapes
+        const raw = Array.isArray(data) ? data : (data as { departments?: string[] }).departments ?? [];
+        const list = raw.filter(Boolean);
         setDepartments(list);
-        if (list.length > 0 && !selectedDept) {
-          setSelectedDept(list[0]);
+        if (list.length > 0) {
+          // Prefer the user's own department if it's in the list
+          const preferred = myDept && list.includes(myDept) ? myDept : list[0];
+          setSelectedDept(preferred);
+        } else if (myDept) {
+          // No departments configured yet — auto-add user's department and select it
+          setDepartments([myDept]);
+          setSelectedDept(myDept);
+          setNewDeptName(myDept);
         }
       })
-      .catch(() => {});
-  }, [cycleId]);
+      .catch(() => {
+        // On error, still auto-select user's department if known
+        if (myDept) {
+          setDepartments([myDept]);
+          setSelectedDept(myDept);
+        }
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cycleId, myDept]);
 
   // Fetch KPIs for selected department
   useEffect(() => {

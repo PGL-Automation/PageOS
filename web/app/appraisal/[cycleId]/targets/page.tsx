@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ChevronLeft, CheckCircle2, AlertCircle, Loader2, Users } from "lucide-react";
+import { ChevronLeft, CheckCircle2, AlertCircle, Loader2, Users, RefreshCw } from "lucide-react";
 import Link from "next/link";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
@@ -49,47 +49,51 @@ export default function TeamTargetsPage() {
   const [cycle, setCycle] = useState<Cycle | null>(null);
   const [progress, setProgress] = useState<TargetsProgress | null>(null);
   const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hoveredRow, setHoveredRow] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!cycleId) return;
-
-    async function load() {
-      setLoading(true);
-      setError(null);
-      try {
-        const [cycleRes, progressRes] = await Promise.all([
-          fetch(`${BASE}/api/v1/appraisal/cycles/${cycleId}`, {
-            credentials: "include",
-          }),
-          fetch(
-            `${BASE}/api/v1/appraisal/cycles/${cycleId}/targets-progress`,
-            { credentials: "include" }
-          ),
-        ]);
-
-        if (!cycleRes.ok) throw new Error("Failed to load cycle");
-        const cycleData: Cycle = await cycleRes.json();
-        setCycle(cycleData);
-
-        if (!progressRes.ok) throw new Error("Failed to load targets progress");
-        const progressData: TargetsProgress = await progressRes.json();
-        setProgress(progressData);
-      } catch (e) {
-        setError((e as Error).message);
-      } finally {
-        setLoading(false);
-      }
+  async function loadData() {
+    setLoading(true);
+    setError(null);
+    try {
+      const [cycleRes, progressRes] = await Promise.all([
+        fetch(`${BASE}/api/v1/appraisal/cycles/${cycleId}`, { credentials: "include" }),
+        fetch(`${BASE}/api/v1/appraisal/cycles/${cycleId}/targets-progress`, { credentials: "include" }),
+      ]);
+      if (!cycleRes.ok) throw new Error("Failed to load cycle");
+      const cycleData: Cycle = await cycleRes.json();
+      setCycle(cycleData);
+      if (!progressRes.ok) throw new Error("Failed to load targets progress");
+      const progressData: TargetsProgress = await progressRes.json();
+      setProgress(progressData);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoading(false);
     }
+  }
 
-    load();
-  }, [cycleId]);
+  useEffect(() => { if (cycleId) loadData(); }, [cycleId]);
 
-  const isTargetPhase =
-    cycle?.phase === "target_setting" || cycle?.status === "target_setting";
-  const isAppraisalPhase =
-    cycle?.phase === "appraisal" || cycle?.status === "open";
+  async function generateSubmissions() {
+    setGenerating(true);
+    try {
+      const res = await fetch(`${BASE}/api/v1/appraisal/cycles/${cycleId}/generate-submissions`, {
+        method: "POST", credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to generate submissions");
+      await loadData(); // reload to show new rows
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  const isTargetPhase = !cycle?.phase || cycle.phase === "target";
+  const isAppraisalPhase = cycle?.phase === "appraisal";
+  const hasNoEmployees = progress && progress.total === 0;
 
   const setPct =
     progress && progress.total > 0
@@ -172,6 +176,18 @@ export default function TeamTargetsPage() {
               </p>
             )}
           </div>
+
+          {/* Generate / refresh button in header */}
+          <button
+            onClick={generateSubmissions}
+            disabled={generating}
+            className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-[12px] font-semibold disabled:opacity-60"
+            style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}
+            title="Generate or refresh team member records"
+          >
+            {generating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+            {generating ? "Generating…" : "Generate Team"}
+          </button>
 
           {/* Phase badge */}
           {isTargetPhase && (
@@ -296,14 +312,28 @@ export default function TeamTargetsPage() {
 
         {/* Rows */}
         {!progress || progress.rows.length === 0 ? (
-          <div
-            className="flex flex-col items-center justify-center py-16"
-            style={{ color: "var(--pg-text-4)" }}
-          >
-            <Users className="w-8 h-8 mb-2" />
-            <p className="text-[13px] font-medium" style={{ color: "var(--pg-text-3)" }}>
-              No direct reports found for this cycle.
+          <div className="flex flex-col items-center justify-center py-16 text-center px-4">
+            <Users className="w-10 h-10 mb-3" style={{ color: "var(--pg-text-4)" }} />
+            <p className="text-[14px] font-semibold mb-1" style={{ color: "var(--pg-text-2)" }}>
+              No team members loaded yet
             </p>
+            <p className="text-[12px] max-w-sm mb-5" style={{ color: "var(--pg-text-3)" }}>
+              Click "Generate Team" to load all active employees from the organisation.
+              This creates their appraisal records so you can set individual targets.
+            </p>
+            <button
+              onClick={generateSubmissions}
+              disabled={generating}
+              className="flex items-center gap-2 h-9 px-5 rounded-xl text-[13px] font-semibold text-white disabled:opacity-60"
+              style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}
+            >
+              {generating ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Users className="w-3.5 h-3.5" />
+              )}
+              {generating ? "Generating…" : "Generate Team"}
+            </button>
           </div>
         ) : (
           progress.rows.map((row, i) => (

@@ -410,7 +410,13 @@ func (h *Handler) bscAction(w http.ResponseWriter, r *http.Request) {
 // ── Generate submissions ───────────────────────────────────────────────────────
 
 func (h *Handler) generateSubmissions(w http.ResponseWriter, r *http.Request) {
-	if !h.requireHR(w, r) {
+	user, ok := identityhttp.UserFrom(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+		return
+	}
+	if !h.svc.IsHR(r.Context(), user.ID) && !h.svc.IsDeptHead(r.Context(), user.ID) {
+		httpx.Error(w, http.StatusForbidden, "forbidden", "HR or department head role required")
 		return
 	}
 	cycleID, ok := parseCycleID(w, r)
