@@ -2,6 +2,7 @@
 package appraisalhttp
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -239,7 +240,7 @@ func (h *Handler) openCycle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Notify all department heads to configure their team's KPIs
-	go h.svc.NotifyDeptHeadsOnCycleOpen(r.Context(), id)
+	go h.svc.NotifyDeptHeadsOnCycleOpen(context.Background(), id)
 	httpx.JSON(w, http.StatusOK, cycle)
 }
 

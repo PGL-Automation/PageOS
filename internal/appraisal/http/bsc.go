@@ -5,6 +5,7 @@ package appraisalhttp
 
 import (
 	"bytes"
+	"context"
 	"encoding/csv"
 	"encoding/json"
 	"net/http"
@@ -274,13 +275,12 @@ func (h *Handler) saveIndividualScorecard(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	isHR := h.svc.IsHR(r.Context(), user.ID)
-	if !isHR {
-		isMgr := h.svc.IsManagerOf(r.Context(), user.ID, empID)
-		if !isMgr {
-			httpx.Error(w, http.StatusForbidden, "forbidden", "only line managers or HC can set targets")
-			return
-		}
+	isHR     := h.svc.IsHR(r.Context(), user.ID)
+	isHead   := h.svc.IsDeptHead(r.Context(), user.ID)
+	isMgr    := h.svc.IsManagerOf(r.Context(), user.ID, empID)
+	if !isHR && !isHead && !isMgr {
+		httpx.Error(w, http.StatusForbidden, "forbidden", "only line managers, department heads or HR can set targets")
+		return
 	}
 
 	var body struct {
@@ -298,7 +298,7 @@ func (h *Handler) saveIndividualScorecard(w http.ResponseWriter, r *http.Request
 	_ = h.svc.SetTargetStatus(r.Context(), cycleID, empID, "set")
 
 	// Notify the employee — fire-and-forget
-	go h.svc.NotifyTargetsSet(r.Context(), cycleID, empID, user.ID)
+	go h.svc.NotifyTargetsSet(context.Background(), cycleID, empID, user.ID)
 
 	scorecard, _ := h.svc.GetIndividualScorecard(r.Context(), cycleID, empID)
 	httpx.JSON(w, http.StatusOK, map[string]any{"scorecard": scorecard})
@@ -328,7 +328,13 @@ func (h *Handler) setCyclePhase(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) targetsProgress(w http.ResponseWriter, r *http.Request) {
-	if !h.requireHR(w, r) {
+	user, ok := identityhttp.UserFrom(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+		return
+	}
+	if !h.svc.IsHR(r.Context(), user.ID) && !h.svc.IsDeptHead(r.Context(), user.ID) {
+		httpx.Error(w, http.StatusForbidden, "forbidden", "HR or department head role required")
 		return
 	}
 	cycleID, ok := parseCycleID(w, r)
