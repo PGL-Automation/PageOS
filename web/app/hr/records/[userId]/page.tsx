@@ -7,8 +7,10 @@ import {
   Shield, Wallet, FileText, Briefcase, Award, Activity, FolderOpen,
   Upload, X, Edit2, Save, Loader2, ChevronDown, ChevronRight,
   Download, Trash2, Eye, Camera, User, ArrowLeft, Plus,
+  Key, UserX, UserCheck, ArrowRightLeft, Calendar, Copy, CheckCircle2,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { usePosition, roleFamily } from "@/lib/position";
 import { useToast } from "@/hooks/use-toast";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
@@ -514,13 +516,26 @@ export default function EmployeeProfilePage() {
   const userId = params?.userId as string;
   const { user } = useAuth();
   const { toast } = useToast();
+  const { primaryCode } = usePosition();
 
   const isOwnProfile = user?.ID === userId;
-  // HR check: role includes "hr" or "admin"
-  const isHR =
-    !isOwnProfile ||
-    (user as unknown as Record<string, unknown>)?.role === "hr" ||
-    (user as unknown as Record<string, unknown>)?.role === "admin";
+  const isHR = roleFamily(primaryCode) === "hr" || roleFamily(primaryCode) === "md";
+
+  // ── HR Action state ────────────────────────────────────────────────────────
+  const [resetting, setResetting]   = useState(false);
+  const [tempPwd, setTempPwd]       = useState<string | null>(null);
+  const [pwdCopied, setPwdCopied]   = useState(false);
+  const [toggling, setToggling]     = useState(false);
+  const [showTransfer, setShowTransfer] = useState(false);
+  const [transferring, setTransferring] = useState(false);
+  const [positions, setPositions]   = useState<{ id: string; code: string; title: string }[]>([]);
+  const [subsidiaries, setSubsidiaries] = useState<{ id: string; name: string }[]>([]);
+  const [xferForm, setXferForm]     = useState({
+    new_position_code: "",
+    new_subsidiary_ids: [] as string[],
+    effective_from: new Date().toISOString().slice(0, 10),
+    end_current: true,
+  });
 
   // ── State ──────────────────────────────────────────────────────────────────
 
@@ -583,6 +598,89 @@ export default function EmployeeProfilePage() {
       setLoading(false);
     }
   }, [userId, toast]);
+
+  // ── HR Admin actions ───────────────────────────────────────────────────────
+
+  async function resetPassword() {
+    if (!confirm(`Reset ${profile?.display_name ?? "this user"}'s password? A temporary password will be generated.`)) return;
+    setResetting(true);
+    try {
+      const res = await fetch(`${BASE}/api/v1/admin/users/${userId}/reset-password`, {
+        method: "POST", credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to reset password");
+      const { temporary_password } = await res.json() as { temporary_password: string };
+      setTempPwd(temporary_password);
+      toast({ title: "Password reset", description: "Share the temporary password with the employee securely." });
+    } catch (e) {
+      toast({ title: "Failed", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setResetting(false);
+    }
+  }
+
+  async function toggleActive() {
+    const isActive = profile?.user_status === "active";
+    const action   = isActive ? "deactivate" : "reactivate";
+    if (!confirm(`${isActive ? "Deactivate" : "Reactivate"} ${profile?.display_name ?? "this user"}?`)) return;
+    setToggling(true);
+    try {
+      const res = await fetch(`${BASE}/api/v1/admin/users/${userId}/${action}`, {
+        method: "POST", credentials: "include",
+      });
+      if (!res.ok) throw new Error(`Failed to ${action} user`);
+      toast({ title: isActive ? "Account deactivated" : "Account reactivated" });
+      fetchProfile();
+    } catch (e) {
+      toast({ title: "Failed", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setToggling(false);
+    }
+  }
+
+  async function loadTransferOptions() {
+    const [posRes, subRes] = await Promise.all([
+      fetch(`${BASE}/api/v1/org/positions`, { credentials: "include" }),
+      fetch(`${BASE}/api/v1/org/subsidiaries`, { credentials: "include" }),
+    ]);
+    if (posRes.ok) setPositions(await posRes.json());
+    if (subRes.ok) setSubsidiaries((await subRes.json()).map((s: { ID: string; Name: string }) => ({ id: s.ID, name: s.Name })));
+  }
+
+  async function submitTransfer() {
+    if (!xferForm.new_position_code) {
+      toast({ title: "Select a position first", variant: "destructive" }); return;
+    }
+    if (!profile?.person_id) {
+      toast({ title: "Person ID missing — cannot transfer", variant: "destructive" }); return;
+    }
+    setTransferring(true);
+    try {
+      const body = {
+        person_id: profile.person_id,
+        new_position_code: xferForm.new_position_code,
+        new_subsidiary_ids: xferForm.new_subsidiary_ids.length > 0 ? xferForm.new_subsidiary_ids : undefined,
+        effective_from: xferForm.effective_from,
+        end_current: xferForm.end_current,
+      };
+      const res = await fetch(`${BASE}/api/v1/admin/users/${userId}/transfer`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any)?.error?.message ?? "Transfer failed");
+      }
+      toast({ title: "Employee transferred", description: `Moved to ${positions.find(p => p.code === xferForm.new_position_code)?.title ?? "new position"}.` });
+      setShowTransfer(false);
+      fetchProfile();
+    } catch (e) {
+      toast({ title: "Transfer failed", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setTransferring(false);
+    }
+  }
 
   function profileToForm(p: PersonProfile): Record<string, string> {
     return {
@@ -1311,6 +1409,24 @@ export default function EmployeeProfilePage() {
                     {primaryAssignment?.employment_type || "—"}
                   </span>
                 </div>
+
+                {/* Resumption Date */}
+                <div className="flex flex-col gap-1">
+                  <span
+                    className="text-[10px] font-bold uppercase tracking-wider"
+                    style={{ color: "var(--pg-text-3)" }}
+                  >
+                    Resumption Date
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 shrink-0" style={{ color: "#059669" }} />
+                    <span className="text-[13px]" style={{ color: "var(--pg-text-1)" }}>
+                      {primaryAssignment?.effective_from
+                        ? new Date(primaryAssignment.effective_from).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
+                        : "—"}
+                    </span>
+                  </div>
+                </div>
               </div>
 
               {/* All assignments */}
@@ -1401,6 +1517,101 @@ export default function EmployeeProfilePage() {
                 />
               </div>
             </div>
+          </div>
+
+            {/* ── HR Admin Actions (HR only) ─────────────────────────────── */}
+            {isHR && (
+              <div
+                className="rounded-2xl p-5 space-y-4 md:col-span-2"
+                style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)", boxShadow: "0 1px 4px rgba(0,0,0,0.05)" }}
+              >
+                <div>
+                  <div className="h-[3px] rounded-full mb-4" style={{ background: "#7c3aed" }} />
+                  <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: "var(--pg-text-3)" }}>
+                    HR Administration
+                  </p>
+                  <p className="text-[11px]" style={{ color: "var(--pg-text-4)" }}>
+                    These actions are only visible to HR managers.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {/* Reset Password */}
+                  <button
+                    onClick={resetPassword}
+                    disabled={resetting}
+                    className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold transition-all disabled:opacity-60"
+                    style={{ background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe" }}
+                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#dbeafe"}
+                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "#eff6ff"}
+                  >
+                    {resetting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Key className="w-3.5 h-3.5" />}
+                    Reset Password
+                  </button>
+
+                  {/* Deactivate / Reactivate */}
+                  {profile?.user_status === "active" ? (
+                    <button
+                      onClick={toggleActive}
+                      disabled={toggling}
+                      className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold transition-all disabled:opacity-60"
+                      style={{ background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca" }}
+                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#fee2e2"}
+                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "#fef2f2"}
+                    >
+                      {toggling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserX className="w-3.5 h-3.5" />}
+                      Deactivate Account
+                    </button>
+                  ) : (
+                    <button
+                      onClick={toggleActive}
+                      disabled={toggling}
+                      className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold transition-all disabled:opacity-60"
+                      style={{ background: "#ecfdf5", color: "#059669", border: "1px solid #a7f3d0" }}
+                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#d1fae5"}
+                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "#ecfdf5"}
+                    >
+                      {toggling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserCheck className="w-3.5 h-3.5" />}
+                      Reactivate Account
+                    </button>
+                  )}
+
+                  {/* Transfer / Move Department */}
+                  <button
+                    onClick={() => { setShowTransfer(true); loadTransferOptions(); }}
+                    className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold transition-all"
+                    style={{ background: "#fff7f0", color: "#FF6600", border: "1px solid #fed7aa" }}
+                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#fff0e0"}
+                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "#fff7f0"}
+                  >
+                    <ArrowRightLeft className="w-3.5 h-3.5" />
+                    Transfer / Move
+                  </button>
+                </div>
+
+                {/* Temporary password display */}
+                {tempPwd && (
+                  <div className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{ background: "#fffbeb", border: "1px solid #fde68a" }}>
+                    <Key className="w-4 h-4 shrink-0" style={{ color: "#d97706" }} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[11px] font-semibold" style={{ color: "#92400e" }}>Temporary password — share securely with the employee</p>
+                      <p className="text-[15px] font-mono font-bold tracking-wider mt-1" style={{ color: "#d97706" }}>{tempPwd}</p>
+                    </div>
+                    <button
+                      onClick={() => { navigator.clipboard.writeText(tempPwd); setPwdCopied(true); setTimeout(() => setPwdCopied(false), 2000); }}
+                      className="flex items-center gap-1 h-7 px-2.5 rounded-lg text-[11px] font-semibold"
+                      style={{ background: "#d97706", color: "#fff" }}
+                    >
+                      {pwdCopied ? <CheckCircle2 className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                      {pwdCopied ? "Copied" : "Copy"}
+                    </button>
+                    <button onClick={() => setTempPwd(null)} style={{ color: "var(--pg-text-3)" }}>
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Save button at bottom (when editing) */}
@@ -1715,6 +1926,87 @@ export default function EmployeeProfilePage() {
                   <Trash2 className="w-3 h-3" />
                 )}
                 {deleting ? "Removing…" : "Remove permanently"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Transfer Modal ────────────────────────────────────────────────── */}
+      {showTransfer && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}
+          onClick={() => setShowTransfer(false)}
+        >
+          <div
+            className="w-full max-w-lg rounded-2xl overflow-hidden"
+            style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)", boxShadow: "0 24px 60px rgba(0,0,0,0.3)" }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="h-[3px]" style={{ background: "#FF6600" }} />
+            <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: "1px solid var(--pg-row-border)" }}>
+              <div>
+                <p className="text-[15px] font-bold" style={{ color: "var(--pg-text-1)" }}>Transfer / Move Employee</p>
+                <p className="text-[11px] mt-0.5" style={{ color: "var(--pg-text-3)" }}>Move {profile?.display_name} to a different position or department</p>
+              </div>
+              <button onClick={() => setShowTransfer(false)} style={{ color: "var(--pg-text-3)" }}><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "var(--pg-text-3)" }}>New Position *</label>
+                <select
+                  value={xferForm.new_position_code}
+                  onChange={e => setXferForm(f => ({ ...f, new_position_code: e.target.value }))}
+                  className="w-full h-9 px-3 rounded-xl text-[13px] outline-none"
+                  style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)", color: "var(--pg-text-1)" }}
+                >
+                  <option value="">Select position…</option>
+                  {positions.map(p => (
+                    <option key={p.id} value={p.code}>{p.title} ({p.code})</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "var(--pg-text-3)" }}>Subsidiary</label>
+                <select
+                  value={xferForm.new_subsidiary_ids[0] ?? ""}
+                  onChange={e => setXferForm(f => ({ ...f, new_subsidiary_ids: e.target.value ? [e.target.value] : [] }))}
+                  className="w-full h-9 px-3 rounded-xl text-[13px] outline-none"
+                  style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)", color: "var(--pg-text-1)" }}
+                >
+                  <option value="">Keep current subsidiary</option>
+                  {subsidiaries.map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "var(--pg-text-3)" }}>Effective From</label>
+                <input
+                  type="date" value={xferForm.effective_from}
+                  onChange={e => setXferForm(f => ({ ...f, effective_from: e.target.value }))}
+                  className="w-full h-9 px-3 rounded-xl text-[13px] outline-none"
+                  style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)", color: "var(--pg-text-1)" }}
+                />
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={xferForm.end_current}
+                  onChange={e => setXferForm(f => ({ ...f, end_current: e.target.checked }))} />
+                <span className="text-[13px]" style={{ color: "var(--pg-text-2)" }}>End current assignment(s) on effective date</span>
+              </label>
+            </div>
+            <div className="flex justify-end gap-2 px-6 pb-5">
+              <button onClick={() => setShowTransfer(false)}
+                className="h-9 px-4 rounded-xl text-[13px] font-semibold"
+                style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}>
+                Cancel
+              </button>
+              <button onClick={submitTransfer} disabled={transferring || !xferForm.new_position_code}
+                className="flex items-center gap-1.5 h-9 px-5 rounded-xl text-[13px] font-semibold text-white disabled:opacity-60"
+                style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
+                {transferring ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ArrowRightLeft className="w-3.5 h-3.5" />}
+                {transferring ? "Transferring…" : "Confirm Transfer"}
               </button>
             </div>
           </div>
