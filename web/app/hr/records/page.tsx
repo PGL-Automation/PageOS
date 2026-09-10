@@ -1312,12 +1312,11 @@ export default function HRRecordsPage() {
                   const subs = [...new Set(emp.assignments?.filter(a => a.subsidiary_name).map(a => a.subsidiary_name) ?? [])];
                   const isSelected = selected?.user_id === emp.user_id;
                   return (
-                    <div key={emp.user_id}
+                    <Link key={emp.user_id} href={`/hr/records/${emp.user_id}`}
                          className="grid items-center gap-2 px-5 py-3 cursor-pointer transition-colors"
-                         style={{ gridTemplateColumns: "2.5fr 1.5fr 1.5fr 80px 100px", background: isSelected ? "rgba(255,102,0,0.05)" : undefined }}
-                         onClick={() => setSelected(isSelected ? null : emp)}
-                         onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = "var(--pg-row-hover)"; }}
-                         onMouseLeave={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = ""; }}>
+                         style={{ gridTemplateColumns: "2.5fr 1.5fr 1.5fr 80px 100px", textDecoration: "none" }}
+                         onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--pg-row-hover)"}
+                         onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
                       <div className="flex items-center gap-2.5 min-w-0">
                         <div className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
                              style={{ background: emp.user_status === "active" ? "linear-gradient(135deg,#FF6600,#E05500)" : emp.user_status === "no_account" ? "linear-gradient(135deg,#64748b,#475569)" : "#94a3b8" }}>
@@ -1341,7 +1340,7 @@ export default function HRRecordsPage() {
                       </div>
                       <StatusPill status={emp.user_status} />
                       <ChevronRight className="w-4 h-4 justify-self-end" style={{ color: "var(--pg-text-4)" }} />
-                    </div>
+                    </Link>
                   );
                 })}
               </div>

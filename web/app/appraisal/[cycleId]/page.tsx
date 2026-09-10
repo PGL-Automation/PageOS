@@ -8,7 +8,7 @@ import { useAuth } from "@/lib/auth";
 import { usePosition, roleFamily } from "@/lib/position";
 import {
   ChevronLeft, CheckCircle2, Clock, Save, Send, Lock,
-  Loader2, Settings2, RotateCcw, Award,
+  Loader2, Settings2, RotateCcw, Award, ClipboardList,
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -476,6 +476,21 @@ export default function CyclePage() {
           </div>
         );
       })()}
+
+      {/* ── BSC Scorecard — empty state when no KPIs set yet ── */}
+      {scorecard.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-16 rounded-2xl text-center"
+             style={{ background: "var(--pg-card)", border: "1px dashed var(--pg-card-border)" }}>
+          <ClipboardList className="w-10 h-10 mb-3" style={{ color: "var(--pg-text-4)" }} />
+          <p className="text-[14px] font-semibold" style={{ color: "var(--pg-text-2)" }}>
+            No KPIs set yet
+          </p>
+          <p className="text-[12px] mt-1.5 max-w-xs" style={{ color: "var(--pg-text-3)" }}>
+            Your line manager has not set your individual KPI scorecard yet.
+            You will be notified when your targets are ready to review.
+          </p>
+        </div>
+      )}
 
       {/* ── BSC Scorecard ── */}
       <div className="space-y-5">

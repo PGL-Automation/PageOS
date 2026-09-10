@@ -9,7 +9,8 @@ import {
   ChevronLeft, Plus, Trash2, Edit3, Check, X, AlertCircle,
   Play, Lock, Users, ClipboardList, BarChart2, User, Save,
   RefreshCw, GripVertical, Loader2, ChevronRight, UserCheck,
-  CheckCircle2, Clock, Star, Settings2,
+  CheckCircle2, Clock, Star, Settings2, Layers, Target, FileBarChart,
+  Download, Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -375,6 +376,54 @@ export default function CycleManagePage() {
           </div>
         </div>
       )}
+
+      {/* ── BSC Quick-Actions ────────────────────────────────────────────── */}
+      <div className="rounded-2xl overflow-hidden" style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}>
+        <div className="px-5 py-3.5 flex items-center justify-between" style={{ borderBottom: "1px solid var(--pg-row-border)" }}>
+          <div>
+            <p className="text-[13px] font-bold" style={{ color: "var(--pg-text-1)" }}>Balanced Scorecard Tools</p>
+            <p className="text-[11px] mt-0.5" style={{ color: "var(--pg-text-3)" }}>Configure KPIs, set targets, review BSC submissions and export results</p>
+          </div>
+        </div>
+        <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[
+            { href: `/appraisal/${cycleId}/kpis`,        label: "Configure KPIs",     sub: "Set BSC objectives & weights",  icon: Layers,      color: "#1d4ed8" },
+            { href: `/appraisal/${cycleId}/targets`,     label: "Target Setting",     sub: "Set individual targets per employee", icon: Target,  color: "#d97706" },
+            { href: `/appraisal/${cycleId}/submissions`, label: "BSC Submissions",    sub: "View scores, bands & progress", icon: BarChart2,    color: "#7c3aed" },
+            { href: `${BASE}/api/v1/appraisal/cycles/${cycleId}/export.csv`, label: "Export CSV", sub: "Download appraisal results", icon: Download, color: "#059669", external: true },
+          ].map(({ href, label, sub, icon: Icon, color, external }) => (
+            external ? (
+              <a key={label} href={href} target="_blank" rel="noopener noreferrer"
+                 className="flex flex-col gap-2 p-4 rounded-xl transition-all group"
+                 style={{ background: color + "0f", border: `1px solid ${color}30` }}
+                 onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = color + "18"}
+                 onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = color + "0f"}>
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: color + "20" }}>
+                  <Icon className="w-4 h-4" style={{ color }} />
+                </div>
+                <div>
+                  <p className="text-[12px] font-bold" style={{ color }}>{label}</p>
+                  <p className="text-[10px] mt-0.5" style={{ color: "var(--pg-text-3)" }}>{sub}</p>
+                </div>
+              </a>
+            ) : (
+              <Link key={label} href={href}
+                    className="flex flex-col gap-2 p-4 rounded-xl transition-all group"
+                    style={{ background: color + "0f", border: `1px solid ${color}30` }}
+                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = color + "18"}
+                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = color + "0f"}>
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: color + "20" }}>
+                  <Icon className="w-4 h-4" style={{ color }} />
+                </div>
+                <div>
+                  <p className="text-[12px] font-bold" style={{ color }}>{label}</p>
+                  <p className="text-[10px] mt-0.5" style={{ color: "var(--pg-text-3)" }}>{sub}</p>
+                </div>
+              </Link>
+            )
+          ))}
+        </div>
+      </div>
 
       {/* Tab navigation */}
       <div className="flex gap-1 p-1 rounded-xl w-fit" style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}>
