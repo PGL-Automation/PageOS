@@ -1612,7 +1612,6 @@ export default function EmployeeProfilePage() {
                 )}
               </div>
             )}
-          </div>
 
           {/* Save button at bottom (when editing) */}
           {editing && (

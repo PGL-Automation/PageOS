@@ -53,7 +53,7 @@ export default function TeamTargetsPage() {
   const [error, setError] = useState<string | null>(null);
   const [hoveredRow, setHoveredRow] = useState<string | null>(null);
 
-  async function loadData() {
+  async function loadData(autoGenerate = false) {
     setLoading(true);
     setError(null);
     try {
@@ -67,6 +67,24 @@ export default function TeamTargetsPage() {
       if (!progressRes.ok) throw new Error("Failed to load targets progress");
       const progressData: TargetsProgress = await progressRes.json();
       setProgress(progressData);
+
+      // Auto-generate submissions on first load if none exist
+      if (autoGenerate && progressData.total === 0) {
+        setLoading(false);
+        setGenerating(true);
+        try {
+          const genRes = await fetch(`${BASE}/api/v1/appraisal/cycles/${cycleId}/generate-submissions`, {
+            method: "POST", credentials: "include",
+          });
+          if (genRes.ok) {
+            const reloadRes = await fetch(`${BASE}/api/v1/appraisal/cycles/${cycleId}/targets-progress`, { credentials: "include" });
+            if (reloadRes.ok) setProgress(await reloadRes.json());
+          }
+        } finally {
+          setGenerating(false);
+        }
+        return;
+      }
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -74,7 +92,7 @@ export default function TeamTargetsPage() {
     }
   }
 
-  useEffect(() => { if (cycleId) loadData(); }, [cycleId]);
+  useEffect(() => { if (cycleId) loadData(true); }, [cycleId]);
 
   async function generateSubmissions() {
     setGenerating(true);
