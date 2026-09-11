@@ -403,7 +403,15 @@ func (h *Handler) listUsers(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated")
 		return
 	}
-	hasAccess, err := h.svc.HasRole(r.Context(), caller.ID, "HR_MANAGER", "HR_OFFICER", "GROUP_ADMIN", "HEAD_HUMAN_CAPITAL", "HR_OPS_MANAGER", "HR_ADMIN", "HC_OFFICER", "HC_MANAGER")
+	hasAccess, err := h.svc.HasRole(r.Context(), caller.ID,
+		// HR family
+		"HR_MANAGER", "HR_OFFICER", "HEAD_HR", "HEAD_HUMAN_CAPITAL",
+		"HR_OPS_MANAGER", "HR_ADMIN", "HC_OFFICER", "HC_MANAGER",
+		// Compliance/admin heads that need org visibility
+		"HEAD_COMPLIANCE_CORPORATE", "HEAD_CORPORATE_COMPLIANCE",
+		// Executive leadership
+		"MANAGING_DIRECTOR", "EXECUTIVE_DIRECTOR", "GROUP_ADMIN",
+	)
 	if err != nil || !hasAccess {
 		httpx.Error(w, http.StatusForbidden, "forbidden", "HR or admin access required")
 		return
@@ -441,7 +449,10 @@ func (h *Handler) setPersonGender(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated")
 		return
 	}
-	hasAccess, err := h.svc.HasRole(r.Context(), caller.ID, "HR_MANAGER", "HR_OFFICER", "GROUP_ADMIN")
+	hasAccess, err := h.svc.HasRole(r.Context(), caller.ID,
+		"HR_MANAGER", "HR_OFFICER", "HEAD_HR", "HEAD_HUMAN_CAPITAL",
+		"HR_OPS_MANAGER", "HR_ADMIN", "HC_OFFICER", "HC_MANAGER", "GROUP_ADMIN",
+	)
 	if err != nil || !hasAccess {
 		httpx.Error(w, http.StatusForbidden, "forbidden", "HR or admin access required")
 		return

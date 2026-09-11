@@ -355,13 +355,22 @@ func (s *Service) SaveIndividualScorecard(ctx context.Context, cycleID, employee
 }
 
 // HEAD_POSITION_CODES are role codes considered department heads for KPI purposes.
-// NOTE: HR/HC roles are intentionally excluded — they are handled via IsHROrAdmin.
+// These roles receive cycle-open notifications and can configure department KPIs
+// and set individual targets for their teams.
 var HEAD_POSITION_CODES = []string{
+	// Business / Investment heads
 	"GROUP_HEAD_WEALTH_MGMT", "HEAD_OF_INVESTMENT", "HEAD_INVESTMENT_MGMT",
-	"HEAD_OF_OPERATIONS", "TREASURY_OPS_FINANCE_MGR", "TL_FINANCIAL_REPORTING",
-	"HEAD_CORPORATE_COMPLIANCE", "HEAD_RISK_TRADE_MGMT",
-	"MANAGING_DIRECTOR", "GROUP_HEAD_BUSINESS_DEV", "FINOPS_MANAGER",
+	"GROUP_HEAD_BUSINESS_DEV",
+	// Operations / Finance heads
+	"HEAD_OF_OPERATIONS", "TREASURY_OPS_FINANCE_MGR", "TL_FINANCIAL_REPORTING", "FINOPS_MANAGER",
+	// Compliance / Risk heads
+	"HEAD_CORPORATE_COMPLIANCE", "HEAD_COMPLIANCE_CORPORATE", "HEAD_RISK_TRADE_MGMT",
+	// HR / People heads (set KPI targets for their own HR teams)
+	"HEAD_HR", "HEAD_HUMAN_CAPITAL",
+	// Technology / Brand
 	"IT_ADMIN", "BRAND_STRATEGY_MANAGER",
+	// Executive (oversight across all departments)
+	"MANAGING_DIRECTOR", "EXECUTIVE_DIRECTOR",
 }
 
 // IsDeptHead returns true if the user holds any department-head position.
@@ -1120,7 +1129,11 @@ func (s *Service) notifyHROnSubmitToHC(ctx context.Context, cycleID, submissionI
 		JOIN organization.person per ON per.user_id = u.id
 		JOIN organization.assignment a ON a.person_id = per.id AND a.effective_to IS NULL
 		JOIN organization.position pos ON pos.id = a.position_id
-		WHERE pos.code IN ('HEAD_HUMAN_CAPITAL','HR_MANAGER','HR_OPS_MANAGER','HR_ADMIN','HC_OFFICER')
+		WHERE pos.code IN (
+			'HEAD_HR','HEAD_HUMAN_CAPITAL',
+			'HR_MANAGER','HR_OFFICER','HR_OPS_MANAGER','HR_ADMIN',
+			'HC_OFFICER','HC_MANAGER'
+		)
 		  AND u.status = 'active'
 	`
 	rows, err := s.pool.Query(ctx, q)

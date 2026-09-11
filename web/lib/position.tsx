@@ -27,6 +27,7 @@ export const ROLE = {
   HR_OFFICER:                    "HR_OFFICER",
   IT_ADMIN:                      "IT_ADMIN",
   COMPLIANCE_MANAGER:            "COMPLIANCE_MANAGER",
+  EXECUTIVE_DIRECTOR:            "EXECUTIVE_DIRECTOR",
   // Page Asset Management
   MANAGING_DIRECTOR:             "MANAGING_DIRECTOR",
   HEAD_OF_OPERATIONS:            "HEAD_OF_OPERATIONS",
@@ -44,13 +45,18 @@ export const ROLE = {
   PORTFOLIO_MGMT_ASSISTANT:      "PORTFOLIO_MGMT_ASSISTANT",
   WEALTH_MANAGER:                "WEALTH_MANAGER",
   HEAD_CORPORATE_COMPLIANCE:     "HEAD_CORPORATE_COMPLIANCE",
+  HEAD_COMPLIANCE_CORPORATE:     "HEAD_COMPLIANCE_CORPORATE",
   INTERNAL_CONTROL_OFFICER:      "INTERNAL_CONTROL_OFFICER",
   ADMIN_OFFICER:                 "ADMIN_OFFICER",
+  ADMIN_LOGISTICS_OFFICER:       "ADMIN_LOGISTICS_OFFICER",
   BRAND_STRATEGY_MANAGER:        "BRAND_STRATEGY_MANAGER",
   IT_SUPPORT:                    "IT_SUPPORT",
+  HEAD_HR:                       "HEAD_HR",
   HEAD_HUMAN_CAPITAL:            "HEAD_HUMAN_CAPITAL",
   HR_OPS_MANAGER:                "HR_OPS_MANAGER",
   HR_ADMIN:                      "HR_ADMIN",
+  HC_OFFICER:                    "HC_OFFICER",
+  HC_MANAGER:                    "HC_MANAGER",
   // Page Capital
   HEAD_OF_INVESTMENT:            "HEAD_OF_INVESTMENT",
   HEAD_INVESTMENT_MGMT:          "HEAD_INVESTMENT_MGMT",
@@ -80,33 +86,38 @@ export type RoleCode = (typeof ROLE)[keyof typeof ROLE];
 export function roleFamily(code: string | null | undefined): "wm" | "md" | "hr" | "finance" | "compliance" | "pm" | "default" {
   if (!code) return "default";
   const c = code.toUpperCase();
-  // HR family — any HR/HC role, human capital, payroll, recruitment
+  // HR family — HR_*, HC_*, *_HR suffix, human capital, payroll, recruitment
   if (c.startsWith("HR_") || c.startsWith("HC_") || c.endsWith("_HR") ||
       c.includes("HUMAN_CAPITAL") || c.includes("PAYROLL") ||
       c.includes("RECRUITMENT") || c.includes("TALENT")) return "hr";
   // GROUP_HEAD_WEALTH_MGMT — WM department head gets executive nav (/pm/*, /appraisal/dashboard)
   if (c === "GROUP_HEAD_WEALTH_MGMT") return "md";
-  // MD/Senior leadership — directors, group admins
-  if (c === "MANAGING_DIRECTOR" || c === "GROUP_ADMIN" ||
+  // MD/Senior leadership — directors, group admins, executive director
+  if (c === "MANAGING_DIRECTOR" || c === "EXECUTIVE_DIRECTOR" || c === "GROUP_ADMIN" ||
       c.includes("DIRECTOR") || c.startsWith("CEO") || c.startsWith("CXO")) return "md";
   // Investment/BizDev heads — PM workspace + appraisal management, but NOT HR admin write
   if (c === "HEAD_OF_INVESTMENT" || c === "HEAD_INVESTMENT_MGMT" ||
       c === "GROUP_HEAD_BUSINESS_DEV") return "pm";
-  // PM family — portfolio managers, investment/treasury workspace (not CRM-focused)
-  if (c === "PORTFOLIO_MANAGER" || c === "PORTFOLIO_MGMT_ASSISTANT" || c === "EQUITY_TRADER") return "pm";
-  // WM family — wealth, portfolio, trading roles
-  if (c.includes("WEALTH") || c.includes("PORTFOLIO") || c.includes("EQUITY_TRADER") ||
+  // PM family — portfolio managers, traders, investment roles
+  if (c === "PORTFOLIO_MANAGER" || c === "PORTFOLIO_MGMT_ASSISTANT" || c === "EQUITY_TRADER" ||
+      c === "INVESTMENT_ANALYST" || c === "FUND_MANAGER" || c === "TRADER" ||
+      c === "DEALING_OFFICER" || c === "SETTLEMENT_OFFICER" || c === "BROKER_SALES_OFFICER") return "pm";
+  // WM family — wealth management, relationship managers
+  if (c.includes("WEALTH") || c.includes("PORTFOLIO") ||
       c.includes("RELATIONSHIP_MANAGER") || c.startsWith("RM_")) return "wm";
   // Finance/Ops family — operations, treasury, finance reporting, reconciliation
   if (c.includes("FINANCE") || c.includes("FINANCIAL") || c.includes("FINOPS") ||
       c.includes("TREASURY") || c.includes("ACCOUNT") || c.includes("RECONCILI") ||
       c.includes("LEDGER") || c.includes("AUDIT") || c.includes("OPERATIONS") ||
       c.includes("FUND_TREASURY") || c.includes("DATA_ANALYST")) return "finance";
-  // Compliance/Risk family — compliance, risk, control, AML, KYC
+  // Compliance/Risk family — compliance, risk, control, AML, KYC, quant/trading research
   if (c.includes("COMPLIANCE") || c.includes("RISK") || c.includes("AML") ||
       c.includes("KYC") || c.includes("REGULATORY") || c.includes("CONTROL") ||
       c.includes("INTERNAL_CONTROL") || c.includes("RESEARCH_RISK") ||
-      c.includes("TRADE_MGMT")) return "compliance";
+      c.includes("TRADE_MGMT") || c.includes("QUANT") ||
+      c === "TRADING_RESEARCH_ANALYST" || c === "QUANT_MARKET_ANALYST" ||
+      c === "TL_RESEARCH_RISK_MGMT" || c === "INVESTMENT_RESEARCH_TRAINEE" ||
+      c === "TRADING_RESEARCH_TRAINEE" || c === "RESEARCH_ANALYST") return "compliance";
   return "default";
 }
 

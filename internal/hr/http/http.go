@@ -7,7 +7,6 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -70,40 +69,41 @@ func (h *Handler) personIDFromUserID(ctx context.Context, userID uuid.UUID) (uui
 	return personID, err
 }
 
-// isHROrAdmin returns true if the user holds an HR or admin position in the org,
-// or has an hr/admin role in identity.users. Mirrors the pattern used in the
-// appraisal module's HasHROrAdminRole.
-func (h *Handler) isHROrAdmin(ctx context.Context, userID uuid.UUID) (bool, error) {
-	// Quick path: check identity.users role column.
-	var roleStr string
-	_ = h.pool.QueryRow(ctx,
-		`SELECT COALESCE(role, '') FROM identity.users WHERE id = $1`, userID,
-	).Scan(&roleStr)
-	role := strings.ToLower(roleStr)
-	if strings.Contains(role, "hr") || strings.Contains(role, "admin") {
-		return true, nil
-	}
+// hrPositionCodes is the canonical set of position codes that have HR module access.
+// Add new HR/HC position codes here — nowhere else.
+var hrPositionCodes = []string{
+	"HR_MANAGER", "HR_OFFICER", "HR_OPS_MANAGER", "HR_ADMIN",
+	"HEAD_HR", "HEAD_HUMAN_CAPITAL",
+	"HC_OFFICER", "HC_MANAGER",
+	"GROUP_ADMIN",
+}
 
-	// Fallback: check org position codes / titles.
-	const sql = `
+// hrIdentityRoles is the canonical set of identity.users.role values that have HR access.
+var hrIdentityRoles = []string{
+	"hr_admin", "hr_manager", "hr_officer", "group_admin", "admin",
+}
+
+// isHROrAdmin returns true if the user holds an HR position or group-admin role.
+// Uses explicit allowlists — no substring matching.
+func (h *Handler) isHROrAdmin(ctx context.Context, userID uuid.UUID) (bool, error) {
+	const q = `
 		SELECT EXISTS (
 			SELECT 1
-			FROM organization.assignment a
-			JOIN organization.position pos ON pos.id = a.position_id
-			JOIN organization.person   per ON per.id = a.person_id
-			WHERE per.user_id = $1
+			FROM identity.users u
+			LEFT JOIN organization.person   per ON per.user_id = u.id
+			LEFT JOIN organization.assignment a ON a.person_id = per.id
+			              AND a.effective_from <= CURRENT_DATE
+			              AND (a.effective_to IS NULL OR a.effective_to >= CURRENT_DATE)
+			LEFT JOIN organization.position pos ON pos.id = a.position_id
+			WHERE u.id = $1
 			  AND (
-			      LOWER(pos.code)  LIKE '%hr%'
-			      OR LOWER(pos.code)  LIKE '%admin%'
-			      OR LOWER(pos.title) LIKE '%human resource%'
-			      OR LOWER(pos.title) LIKE '%administrator%'
+			      pos.code = ANY($2::text[])
+			      OR LOWER(COALESCE(u.role,'')) = ANY($3::text[])
 			  )
-			  AND a.effective_from <= CURRENT_DATE
-			  AND (a.effective_to IS NULL OR a.effective_to >= CURRENT_DATE)
 		)
 	`
 	var exists bool
-	if err := h.pool.QueryRow(ctx, sql, userID).Scan(&exists); err != nil {
+	if err := h.pool.QueryRow(ctx, q, userID, hrPositionCodes, hrIdentityRoles).Scan(&exists); err != nil {
 		return false, err
 	}
 	return exists, nil
