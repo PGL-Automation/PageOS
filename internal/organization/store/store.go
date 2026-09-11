@@ -28,6 +28,7 @@ type PositionInSubsidiary struct {
 	ID           uuid.UUID  `json:"id"`
 	Code         string     `json:"code"`
 	Title        string     `json:"title"`
+	Family       string     `json:"family"`
 	SubsidiaryID *uuid.UUID `json:"subsidiary_id,omitempty"`
 	DepartmentID *uuid.UUID `json:"department_id,omitempty"`
 	IsPrimary    bool       `json:"is_primary"`
@@ -318,6 +319,7 @@ type PositionRow struct {
 	ID                  uuid.UUID  `json:"id"`
 	Code                string     `json:"code"`
 	Title               string     `json:"title"`
+	Family              string     `json:"family"`
 	SubsidiaryID        *uuid.UUID `json:"subsidiary_id,omitempty"`
 	IsGroupLevel        bool       `json:"is_group_level"`
 	ReportsToTitle      string     `json:"reports_to_title,omitempty"`
@@ -411,7 +413,7 @@ func (s *Store) GetPositionsBySubsidiary(ctx context.Context, subsidiaryID *uuid
 	var err error
 	if subsidiaryID != nil {
 		const q = `
-			SELECT p.id, p.code, p.title, p.subsidiary_id,
+			SELECT p.id, p.code, p.title, p.family, p.subsidiary_id,
 			       (p.subsidiary_id IS NULL) AS is_group_level,
 			       COALESCE(parent.title, '') AS reports_to_title,
 			       p.reports_to_position_id
@@ -423,7 +425,7 @@ func (s *Store) GetPositionsBySubsidiary(ctx context.Context, subsidiaryID *uuid
 		rows, err = s.pool.Query(ctx, q, *subsidiaryID)
 	} else {
 		const q = `
-			SELECT p.id, p.code, p.title, p.subsidiary_id,
+			SELECT p.id, p.code, p.title, p.family, p.subsidiary_id,
 			       (p.subsidiary_id IS NULL) AS is_group_level,
 			       COALESCE(parent.title, '') AS reports_to_title,
 			       p.reports_to_position_id
@@ -440,7 +442,7 @@ func (s *Store) GetPositionsBySubsidiary(ctx context.Context, subsidiaryID *uuid
 	var out []PositionRow
 	for rows.Next() {
 		var p PositionRow
-		if err := rows.Scan(&p.ID, &p.Code, &p.Title, &p.SubsidiaryID, &p.IsGroupLevel, &p.ReportsToTitle, &p.ReportsToPositionID); err != nil {
+		if err := rows.Scan(&p.ID, &p.Code, &p.Title, &p.Family, &p.SubsidiaryID, &p.IsGroupLevel, &p.ReportsToTitle, &p.ReportsToPositionID); err != nil {
 			return nil, err
 		}
 		out = append(out, p)
@@ -449,15 +451,15 @@ func (s *Store) GetPositionsBySubsidiary(ctx context.Context, subsidiaryID *uuid
 }
 
 // CreatePositionFull inserts a new position and optionally sets its reporting parent.
-func (s *Store) CreatePositionFull(ctx context.Context, subsidiaryID, departmentID *uuid.UUID, code, title string, reportsTo *uuid.UUID) (PositionRow, error) {
+func (s *Store) CreatePositionFull(ctx context.Context, subsidiaryID, departmentID *uuid.UUID, code, title, family string, reportsTo *uuid.UUID) (PositionRow, error) {
 	var p PositionRow
 	const insertQ = `
-		INSERT INTO organization.position (subsidiary_id, department_id, code, title)
-		VALUES ($1, $2, $3, $4)
-		RETURNING id, code, title, subsidiary_id, (subsidiary_id IS NULL), '', NULL
+		INSERT INTO organization.position (subsidiary_id, department_id, code, title, family)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id, code, title, family, subsidiary_id, (subsidiary_id IS NULL), '', NULL
 	`
-	if err := s.pool.QueryRow(ctx, insertQ, subsidiaryID, departmentID, code, title).
-		Scan(&p.ID, &p.Code, &p.Title, &p.SubsidiaryID, &p.IsGroupLevel, &p.ReportsToTitle, &p.ReportsToPositionID); err != nil {
+	if err := s.pool.QueryRow(ctx, insertQ, subsidiaryID, departmentID, code, title, family).
+		Scan(&p.ID, &p.Code, &p.Title, &p.Family, &p.SubsidiaryID, &p.IsGroupLevel, &p.ReportsToTitle, &p.ReportsToPositionID); err != nil {
 		return PositionRow{}, err
 	}
 	if reportsTo != nil {
@@ -535,6 +537,30 @@ func (s *Store) ListDepartments(ctx context.Context, subsidiaryID *uuid.UUID) ([
 	return out, rows.Err()
 }
 
+// DepartmentCreatedRow is returned by CreateDepartmentWithFamily.
+type DepartmentCreatedRow struct {
+	ID           uuid.UUID `json:"id"`
+	SubsidiaryID uuid.UUID `json:"subsidiary_id"`
+	Code         string    `json:"code"`
+	Name         string    `json:"name"`
+	Family       string    `json:"family"`
+}
+
+// CreateDepartmentWithFamily inserts a new department including the family field.
+// The sqlc-generated CreateDepartment predates the family column, so this raw
+// query is used instead.
+func (s *Store) CreateDepartmentWithFamily(ctx context.Context, subsidiaryID uuid.UUID, code, name, family string) (DepartmentCreatedRow, error) {
+	const q = `
+		INSERT INTO organization.department (subsidiary_id, code, name, family)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id, subsidiary_id, code, name, family
+	`
+	var d DepartmentCreatedRow
+	err := s.pool.QueryRow(ctx, q, subsidiaryID, code, name, family).
+		Scan(&d.ID, &d.SubsidiaryID, &d.Code, &d.Name, &d.Family)
+	return d, err
+}
+
 // GetUserPositionsInSubsidiary returns all positions currently held by the
 // specified user within the specified subsidiary (effective today).
 // Group-level positions (position.subsidiary_id IS NULL) are always included
@@ -544,7 +570,7 @@ func (s *Store) ListDepartments(ctx context.Context, subsidiaryID *uuid.UUID) ([
 func (s *Store) GetUserPositionsInSubsidiary(ctx context.Context, userID, subsidiaryID uuid.UUID) ([]PositionInSubsidiary, error) {
 	const q = `
 		SELECT DISTINCT ON (p.id)
-		       p.id, p.code, p.title, p.subsidiary_id, p.department_id, a.is_primary
+		       p.id, p.code, p.title, p.family, p.subsidiary_id, p.department_id, a.is_primary
 		FROM organization.assignment a
 		JOIN organization.position   p   ON p.id   = a.position_id
 		JOIN organization.person     per ON per.id  = a.person_id
@@ -566,7 +592,7 @@ func (s *Store) GetUserPositionsInSubsidiary(ctx context.Context, userID, subsid
 	var out []PositionInSubsidiary
 	for rows.Next() {
 		var p PositionInSubsidiary
-		if err := rows.Scan(&p.ID, &p.Code, &p.Title, &p.SubsidiaryID, &p.DepartmentID, &p.IsPrimary); err != nil {
+		if err := rows.Scan(&p.ID, &p.Code, &p.Title, &p.Family, &p.SubsidiaryID, &p.DepartmentID, &p.IsPrimary); err != nil {
 			return nil, err
 		}
 		out = append(out, p)
