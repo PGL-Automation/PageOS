@@ -101,60 +101,60 @@ export function roleFamily(code: string | null | undefined): "wm" | "md" | "hr" 
 }
 
 // Demo positions — shown when the user has no real org assignments yet.
-// Covers one role per family so every nav section can be previewed.
+// SECURITY: Only read-only / low-privilege roles are included here.
+// Elevated roles (GROUP_ADMIN, MANAGING_DIRECTOR, HR_MANAGER) are intentionally
+// excluded so that demo mode cannot be used to bypass RoleGuard checks.
 export const DEMO_POSITIONS: UserPosition[] = [
-  { id:"demo-admin",      code:"GROUP_ADMIN",               title:"Group Administrator",              is_primary:true,  isDemo:true },
-  { id:"demo-hr",         code:"HR_MANAGER",                title:"HR Manager",                       is_primary:false, isDemo:true },
-  { id:"demo-md",         code:"MANAGING_DIRECTOR",         title:"Managing Director",                is_primary:false, isDemo:true },
-  { id:"demo-wm",         code:"WEALTH_MANAGER",            title:"Wealth Manager",                   is_primary:false, isDemo:true },
+  { id:"demo-wm",         code:"WEALTH_MANAGER",            title:"Wealth Manager",                   is_primary:true,  isDemo:true },
   { id:"demo-pm",         code:"PORTFOLIO_MANAGER",         title:"Portfolio Manager",                is_primary:false, isDemo:true },
-  { id:"demo-ops",        code:"HEAD_OF_OPERATIONS",        title:"Head of Operations",               is_primary:false, isDemo:true },
-  { id:"demo-compliance", code:"HEAD_CORPORATE_COMPLIANCE", title:"Head, Corporate Services & Compliance", is_primary:false, isDemo:true },
   { id:"demo-recon",      code:"RECONCILIATION_OFFICER",    title:"Reconciliation Officer",           is_primary:false, isDemo:true },
-  { id:"demo-investment", code:"HEAD_OF_INVESTMENT",        title:"Head of Investment",               is_primary:false, isDemo:true },
 ];
 
 interface PositionCtx {
-  positions:      UserPosition[];
-  activePosition: UserPosition | null;
-  setActive:      (p: UserPosition) => void;
-  isLoading:      boolean;
+  positions:         UserPosition[];
+  activePosition:    UserPosition | null;
+  setActive:         (p: UserPosition) => void;
+  isLoading:         boolean;
   /** True if the user holds the given position code in the current subsidiary. */
-  hasRole:        (code: string) => boolean;
+  hasRole:           (code: string) => boolean;
   /** The primary role code, or null while loading. */
-  primaryCode:    string | null;
+  primaryCode:       string | null;
   /** True when running in demo mode (no real org assignments found). */
-  isDemoMode:     boolean;
+  isDemoMode:        boolean;
   /**
    * True when the logged-in user is a GROUP_ADMIN and has role-simulation
    * available. In this mode the position list includes all DEMO_POSITIONS so
    * the admin can "View As" any role without leaving the session.
    */
-  isAdminMode:    boolean;
+  isAdminMode:       boolean;
   /** The real GROUP_ADMIN position — always available for admin users to return to. */
-  adminPosition:  UserPosition | null;
+  adminPosition:     UserPosition | null;
+  /** True when positions failed to load due to a network/server error. */
+  positionLoadError: boolean;
 }
 
 const Ctx = createContext<PositionCtx>({
   positions: [], activePosition: null, setActive: () => {}, isLoading: true,
   hasRole: () => false, primaryCode: null, isDemoMode: false,
-  isAdminMode: false, adminPosition: null,
+  isAdminMode: false, adminPosition: null, positionLoadError: false,
 });
 
 // ── Provider ───────────────────────────────────────────────────────────────────
 
 export function PositionProvider({ children }: { children: ReactNode }) {
   const { user, subsidiary } = useAuth();
-  const [positions, setPositions]           = useState<UserPosition[]>([]);
-  const [activePosition, setActivePosition] = useState<UserPosition | null>(null);
-  const [isLoading, setIsLoading]           = useState(true);
-  const [isDemoMode, setIsDemoMode]         = useState(false);
-  const [isAdminMode, setIsAdminMode]       = useState(false);
-  const [adminPosition, setAdminPosition]   = useState<UserPosition | null>(null);
+  const [positions, setPositions]               = useState<UserPosition[]>([]);
+  const [activePosition, setActivePosition]     = useState<UserPosition | null>(null);
+  const [isLoading, setIsLoading]               = useState(true);
+  const [isDemoMode, setIsDemoMode]             = useState(false);
+  const [isAdminMode, setIsAdminMode]           = useState(false);
+  const [adminPosition, setAdminPosition]       = useState<UserPosition | null>(null);
+  const [positionLoadError, setPositionLoadError] = useState(false);
 
   useEffect(() => {
     if (!user || !subsidiary) { setIsLoading(false); return; }
     setIsLoading(true);
+    setPositionLoadError(false);
 
     const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
     fetch(`${baseUrl}/api/v1/org/me/positions?subsidiary_id=${subsidiary.ID}`, { credentials: "include" })
@@ -201,13 +201,14 @@ export function PositionProvider({ children }: { children: ReactNode }) {
         }
       })
       .catch(() => {
-        setIsDemoMode(true);
+        // SECURITY: A network/server error must NOT grant demo-mode access.
+        // Set an error flag so the UI can display an appropriate message.
+        setIsDemoMode(false);
         setIsAdminMode(false);
         setAdminPosition(null);
-        setPositions(DEMO_POSITIONS);
-        const savedDemo = localStorage.getItem("pageos_demo_role");
-        const found = savedDemo ? DEMO_POSITIONS.find(p => p.code === savedDemo) : null;
-        setActivePosition(found ?? DEMO_POSITIONS[0]);
+        setPositions([]);
+        setActivePosition(null);
+        setPositionLoadError(true);
       })
       .finally(() => setIsLoading(false));
   }, [user?.ID, subsidiary?.ID]);
@@ -231,7 +232,7 @@ export function PositionProvider({ children }: { children: ReactNode }) {
     <Ctx.Provider value={{
       positions, activePosition, setActive, isLoading,
       hasRole, primaryCode, isDemoMode,
-      isAdminMode, adminPosition,
+      isAdminMode, adminPosition, positionLoadError,
     }}>
       {children}
     </Ctx.Provider>
