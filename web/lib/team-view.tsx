@@ -51,6 +51,14 @@ export const HR_POSITION_CODES = [
   "ADMIN_OFFICER", "BRAND_STRATEGY_MANAGER", "IT_SUPPORT",
 ];
 
+export const IT_POSITION_CODES = [
+  "IT_SUPPORT", "IT_ADMIN",
+];
+
+export const BRAND_POSITION_CODES = [
+  "BRAND_STRATEGY_MANAGER", "ADMIN_OFFICER",
+];
+
 // ── Head-of-department role registry ──────────────────────────────────────────
 // Add new head roles here — pages that import useTeamView() will automatically
 // show the TeamViewBar for any code listed below.
@@ -108,6 +116,18 @@ const HEAD_CODES: Record<string, { label: string; teamLabel: string; memberCodes
   HR_OPS_MANAGER: {
     label: "HR Ops Manager", teamLabel: "HR Ops Team",
     memberCodes: HR_POSITION_CODES,
+  },
+
+  // ── IT ─────────────────────────────────────────────────────────────────────
+  IT_ADMIN: {
+    label: "IT Administrator", teamLabel: "IT Team",
+    memberCodes: IT_POSITION_CODES,
+  },
+
+  // ── Brand / Strategy ───────────────────────────────────────────────────────
+  BRAND_STRATEGY_MANAGER: {
+    label: "Brand & Strategy Manager", teamLabel: "Brand & Strategy Team",
+    memberCodes: BRAND_POSITION_CODES,
   },
 };
 
