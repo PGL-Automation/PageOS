@@ -1,0 +1,17 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: "8080"
+      DB_PATH: /app/data/appraisal.db
+    volumes:
+      - appdata:/app/data
+    ports:
+      - "127.0.0.1:8080:8080"
+
+volumes:
+  appdata:
