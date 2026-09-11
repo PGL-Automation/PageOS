@@ -158,13 +158,13 @@ func run() error {
 	hrH   := hrhttp.New(hrSvc, pool)
 
 	financeSvc := finance.NewService(pool)
-	financeH   := financehttp.New(financeSvc)
+	financeH   := financehttp.New(financeSvc, pool)
 
 	payrollSvc := payroll.NewService(pool, financeSvc)
-	payrollH   := payrollhttp.New(payrollSvc)
+	payrollH   := payrollhttp.New(payrollSvc, pool)
 
 	portfolioSvc := portfolio.NewService(pool, financeSvc)
-	portfolioH   := portfoliohttp.New(portfolioSvc)
+	portfolioH   := portfoliohttp.New(portfolioSvc, pool)
 
 	crmSvc := crm.NewService(pool)
 	crmH   := crmhttp.New(crmSvc)

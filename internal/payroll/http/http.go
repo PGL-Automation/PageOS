@@ -2,6 +2,7 @@
 package payrollhttp
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	identityhttp "github.com/pagegroup/pageos/internal/identity/http"
 	"github.com/pagegroup/pageos/internal/payroll"
@@ -16,10 +18,44 @@ import (
 )
 
 type Handler struct {
-	svc *payroll.Service
+	svc  *payroll.Service
+	pool *pgxpool.Pool
 }
 
-func New(svc *payroll.Service) *Handler { return &Handler{svc: svc} }
+func New(svc *payroll.Service, pool *pgxpool.Pool) *Handler {
+	return &Handler{svc: svc, pool: pool}
+}
+
+// payrollAdminRoles are the position codes that may initiate, approve, or
+// manage payroll runs and remittances.
+var payrollAdminRoles = []string{
+	"HR_MANAGER",
+	"HEAD_HUMAN_CAPITAL",
+	"FINOPS_MANAGER",
+	"HEAD_OF_OPERATIONS",
+	"GROUP_ADMIN",
+}
+
+// isPayrollAdmin returns true when the caller holds any payroll-admin role.
+func (h *Handler) isPayrollAdmin(ctx context.Context, userID uuid.UUID) (bool, error) {
+	const q = `
+		SELECT EXISTS (
+			SELECT 1
+			FROM organization.assignment a
+			JOIN organization.position pos ON pos.id = a.position_id
+			JOIN organization.person   per ON per.id = a.person_id
+			WHERE per.user_id = $1
+			  AND pos.code = ANY($2::text[])
+			  AND a.effective_from <= CURRENT_DATE
+			  AND (a.effective_to IS NULL OR a.effective_to >= CURRENT_DATE)
+		)
+	`
+	var exists bool
+	if err := h.pool.QueryRow(ctx, q, userID, payrollAdminRoles).Scan(&exists); err != nil {
+		return false, err
+	}
+	return exists, nil
+}
 
 func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	r := chi.NewRouter()
@@ -66,6 +102,10 @@ func (h *Handler) initiateRun(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
+	if ok2, err := h.isPayrollAdmin(r.Context(), caller.ID); err != nil || !ok2 {
+		httpx.Error(w, http.StatusForbidden, "forbidden", "payroll admin role required")
+		return
+	}
 
 	var in struct {
 		SubsidiaryID *uuid.UUID `json:"subsidiary_id"`
@@ -109,6 +149,10 @@ func (h *Handler) approveRun(w http.ResponseWriter, r *http.Request) {
 	caller, ok := identityhttp.UserFrom(r.Context())
 	if !ok {
 		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+		return
+	}
+	if ok2, err := h.isPayrollAdmin(r.Context(), caller.ID); err != nil || !ok2 {
+		httpx.Error(w, http.StatusForbidden, "forbidden", "payroll admin role required")
 		return
 	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
@@ -211,6 +255,10 @@ func (h *Handler) recordRemittance(w http.ResponseWriter, r *http.Request) {
 	user, ok := identityhttp.UserFrom(r.Context())
 	if !ok {
 		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated")
+		return
+	}
+	if ok2, err := h.isPayrollAdmin(r.Context(), user.ID); err != nil || !ok2 {
+		httpx.Error(w, http.StatusForbidden, "forbidden", "payroll admin role required")
 		return
 	}
 	var in payroll.RecordRemittanceInput
