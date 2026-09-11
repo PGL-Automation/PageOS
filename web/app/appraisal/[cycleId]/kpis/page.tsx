@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { usePosition, roleFamily } from "@/lib/position";
+import { usePosition } from "@/lib/position";
 
 // Map role codes → BSC department name (auto-populates for dept heads)
 const ROLE_TO_DEPT: Record<string, string> = {
@@ -88,11 +88,11 @@ export default function KPIConfigPage() {
   const params = useParams();
   const router = useRouter();
   const cycleId = params?.cycleId as string;
-  const { activePosition } = usePosition();
+  const { activePosition, primaryFamily } = usePosition();
 
   // Derive the dept head's department from their role code
   const myDept  = activePosition?.code ? (ROLE_TO_DEPT[activePosition.code] ?? "") : "";
-  const isHRRole = roleFamily(activePosition?.code) === "hr" || roleFamily(activePosition?.code) === "md";
+  const isHRRole = primaryFamily === "hr" || primaryFamily === "md";
   // HR can view all departments but cannot save (read-only); dept heads can edit their own dept
   const canEdit = !isHRRole && Boolean(myDept);
 

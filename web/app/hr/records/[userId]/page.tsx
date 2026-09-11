@@ -10,7 +10,7 @@ import {
   Key, UserX, UserCheck, ArrowRightLeft, Calendar, Copy, CheckCircle2,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
-import { usePosition, roleFamily } from "@/lib/position";
+import { usePosition } from "@/lib/position";
 import { useToast } from "@/hooks/use-toast";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
@@ -514,10 +514,10 @@ export default function EmployeeProfilePage() {
   const userId = params?.userId as string;
   const { user } = useAuth();
   const { toast } = useToast();
-  const { primaryCode } = usePosition();
+  const { primaryFamily } = usePosition();
 
   const isOwnProfile = user?.ID === userId;
-  const isHR = roleFamily(primaryCode) === "hr" || roleFamily(primaryCode) === "md";
+  const isHR = primaryFamily === "hr" || primaryFamily === "md";
 
   // ── HR Action state ────────────────────────────────────────────────────────
   const [resetting, setResetting]   = useState(false);

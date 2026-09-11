@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
-import { usePosition, roleFamily } from "@/lib/position";
+import { usePosition } from "@/lib/position";
 import { useTeamView } from "@/lib/team-view";
 import {
   ChevronLeft, CheckCircle2, Clock, Save, Send, Lock,
@@ -273,9 +273,9 @@ export default function CyclePage() {
   const { toast }   = useToast();
   const queryClient = useQueryClient();
   const { user }    = useAuth();
-  const { primaryCode } = usePosition();
+  const { primaryFamily } = usePosition();
   const tv = useTeamView();
-  const isHR       = roleFamily(primaryCode) === "hr" || roleFamily(primaryCode) === "md";
+  const isHR       = primaryFamily === "hr" || primaryFamily === "md";
   const isDeptHead = tv.isTeamHead;
 
   // Local editable state

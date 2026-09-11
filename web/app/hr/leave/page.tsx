@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { usePosition, roleFamily } from "@/lib/position";
+import { usePosition } from "@/lib/position";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
 
@@ -701,8 +701,7 @@ function PendingDocumentsBanner() {
 }
 
 export default function LeavePage() {
-  const { activePosition } = usePosition();
-  const family = roleFamily(activePosition?.code);
+  const { primaryFamily: family } = usePosition();
   // Only HR staff can approve/reject; MD and HR can view all requests
   const isLeaveAdmin = family === "hr";          // can approve / reject
   const isLeaveViewer = family === "hr" || family === "md"; // sees all requests

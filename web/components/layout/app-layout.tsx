@@ -18,7 +18,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/components/theme-provider";
-import { usePosition, roleFamily } from "@/lib/position";
+import { usePosition } from "@/lib/position";
 
 // ── Nav tree per role ──────────────────────────────────────────────────────────
 
@@ -291,10 +291,9 @@ const DEFAULT_NAV: NavGroup[] = [
   ]},
 ];
 
-// navForRole uses family-pattern matching so any new position code — even ones
-// not yet defined in the ROLE constant — gets sensible navigation automatically.
-function navForRole(code: string | null): NavGroup[] {
-  switch (roleFamily(code)) {
+// navForFamily maps a server-authoritative family string to the correct nav tree.
+function navForFamily(family: string): NavGroup[] {
+  switch (family) {
     case "pm":         return PM_NAV;
     case "wm":         return WM_NAV;
     case "md":         return MD_NAV;
@@ -556,7 +555,7 @@ function NotifRow({ n, isRead, onRead, onClose }: {
 export function AppLayout({ children }: { children: ReactNode }) {
   const pathname   = usePathname();
   const { user, subsidiary, subsidiaries, isLoading: authLoading, logout, setSubsidiary } = useAuth();
-  const { activePosition, positions, setActive, primaryCode, isLoading: posLoading, positionLoadError, isDemoMode, isAdminMode, adminPosition } = usePosition();
+  const { activePosition, positions, setActive, primaryCode, primaryFamily, isLoading: posLoading, positionLoadError, isDemoMode, isAdminMode, adminPosition } = usePosition();
   const { dark, toggle: toggleTheme } = useTheme();
 
   const [collapsed, setCollapsed]   = useState(false);
@@ -610,7 +609,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
   const initials     = user?.DisplayName?.split(" ").slice(0, 2).map(w => w[0]).join("").toUpperCase() ?? "?";
   const canSwitch    = subsidiaries.length > 1;
-  const navGroups    = navForRole(primaryCode);
+  const navGroups    = navForFamily(primaryFamily);
   const allNavItems  = navGroups.flatMap(g => g.items);
   // Pick the most specific (longest href) matching item so that /finance/journals
   // is highlighted instead of /finance when siblings share the same prefix.
@@ -630,7 +629,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
     compliance: { bg: "#ecfdf5", text: "#059669" },
     default:    { bg: "#f1f5f9", text: "#475569" },
   };
-  const rb = FAMILY_BADGE[roleFamily(primaryCode)] ?? FAMILY_BADGE.default;
+  const rb = FAMILY_BADGE[primaryFamily] ?? FAMILY_BADGE.default;
 
   // Sidebar colour tokens — dark navy in dark mode, white in light mode.
   // Orange accents (#FF6600) are shared across both.

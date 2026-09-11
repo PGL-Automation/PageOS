@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { usePosition, roleFamily } from "@/lib/position";
+import { usePosition } from "@/lib/position";
 import { useTeamView } from "@/lib/team-view";
 import { useAuth } from "@/lib/auth";
 import {
@@ -65,9 +65,9 @@ function formatDeadline(d?: string) {
 
 export default function AppraisalPage() {
   const { user }              = useAuth();
-  const { primaryCode, isLoading: posLoading } = usePosition();
+  const { primaryFamily, isLoading: posLoading } = usePosition();
   const tv = useTeamView();
-  const isHR       = roleFamily(primaryCode) === "hr" || roleFamily(primaryCode) === "md";
+  const isHR       = primaryFamily === "hr" || primaryFamily === "md";
   const isDeptHead = tv.isTeamHead; // GROUP_HEAD_WEALTH_MGMT, HEAD_OF_INVESTMENT, etc.
 
   const { data: cycles = [], isLoading: cyclesLoading } = useQuery<Cycle[]>({

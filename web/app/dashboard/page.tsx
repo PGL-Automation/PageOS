@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
-import { usePosition, roleFamily } from "@/lib/position";
+import { usePosition } from "@/lib/position";
 import { api } from "@/lib/api/client";
 import { components } from "@/lib/api/types";
 import {
@@ -113,7 +113,7 @@ function resourceLabel(type: string) {
 
 // ── Role routing map (outside component — stable reference) ───────────────────
 
-const FAMILY_DEST: Partial<Record<ReturnType<typeof roleFamily>, string>> = {
+const FAMILY_DEST: Partial<Record<string, string>> = {
   wm:         "/wm/dashboard",
   hr:         "/hr/dashboard",
   finance:    "/finance",
@@ -125,11 +125,11 @@ const FAMILY_DEST: Partial<Record<ReturnType<typeof roleFamily>, string>> = {
 
 export default function DashboardPage() {
   const { user, subsidiary } = useAuth();
-  const { primaryCode, isLoading: posLoading } = usePosition();
+  const { primaryFamily, isLoading: posLoading } = usePosition();
   const router = useRouter();
   const [now, setNow] = useState<Date | null>(null);
 
-  const redirectDest = posLoading ? null : (FAMILY_DEST[roleFamily(primaryCode)] ?? null);
+  const redirectDest = posLoading ? null : (FAMILY_DEST[primaryFamily] ?? null);
 
   useEffect(() => {
     if (redirectDest) router.replace(redirectDest);
