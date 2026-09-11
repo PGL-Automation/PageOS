@@ -121,6 +121,11 @@ const MD_NAV: NavGroup[] = [
     { href: "/finance",               label: "Finance",        icon: TrendingUp },
     { href: "/finance/reconciliation",label: "Reconciliation", icon: RefreshCw },
   ]},
+  { id: "compliance", label: "Audit & Risk", items: [
+    { href: "/audit/control-review",  label: "Control Review Queue", icon: ClipboardList },
+    { href: "/risk",                  label: "Risk Management",      icon: BarChart2 },
+    { href: "/audit",                 label: "Internal Audit",       icon: Search },
+  ]},
 ];
 
 const COMPLIANCE_NAV: NavGroup[] = [
@@ -129,9 +134,9 @@ const COMPLIANCE_NAV: NavGroup[] = [
     { href: "/ai",                    label: "AI Copilot",     icon: Brain, badge: "AI" },
   ]},
   { id: "compliance", label: "Compliance", items: [
-    { href: "/compliance",            label: "Queue",          icon: Shield },
-    { href: "/risk",                  label: "Risk",           icon: AlertTriangle },
-    { href: "/audit",                 label: "Internal Audit", icon: Search },
+    { href: "/audit/control-review",  label: "Control Review Queue", icon: ClipboardList },
+    { href: "/risk",                  label: "Risk Management",      icon: BarChart2 },
+    { href: "/audit",                 label: "Internal Audit",       icon: Search },
   ]},
   { id: "appraisal", label: "Appraisal", items: [
     { href: "/appraisal",             label: "My Appraisal",   icon: ClipboardList },
