@@ -61,6 +61,16 @@ func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 }
 
 func (h *Handler) createSubsidiary(w http.ResponseWriter, r *http.Request) {
+	caller, ok := identityhttp.UserFrom(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated")
+		return
+	}
+	hasAccess, err := h.svc.HasRole(r.Context(), caller.ID, "GROUP_ADMIN", "HR_MANAGER")
+	if err != nil || !hasAccess {
+		httpx.Error(w, http.StatusForbidden, "forbidden", "insufficient privileges")
+		return
+	}
 	var in struct {
 		Code string `json:"code"`
 		Name string `json:"name"`
@@ -107,6 +117,16 @@ func (h *Handler) listDepartments(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) createDepartment(w http.ResponseWriter, r *http.Request) {
+	caller, ok := identityhttp.UserFrom(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated")
+		return
+	}
+	hasAccess, err := h.svc.HasRole(r.Context(), caller.ID, "GROUP_ADMIN", "HR_MANAGER", "HEAD_HUMAN_CAPITAL")
+	if err != nil || !hasAccess {
+		httpx.Error(w, http.StatusForbidden, "forbidden", "insufficient privileges")
+		return
+	}
 	var in struct {
 		SubsidiaryID uuid.UUID `json:"subsidiary_id"`
 		Code         string    `json:"code"`
@@ -124,6 +144,16 @@ func (h *Handler) createDepartment(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) createPosition(w http.ResponseWriter, r *http.Request) {
+	caller, ok := identityhttp.UserFrom(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated")
+		return
+	}
+	hasAccess, err := h.svc.HasRole(r.Context(), caller.ID, "GROUP_ADMIN", "HR_MANAGER", "HEAD_HUMAN_CAPITAL")
+	if err != nil || !hasAccess {
+		httpx.Error(w, http.StatusForbidden, "forbidden", "insufficient privileges")
+		return
+	}
 	var in struct {
 		SubsidiaryID *uuid.UUID `json:"subsidiary_id"`
 		DepartmentID *uuid.UUID `json:"department_id"`
@@ -167,6 +197,16 @@ func (h *Handler) updatePosition(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) createPerson(w http.ResponseWriter, r *http.Request) {
+	caller, ok := identityhttp.UserFrom(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated")
+		return
+	}
+	hasAccess, err := h.svc.HasRole(r.Context(), caller.ID, "GROUP_ADMIN", "HR_MANAGER", "HEAD_HUMAN_CAPITAL")
+	if err != nil || !hasAccess {
+		httpx.Error(w, http.StatusForbidden, "forbidden", "insufficient privileges")
+		return
+	}
 	var in struct {
 		UserID    *uuid.UUID `json:"user_id"`
 		FirstName string     `json:"first_name"`
@@ -185,6 +225,16 @@ func (h *Handler) createPerson(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) createAssignment(w http.ResponseWriter, r *http.Request) {
+	caller, ok := identityhttp.UserFrom(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated")
+		return
+	}
+	hasAccess, err := h.svc.HasRole(r.Context(), caller.ID, "GROUP_ADMIN", "HR_MANAGER", "HEAD_HUMAN_CAPITAL")
+	if err != nil || !hasAccess {
+		httpx.Error(w, http.StatusForbidden, "forbidden", "insufficient privileges")
+		return
+	}
 	var in struct {
 		PersonID               uuid.UUID  `json:"person_id"`
 		PositionID             uuid.UUID  `json:"position_id"`
@@ -337,7 +387,7 @@ func (h *Handler) listUsers(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated")
 		return
 	}
-	hasAccess, err := h.svc.HasRole(r.Context(), caller.ID, "HR_MANAGER", "HR_OFFICER", "GROUP_ADMIN")
+	hasAccess, err := h.svc.HasRole(r.Context(), caller.ID, "HR_MANAGER", "HR_OFFICER", "GROUP_ADMIN", "HEAD_HUMAN_CAPITAL", "HR_OPS_MANAGER", "HR_ADMIN", "HC_OFFICER", "HC_MANAGER")
 	if err != nil || !hasAccess {
 		httpx.Error(w, http.StatusForbidden, "forbidden", "HR or admin access required")
 		return
