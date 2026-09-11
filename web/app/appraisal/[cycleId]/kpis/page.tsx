@@ -121,8 +121,23 @@ export default function KPIConfigPage() {
   const [targetSaving, setTargetSaving] = useState(false);
   const [targetError, setTargetError] = useState<string | null>(null);
   const [targetSuccess, setTargetSuccess] = useState(false);
+  // Incremented by the "Load" button to trigger a re-fetch without setTimeout hacks
+  const [loadTrigger, setLoadTrigger] = useState(0);
 
   const newDeptRef = useRef<HTMLInputElement>(null);
+
+  // Auto-clear success banners after 3 s — cleanup prevents stale state updates on unmount
+  useEffect(() => {
+    if (!saveSuccess) return;
+    const id = setTimeout(() => setSaveSuccess(false), 3000);
+    return () => clearTimeout(id);
+  }, [saveSuccess]);
+
+  useEffect(() => {
+    if (!targetSuccess) return;
+    const id = setTimeout(() => setTargetSuccess(false), 3000);
+    return () => clearTimeout(id);
+  }, [targetSuccess]);
 
   // Fetch cycle info
   useEffect(() => {
@@ -162,6 +177,15 @@ export default function KPIConfigPage() {
   // Fetch KPIs for selected department
   // API returns { department, perspectives, kpis: KPI[] } — NOT a flat array
   const fetchedDepts = useRef<Set<string>>(new Set());
+
+  // Reset per-cycle state when cycleId changes
+  useEffect(() => {
+    fetchedDepts.current = new Set();
+    setKpiMap({});
+    setDepartments([]);
+    setSelectedDept("");
+  }, [cycleId]);
+
   useEffect(() => {
     if (!cycleId || !selectedDept) return;
     if (fetchedDepts.current.has(selectedDept)) return;
@@ -259,7 +283,6 @@ export default function KPIConfigPage() {
       // Allow this dept to be re-fetched if user switches away and back
       fetchedDepts.current.delete(selectedDept);
       setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
     } catch (e: unknown) {
       setSaveError(e instanceof Error ? e.message : "Save failed");
     } finally {
@@ -279,7 +302,7 @@ export default function KPIConfigPage() {
     setAddingDept(false);
   }
 
-  // Targets fetch
+  // Targets fetch — re-runs when targetsOpen, role/grade changes, or "Load" button is clicked
   useEffect(() => {
     if (!targetsOpen || !selectedDept || !targetRole || !targetGrade || !cycleId)
       return;
@@ -288,7 +311,8 @@ export default function KPIConfigPage() {
         selectedDept
       )}&role=${encodeURIComponent(targetRole)}&grade=${encodeURIComponent(
         targetGrade
-      )}`
+      )}`,
+      { credentials: "include" }
     )
       .then((r) => r.json())
       .then((data: TargetRow[]) => {
@@ -306,7 +330,7 @@ export default function KPIConfigPage() {
           currentKPIs.map((k) => ({ objective: k.objective, target: "" }))
         );
       });
-  }, [targetsOpen, selectedDept, targetRole, targetGrade, cycleId]);
+  }, [targetsOpen, selectedDept, targetRole, targetGrade, cycleId, loadTrigger]);
 
   async function saveTargets() {
     setTargetSaving(true);
@@ -317,6 +341,7 @@ export default function KPIConfigPage() {
         `${BASE}/api/v1/appraisal/cycles/${cycleId}/kpi-targets`,
         {
           method: "POST",
+          credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             department: selectedDept,
@@ -328,7 +353,6 @@ export default function KPIConfigPage() {
       );
       if (!r.ok) throw new Error(`Server error ${r.status}`);
       setTargetSuccess(true);
-      setTimeout(() => setTargetSuccess(false), 3000);
     } catch (e: unknown) {
       setTargetError(e instanceof Error ? e.message : "Save failed");
     } finally {
@@ -813,9 +837,7 @@ export default function KPIConfigPage() {
                     <button
                       onClick={() => {
                         setTargets([]);
-                        // trigger re-fetch by toggling
-                        setTargetsOpen(false);
-                        setTimeout(() => setTargetsOpen(true), 50);
+                        setLoadTrigger((n) => n + 1);
                       }}
                       style={{
                         height: 36,

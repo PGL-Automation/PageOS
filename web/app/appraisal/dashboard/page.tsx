@@ -639,6 +639,7 @@ export default function AppraisalDashboard() {
     try {
       await apiPost(`/cycles/${id}/phase`, { phase });
       queryClient.invalidateQueries({ queryKey: ["appraisal-cycles-all"] });
+      queryClient.invalidateQueries({ queryKey: ["appraisal-cycles"] });
       const label = phase === "appraisal" ? "Appraisal" : "Target Setting";
       toast({ title: "Phase Updated", description: `Cycle switched to ${label} phase.` });
     } catch (e) {

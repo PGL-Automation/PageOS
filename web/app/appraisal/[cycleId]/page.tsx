@@ -354,15 +354,16 @@ export default function CyclePage() {
   const allSelfRated = scorecard.length > 0 && scorecard.every(k => (selfRatings[k.id] ?? 0) > 0);
   const allAgreedRated = scorecard.length > 0 && scorecard.every(k => (agreedRatings[k.id] ?? 0) > 0);
 
-  // Compute weighted scores
+  // Compute weighted scores: score = sum(rating_i * weight_i / 100)
+  // This matches the backend ComputeKPIScore formula.
   const computeScore = (ratings: Record<string, number>) => {
     if (scorecard.length === 0) return undefined;
-    const total = scorecard.reduce((acc, k) => {
+    const hasAnyRating = scorecard.some(k => (ratings[k.id] ?? 0) > 0);
+    if (!hasAnyRating) return undefined;
+    return scorecard.reduce((acc, k) => {
       const r = ratings[k.id] ?? 0;
-      return acc + r * k.weight;
+      return acc + r * (k.weight / 100);
     }, 0);
-    const totalWeight = scorecard.reduce((acc, k) => acc + k.weight, 0);
-    return totalWeight > 0 ? total / totalWeight : undefined;
   };
 
   const computedSelfScore = computeScore(selfRatings);
