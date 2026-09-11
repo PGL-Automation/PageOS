@@ -49,29 +49,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
     let subs: Subsidiary[] = [];
 
-    // Prefer /org/me/subsidiaries — returns only subsidiaries the user belongs to.
+    // Only load subsidiaries the user actually belongs to.
+    // SECURITY: We do NOT fall back to enumerating all subsidiaries — a user
+    // with no assignments should see an empty list, not the full org structure.
     try {
       const res = await fetch(`${baseUrl}/api/v1/org/me/subsidiaries`, { credentials: "include" });
       if (res.ok) {
         const json = await res.json() as object[];
         subs = (json ?? []).map(normalizeSubsidiary);
       }
-    } catch { /* network error — fall through */ }
+    } catch { /* network error — leave subs empty */ }
 
-    // Fallback: if no assignments found, show all subsidiaries so UI isn't blank.
-    if (subs.length === 0) {
-      const res2 = await fetch(`${baseUrl}/api/v1/org/subsidiaries`, { credentials: "include" });
-      if (res2.ok) {
-        const json2 = await res2.json() as object[];
-        subs = (json2 ?? []).map(normalizeSubsidiary);
-      }
-    }
-
+    // Always set subsidiaries (even if empty) so the UI can show an appropriate
+    // empty state rather than appearing to still be loading.
+    setSubsidiaries(subs);
     if (subs.length > 0) {
-      setSubsidiaries(subs);
       const saved = typeof window !== "undefined" ? localStorage.getItem("pageos_subsidiary_id") : null;
       const found = saved ? subs.find(s => s.ID === saved) : null;
       setSubsidiaryState(found ?? subs[0]);
+    } else {
+      setSubsidiaryState(null);
     }
   }, []);
 
@@ -122,6 +119,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setSubsidiaryState(null);
     setSubsidiaries([]);
+    // Clear all pageos_* localStorage keys so no stale role/subsidiary data
+    // persists across sessions (prevents privilege escalation via cached state).
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("pageos_view_as");
+      localStorage.removeItem("pageos_demo_role");
+      localStorage.removeItem("pageos_subsidiary_id");
+      // Remove all per-subsidiary position keys (pageos_position_<subsidiary_id>)
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith("pageos_position_")) keysToRemove.push(key);
+      }
+      keysToRemove.forEach(k => localStorage.removeItem(k));
+    }
     router.replace("/login");
   }, [router]);
 

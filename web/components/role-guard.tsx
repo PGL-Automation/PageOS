@@ -29,22 +29,24 @@ interface RoleGuardProps {
  * redirects the user to their own role home if they don't hold one of the
  * allowed role families.
  *
- * Demo mode bypasses the guard so every role can preview the full UI.
+ * SECURITY: Demo mode does NOT bypass this guard. Role checks always apply
+ * regardless of demo state, so only real (or demo-safe) role families
+ * assigned to the user can access restricted pages.
  */
 export function RoleGuard({ allow, children }: RoleGuardProps) {
   const router  = useRouter();
-  const { primaryCode, isLoading, isDemoMode } = usePosition();
+  const { primaryCode, isLoading } = usePosition();
 
   const family  = roleFamily(primaryCode);
-  const allowed = isDemoMode || allow.includes(family);
+  const allowed = allow.includes(family);
 
   useEffect(() => {
-    if (isLoading || isDemoMode) return;
+    if (isLoading) return;
     if (!allow.includes(roleFamily(primaryCode))) {
       router.replace(ROLE_HOME[roleFamily(primaryCode)]);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoading, primaryCode, isDemoMode]);
+  }, [isLoading, primaryCode]);
 
   if (isLoading) {
     return (
