@@ -114,30 +114,31 @@ export const DEMO_POSITIONS: UserPosition[] = [
 ];
 
 interface PositionCtx {
-  positions:         UserPosition[];
-  activePosition:    UserPosition | null;
-  setActive:         (p: UserPosition) => void;
-  isLoading:         boolean;
+  positions:           UserPosition[];
+  activePosition:      UserPosition | null;
+  setActive:           (p: UserPosition) => void;
+  isLoading:           boolean;
+  /** True if the position API call failed (network error / non-2xx). */
+  positionLoadError:   boolean;
   /** True if the user holds the given position code in the current subsidiary. */
-  hasRole:           (code: string) => boolean;
+  hasRole:             (code: string) => boolean;
   /** The primary role code, or null while loading. */
-  primaryCode:       string | null;
+  primaryCode:         string | null;
   /** True when running in demo mode (no real org assignments found). */
-  isDemoMode:        boolean;
+  isDemoMode:          boolean;
   /**
    * True when the logged-in user is a GROUP_ADMIN and has role-simulation
    * available. In this mode the position list includes all DEMO_POSITIONS so
    * the admin can "View As" any role without leaving the session.
    */
-  isAdminMode:       boolean;
+  isAdminMode:         boolean;
   /** The real GROUP_ADMIN position — always available for admin users to return to. */
-  adminPosition:     UserPosition | null;
-  /** True when positions failed to load due to a network/server error. */
-  positionLoadError: boolean;
+  adminPosition:       UserPosition | null;
 }
 
 const Ctx = createContext<PositionCtx>({
   positions: [], activePosition: null, setActive: () => {}, isLoading: true,
+  positionLoadError: false,
   hasRole: () => false, primaryCode: null, isDemoMode: false,
   isAdminMode: false, adminPosition: null, positionLoadError: false,
 });
@@ -146,13 +147,13 @@ const Ctx = createContext<PositionCtx>({
 
 export function PositionProvider({ children }: { children: ReactNode }) {
   const { user, subsidiary } = useAuth();
-  const [positions, setPositions]               = useState<UserPosition[]>([]);
-  const [activePosition, setActivePosition]     = useState<UserPosition | null>(null);
-  const [isLoading, setIsLoading]               = useState(true);
-  const [isDemoMode, setIsDemoMode]             = useState(false);
-  const [isAdminMode, setIsAdminMode]           = useState(false);
-  const [adminPosition, setAdminPosition]       = useState<UserPosition | null>(null);
+  const [positions, setPositions]                 = useState<UserPosition[]>([]);
+  const [activePosition, setActivePosition]       = useState<UserPosition | null>(null);
+  const [isLoading, setIsLoading]                 = useState(true);
   const [positionLoadError, setPositionLoadError] = useState(false);
+  const [isDemoMode, setIsDemoMode]               = useState(false);
+  const [isAdminMode, setIsAdminMode]             = useState(false);
+  const [adminPosition, setAdminPosition]         = useState<UserPosition | null>(null);
 
   useEffect(() => {
     if (!user || !subsidiary) { setIsLoading(false); return; }
@@ -206,12 +207,12 @@ export function PositionProvider({ children }: { children: ReactNode }) {
       .catch(() => {
         // SECURITY: A network/server error must NOT grant demo-mode access.
         // Set an error flag so the UI can display an appropriate message.
+        setPositionLoadError(true);
         setIsDemoMode(false);
         setIsAdminMode(false);
         setAdminPosition(null);
         setPositions([]);
         setActivePosition(null);
-        setPositionLoadError(true);
       })
       .finally(() => setIsLoading(false));
   }, [user?.ID, subsidiary?.ID]);
@@ -234,8 +235,9 @@ export function PositionProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={{
       positions, activePosition, setActive, isLoading,
+      positionLoadError,
       hasRole, primaryCode, isDemoMode,
-      isAdminMode, adminPosition, positionLoadError,
+      isAdminMode, adminPosition,
     }}>
       {children}
     </Ctx.Provider>
