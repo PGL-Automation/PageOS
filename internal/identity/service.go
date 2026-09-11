@@ -131,6 +131,9 @@ func (s *Service) ResolveSession(ctx context.Context, token string) (User, error
 	if err != nil {
 		return User{}, ErrSessionInvalid
 	}
+	if row.Status != "active" {
+		return User{}, ErrSessionInvalid
+	}
 	return toUser(row), nil
 }
 
