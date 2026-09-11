@@ -48,8 +48,18 @@ export const COMPLIANCE_POSITION_CODES = [
 
 export const HR_POSITION_CODES = [
   "HR_OFFICER", "HR_ADMIN", "HR_OPS_MANAGER",
-  "ADMIN_OFFICER", "BRAND_STRATEGY_MANAGER", "IT_SUPPORT",
+  "ADMIN_OFFICER", "IT_SUPPORT",
 ];
+
+export const IT_POSITION_CODES = [
+  "IT_SUPPORT", "LEAD_SOFTWARE_ENGINEER",
+];
+
+export const BUSINESS_DEV_POSITION_CODES = [
+  "RELATIONSHIP_MANAGER", "WEALTH_MANAGER",
+];
+
+export const BRAND_STRATEGY_POSITION_CODES: string[] = [];
 
 // ── Head-of-department role registry ──────────────────────────────────────────
 // Add new head roles here — pages that import useTeamView() will automatically
@@ -85,6 +95,10 @@ const HEAD_CODES: Record<string, { label: string; teamLabel: string; memberCodes
     label: "TL, Financial Reporting", teamLabel: "Financial Reporting Team",
     memberCodes: FINANCE_POSITION_CODES,
   },
+  FINOPS_MANAGER: {
+    label: "FinOps Manager", teamLabel: "Finance & Operations Team",
+    memberCodes: FINANCE_POSITION_CODES,
+  },
 
   // ── Compliance / Risk ──────────────────────────────────────────────────────
   HEAD_CORPORATE_COMPLIANCE: {
@@ -108,6 +122,24 @@ const HEAD_CODES: Record<string, { label: string; teamLabel: string; memberCodes
   HR_OPS_MANAGER: {
     label: "HR Ops Manager", teamLabel: "HR Ops Team",
     memberCodes: HR_POSITION_CODES,
+  },
+
+  // ── IT ─────────────────────────────────────────────────────────────────────
+  IT_ADMIN: {
+    label: "IT Admin", teamLabel: "IT Team",
+    memberCodes: IT_POSITION_CODES,
+  },
+
+  // ── Brand & Strategy ───────────────────────────────────────────────────────
+  BRAND_STRATEGY_MANAGER: {
+    label: "Brand Strategy Manager", teamLabel: "Brand & Strategy Team",
+    memberCodes: BRAND_STRATEGY_POSITION_CODES,
+  },
+
+  // ── Business Development ───────────────────────────────────────────────────
+  GROUP_HEAD_BUSINESS_DEV: {
+    label: "Group Head, Business Dev", teamLabel: "Business Development Team",
+    memberCodes: BUSINESS_DEV_POSITION_CODES,
   },
 };
 

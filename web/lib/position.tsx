@@ -77,11 +77,14 @@ export function roleFamily(code: string | null | undefined): "wm" | "md" | "hr" 
   // HR family — any HR role, human capital, payroll, recruitment
   if (c.startsWith("HR_") || c.endsWith("_HR") || c.includes("HUMAN_CAPITAL") ||
       c.includes("PAYROLL") || c.includes("RECRUITMENT") || c.includes("TALENT")) return "hr";
-  // MD/Senior leadership — directors, group admins, heads of investment/business
+  // GROUP_HEAD_WEALTH_MGMT — WM department head gets executive nav (/pm/*, /appraisal/dashboard)
+  if (c === "GROUP_HEAD_WEALTH_MGMT") return "md";
+  // MD/Senior leadership — directors, group admins
   if (c === "MANAGING_DIRECTOR" || c === "GROUP_ADMIN" ||
-      c.includes("DIRECTOR") || c.startsWith("CEO") || c.startsWith("CXO") ||
-      c === "HEAD_OF_INVESTMENT" || c === "HEAD_INVESTMENT_MGMT" ||
-      c === "GROUP_HEAD_BUSINESS_DEV") return "md";
+      c.includes("DIRECTOR") || c.startsWith("CEO") || c.startsWith("CXO")) return "md";
+  // Investment/BizDev heads — PM workspace + appraisal management, but NOT HR admin write
+  if (c === "HEAD_OF_INVESTMENT" || c === "HEAD_INVESTMENT_MGMT" ||
+      c === "GROUP_HEAD_BUSINESS_DEV") return "pm";
   // PM family — portfolio managers, investment/treasury workspace (not CRM-focused)
   if (c === "PORTFOLIO_MANAGER" || c === "PORTFOLIO_MGMT_ASSISTANT" || c === "EQUITY_TRADER") return "pm";
   // WM family — wealth, portfolio, trading roles
