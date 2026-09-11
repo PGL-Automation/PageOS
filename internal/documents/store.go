@@ -21,18 +21,19 @@ func newStore(db *pgxpool.Pool) *store {
 
 // fullDoc includes the new vault metadata columns returned by raw queries.
 type fullDoc struct {
-	ID         uuid.UUID
-	UploadedBy uuid.UUID
-	StorageKey string
-	Filename   string
-	MimeType   string
-	SizeBytes  int64
-	Checksum   string
-	ScanStatus string
-	Context    []byte
-	VaultType  string
-	Category   string
-	CreatedAt  pgtype.Timestamptz
+	ID            uuid.UUID
+	UploadedBy    uuid.UUID
+	SubjectUserID *uuid.UUID
+	StorageKey    string
+	Filename      string
+	MimeType      string
+	SizeBytes     int64
+	Checksum      string
+	ScanStatus    string
+	Context       []byte
+	VaultType     string
+	Category      string
+	CreatedAt     pgtype.Timestamptz
 }
 
 type insertFullParams struct {
@@ -49,7 +50,7 @@ type insertFullParams struct {
 	SubjectUserID *uuid.UUID
 }
 
-const fullDocCols = `id, uploaded_by, storage_key, filename, mime_type, size_bytes, checksum, scan_status, context, vault_type, category, created_at`
+const fullDocCols = `id, uploaded_by, subject_user_id, storage_key, filename, mime_type, size_bytes, checksum, scan_status, context, vault_type, category, created_at`
 
 func (s *store) InsertDocumentFull(ctx context.Context, p insertFullParams) (fullDoc, error) {
 	const q = `
@@ -64,7 +65,20 @@ func (s *store) InsertDocumentFull(ctx context.Context, p insertFullParams) (ful
 	)
 	var d fullDoc
 	err := row.Scan(
-		&d.ID, &d.UploadedBy, &d.StorageKey, &d.Filename, &d.MimeType,
+		&d.ID, &d.UploadedBy, &d.SubjectUserID, &d.StorageKey, &d.Filename, &d.MimeType,
+		&d.SizeBytes, &d.Checksum, &d.ScanStatus, &d.Context,
+		&d.VaultType, &d.Category, &d.CreatedAt,
+	)
+	return d, err
+}
+
+// GetFull returns a fullDoc (including subject_user_id) by document ID.
+func (s *store) GetFull(ctx context.Context, id uuid.UUID) (fullDoc, error) {
+	const q = `SELECT ` + fullDocCols + ` FROM documents.document WHERE id = $1`
+	row := s.pool.QueryRow(ctx, q, id)
+	var d fullDoc
+	err := row.Scan(
+		&d.ID, &d.UploadedBy, &d.SubjectUserID, &d.StorageKey, &d.Filename, &d.MimeType,
 		&d.SizeBytes, &d.Checksum, &d.ScanStatus, &d.Context,
 		&d.VaultType, &d.Category, &d.CreatedAt,
 	)
@@ -89,7 +103,7 @@ func (s *store) ListByEmployee(ctx context.Context, employeeUserID uuid.UUID) ([
 	for rows.Next() {
 		var d fullDoc
 		if err := rows.Scan(
-			&d.ID, &d.UploadedBy, &d.StorageKey, &d.Filename, &d.MimeType,
+			&d.ID, &d.UploadedBy, &d.SubjectUserID, &d.StorageKey, &d.Filename, &d.MimeType,
 			&d.SizeBytes, &d.Checksum, &d.ScanStatus, &d.Context,
 			&d.VaultType, &d.Category, &d.CreatedAt,
 		); err != nil {
@@ -117,7 +131,7 @@ func (s *store) ListPersonal(ctx context.Context, userID uuid.UUID) ([]fullDoc, 
 	for rows.Next() {
 		var d fullDoc
 		if err := rows.Scan(
-			&d.ID, &d.UploadedBy, &d.StorageKey, &d.Filename, &d.MimeType,
+			&d.ID, &d.UploadedBy, &d.SubjectUserID, &d.StorageKey, &d.Filename, &d.MimeType,
 			&d.SizeBytes, &d.Checksum, &d.ScanStatus, &d.Context,
 			&d.VaultType, &d.Category, &d.CreatedAt,
 		); err != nil {
