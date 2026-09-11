@@ -3,6 +3,7 @@ package notification
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -55,15 +56,22 @@ func Send(ctx context.Context, db interface {
 			return nil // duplicate suppressed — not an error
 		}
 	} else {
-		// No entity — no dedup needed, plain insert always succeeds.
+		// No entity — deduplicate on (user_id, type, created_date) so the same
+		// notification type is not sent more than once per user per day when
+		// entity_id is NULL. The WHERE entity_id IS NULL clause ensures we only
+		// match the partial index that covers NULL entity_id rows.
 		err = db.QueryRow(ctx, `
 			INSERT INTO notification.in_app
 				(user_id, type, title, body, link, priority, entity_type, entity_id, created_date)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8, CURRENT_DATE)
+			ON CONFLICT (user_id, type, created_date) WHERE entity_id IS NULL DO NOTHING
 			RETURNING id`,
 			userID, n.Type, n.Title, n.Body,
 			nullStr(n.Link), n.priority(), nullStr(n.EntityType), nil,
 		).Scan(new(uuid.UUID))
+		if err != nil && err.Error() == "no rows in result set" {
+			return nil // duplicate suppressed — not an error
+		}
 	}
 	return err
 }
@@ -90,7 +98,9 @@ func SendToRole(ctx context.Context, pool *pgxpool.Pool, subsidiaryID uuid.UUID,
 		return fmt.Errorf("SendToRole query: %w", err)
 	}
 	for _, uid := range rows {
-		_ = Send(ctx, pool, uid, n) // best-effort; don't abort on single failure
+		if err := Send(ctx, pool, uid, n); err != nil {
+			log.Printf("notification send failed for user %s: %v", uid, err)
+		}
 	}
 	return nil
 }

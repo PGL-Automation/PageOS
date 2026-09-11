@@ -17,6 +17,7 @@ SET status = 'processing', claimed_at = now()
 WHERE id IN (
     SELECT id FROM notification.outbox
     WHERE status = 'pending'
+      AND attempts < 5
     ORDER BY created_at
     LIMIT $1
     FOR UPDATE SKIP LOCKED
@@ -135,6 +136,7 @@ UPDATE notification.outbox
 SET status = 'pending', claimed_at = NULL
 WHERE status = 'processing'
   AND claimed_at < now() - interval '5 minutes'
+  AND attempts < 5
 `
 
 // Reset rows that were claimed but never marked (process crashed mid-flight).
