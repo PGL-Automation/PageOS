@@ -30,6 +30,11 @@ const WM_NAV: NavGroup[] = [
     { href: "/wm/dashboard",          label: "My Dashboard",   icon: LayoutDashboard },
     { href: "/ai",                    label: "AI Copilot",     icon: Brain, badge: "AI" },
   ]},
+  { id: "team", label: "My Team", items: [
+    { href: "/wm/group-head",         label: "Team Overview",    icon: Users },
+    { href: "/md/targets",            label: "WM Targets",       icon: Target },
+    { href: "/appraisal",             label: "Team Appraisal",   icon: ClipboardList },
+  ]},
   { id: "crm", label: "CRM", items: [
     { href: "/crm",          label: "Dashboard",  icon: LayoutDashboard },
     { href: "/crm/contacts", label: "Contacts",   icon: Users },
@@ -50,9 +55,8 @@ const WM_NAV: NavGroup[] = [
   { id: "business", label: "My Business", items: [
     { href: "/wm/commission",           label: "My Commission",       icon: DollarSign },
     { href: "/approval",                label: "Approvals",           icon: CheckSquare },
-    { href: "/appraisal",               label: "My Appraisal",        icon: ClipboardList },
     { href: "/leave",                   label: "My Leave",            icon: CalendarDays },
-    { href: "/my-documents",         label: "My Documents",        icon: FileText },
+    { href: "/my-documents",            label: "My Documents",        icon: FileText },
     { href: "/documents",               label: "Shared Documents",    icon: FolderOpen },
     { href: "/vault",                   label: "My Vault",            icon: Lock },
   ]},
@@ -81,7 +85,6 @@ const PM_NAV: NavGroup[] = [
     { href: "/wm/portfolio/accounts", label: "Client Accounts",  icon: Users },
   ]},
   { id: "appraisal", label: "Appraisals", items: [
-    { href: "/appraisal/dashboard", label: "Appraisal Overview", icon: ClipboardList },
     { href: "/appraisal",           label: "My Appraisal",       icon: Star },
   ]},
   { id: "personal", label: "My Work", items: [

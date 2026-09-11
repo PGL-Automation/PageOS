@@ -90,8 +90,9 @@ export function roleFamily(code: string | null | undefined): "wm" | "md" | "hr" 
   if (c.startsWith("HR_") || c.startsWith("HC_") || c.endsWith("_HR") ||
       c.includes("HUMAN_CAPITAL") || c.includes("PAYROLL") ||
       c.includes("RECRUITMENT") || c.includes("TALENT")) return "hr";
-  // GROUP_HEAD_WEALTH_MGMT — WM department head gets executive nav (/pm/*, /appraisal/dashboard)
-  if (c === "GROUP_HEAD_WEALTH_MGMT") return "md";
+  // GROUP_HEAD_WEALTH_MGMT — stays in WM family to retain all client/pipeline/CRM features.
+  // Access to /pm/* is granted by adding "wm" to the pm layout guard.
+  if (c === "GROUP_HEAD_WEALTH_MGMT") return "wm";
   // MD/Senior leadership — directors, group admins, executive director
   if (c === "MANAGING_DIRECTOR" || c === "EXECUTIVE_DIRECTOR" || c === "GROUP_ADMIN" ||
       c.includes("DIRECTOR") || c.startsWith("CEO") || c.startsWith("CXO")) return "md";

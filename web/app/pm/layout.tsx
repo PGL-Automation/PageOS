@@ -4,7 +4,7 @@ import { RoleGuard } from "@/components/role-guard";
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (
     <AppLayout>
-      <RoleGuard allow={["pm", "md"]}>{children}</RoleGuard>
+      <RoleGuard allow={["pm", "md", "wm"]}>{children}</RoleGuard>
     </AppLayout>
   );
 }
