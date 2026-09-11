@@ -215,7 +215,7 @@ func (s *Service) CreateRequest(ctx context.Context, in CreateLeaveInput) (Leave
 	return req, nil
 }
 
-func (s *Service) ListRequests(ctx context.Context, personID *uuid.UUID, status string) ([]LeaveRequest, error) {
+func (s *Service) ListRequests(ctx context.Context, personID *uuid.UUID, status string, subsidiaryID *uuid.UUID) ([]LeaveRequest, error) {
 	q := `
 		SELECT
 			r.id, r.person_id,
@@ -242,13 +242,14 @@ func (s *Service) ListRequests(ctx context.Context, personID *uuid.UUID, status 
 		LEFT JOIN organization.person rel ON rel.id = r.reliever_person_id
 		WHERE ($1::uuid IS NULL OR r.person_id = $1)
 		  AND ($2::text  = ''   OR r.status    = $2)
+		  AND ($3::uuid IS NULL OR a.subsidiary_id = $3)
 		ORDER BY r.created_at DESC
 	`
 	var statusParam string
 	if status != "" {
 		statusParam = status
 	}
-	rows, err := s.pool.Query(ctx, q, personID, statusParam)
+	rows, err := s.pool.Query(ctx, q, personID, statusParam, subsidiaryID)
 	if err != nil {
 		return nil, err
 	}

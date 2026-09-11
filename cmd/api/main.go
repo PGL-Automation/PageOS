@@ -427,17 +427,41 @@ func splitName(displayName string) (first, last string) {
 // ── Access control helpers ─────────────────────────────────────────────────────
 
 // isHROrAdmin returns true if the calling user holds an HR or group-admin position.
+// Both the org position code AND the identity role are checked against explicit
+// allowlists — substring matching (e.g. strings.Contains) is intentionally avoided
+// to prevent roles like "infrastructure" (contains "admin") from gaining HR access.
 func isHROrAdmin(ctx context.Context, pool *pgxpool.Pool, callerID uuid.UUID) bool {
 	const q = `
 		SELECT EXISTS (
 			SELECT 1
-			FROM organization.assignment a
-			JOIN organization.position pos ON pos.id = a.position_id
-			JOIN organization.person per ON per.id = a.person_id
-			WHERE per.user_id = $1
-			  AND pos.code = ANY(ARRAY['HR_MANAGER','HR_OFFICER','GROUP_ADMIN','IT_ADMIN','HEAD_HR'])
-			  AND a.effective_from <= CURRENT_DATE
-			  AND (a.effective_to IS NULL OR a.effective_to >= CURRENT_DATE)
+			FROM   organization.person   per
+			JOIN   organization.assignment a   ON a.person_id = per.id
+			                                  AND a.effective_from <= CURRENT_DATE
+			                                  AND (a.effective_to IS NULL OR a.effective_to >= CURRENT_DATE)
+			JOIN   organization.position  pos ON pos.id = a.position_id
+			LEFT   JOIN identity.users    u   ON u.id   = per.user_id
+			WHERE  per.user_id = $1
+			  AND (
+			        pos.code IN (
+			            'HEAD_HUMAN_CAPITAL',
+			            'HR_MANAGER',
+			            'HR_OPS_MANAGER',
+			            'HR_ADMIN',
+			            'HC_OFFICER',
+			            'HC_MANAGER',
+			            'HR_OFFICER',
+			            'GROUP_ADMIN',
+			            'IT_ADMIN',
+			            'HEAD_HR'
+			        )
+			        OR u.role IN (
+			            'hr_admin',
+			            'group_admin',
+			            'admin',
+			            'hr_manager',
+			            'hr_officer'
+			        )
+			  )
 		)
 	`
 	var exists bool
