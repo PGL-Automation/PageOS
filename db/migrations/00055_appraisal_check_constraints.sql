@@ -1,13 +1,20 @@
 -- +goose Up
 -- Add CHECK constraints on all state-machine columns in appraisal schema
 
-ALTER TABLE appraisal.cycle
-    ADD CONSTRAINT chk_cycle_phase CHECK (phase IS NULL OR phase IN ('target', 'appraisal')),
-    ADD CONSTRAINT chk_cycle_status CHECK (status IN ('draft', 'open', 'closed', 'archived'));
-
-ALTER TABLE appraisal.submission
-    ADD CONSTRAINT chk_submission_status CHECK (status IN ('pending', 'self_draft', 'self_submitted', 'manager_scoring', 'submitted_to_hc', 'finalized', 'withdrawn', 'completed')),
-    ADD CONSTRAINT chk_submission_target_status CHECK (target_status IS NULL OR target_status IN ('not_set', 'set', 'accepted', 'rejected'));
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_cycle_phase') THEN
+        ALTER TABLE appraisal.cycle ADD CONSTRAINT chk_cycle_phase CHECK (phase IS NULL OR phase IN ('target', 'appraisal'));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_cycle_status') THEN
+        ALTER TABLE appraisal.cycle ADD CONSTRAINT chk_cycle_status CHECK (status IN ('draft', 'open', 'closed', 'archived'));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_submission_status') THEN
+        ALTER TABLE appraisal.submission ADD CONSTRAINT chk_submission_status CHECK (status IN ('pending', 'self_draft', 'self_submitted', 'manager_scoring', 'submitted_to_hc', 'finalized', 'withdrawn', 'completed'));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_submission_target_status') THEN
+        ALTER TABLE appraisal.submission ADD CONSTRAINT chk_submission_target_status CHECK (target_status IS NULL OR target_status IN ('not_set', 'set', 'accepted', 'rejected'));
+    END IF;
+END $$;
 
 -- Fix cascade on submission to prevent accidental data loss
 ALTER TABLE appraisal.submission DROP CONSTRAINT IF EXISTS appraisal_submission_cycle_id_fkey;
