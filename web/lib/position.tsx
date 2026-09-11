@@ -140,7 +140,7 @@ const Ctx = createContext<PositionCtx>({
   positions: [], activePosition: null, setActive: () => {}, isLoading: true,
   positionLoadError: false,
   hasRole: () => false, primaryCode: null, isDemoMode: false,
-  isAdminMode: false, adminPosition: null, positionLoadError: false,
+  isAdminMode: false, adminPosition: null,
 });
 
 // ── Provider ───────────────────────────────────────────────────────────────────
