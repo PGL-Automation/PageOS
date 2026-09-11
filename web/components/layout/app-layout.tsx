@@ -27,13 +27,9 @@ type NavGroup = { id: string; label?: string; items: NavItem[] };
 
 const WM_NAV: NavGroup[] = [
   { id: "core", items: [
-    { href: "/wm/dashboard",          label: "My Dashboard",   icon: LayoutDashboard },
-    { href: "/ai",                    label: "AI Copilot",     icon: Brain, badge: "AI" },
-  ]},
-  { id: "team", label: "My Team", items: [
-    { href: "/wm/group-head",         label: "Team Overview",    icon: Users },
-    { href: "/md/targets",            label: "WM Targets",       icon: Target },
-    { href: "/appraisal",             label: "Team Appraisal",   icon: ClipboardList },
+    { href: "/wm/dashboard",          label: "My Dashboard",    icon: LayoutDashboard },
+    { href: "/wm/group-head",         label: "Team Overview",   icon: Users },
+    { href: "/ai",                    label: "AI Copilot",      icon: Brain, badge: "AI" },
   ]},
   { id: "crm", label: "CRM", items: [
     { href: "/crm",          label: "Dashboard",  icon: LayoutDashboard },
@@ -53,12 +49,13 @@ const WM_NAV: NavGroup[] = [
     { href: "/wm/portfolio/accounts", label: "Client Accounts",   icon: Users },
   ]},
   { id: "business", label: "My Business", items: [
-    { href: "/wm/commission",           label: "My Commission",       icon: DollarSign },
-    { href: "/approval",                label: "Approvals",           icon: CheckSquare },
-    { href: "/leave",                   label: "My Leave",            icon: CalendarDays },
-    { href: "/my-documents",            label: "My Documents",        icon: FileText },
-    { href: "/documents",               label: "Shared Documents",    icon: FolderOpen },
-    { href: "/vault",                   label: "My Vault",            icon: Lock },
+    { href: "/wm/commission",         label: "My Commission",    icon: DollarSign },
+    { href: "/appraisal",             label: "My Appraisal",     icon: ClipboardList },
+    { href: "/approval",              label: "Approvals",        icon: CheckSquare },
+    { href: "/leave",                 label: "My Leave",         icon: CalendarDays },
+    { href: "/my-documents",          label: "My Documents",     icon: FileText },
+    { href: "/documents",             label: "Shared Documents", icon: FolderOpen },
+    { href: "/vault",                 label: "My Vault",         icon: Lock },
   ]},
 ];
 
