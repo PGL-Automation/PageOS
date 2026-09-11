@@ -7,13 +7,19 @@ package appraisal
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"math"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/pagegroup/pageos/internal/notification"
 )
+
+// ErrNoDeptKPIs is returned by SeedIndividualFromDept when no KPIs have been
+// configured for the department in this cycle.
+var ErrNoDeptKPIs = errors.New("no department KPIs configured for this cycle")
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -285,6 +291,9 @@ func (s *Service) SeedIndividualFromDept(ctx context.Context, cycleID, employeeI
 	if err != nil {
 		return err
 	}
+	if len(kpis) == 0 {
+		return ErrNoDeptKPIs
+	}
 	targets, err := s.GetKPITargets(ctx, cycleID, department, role, grade)
 	if err != nil {
 		return err
@@ -346,11 +355,13 @@ func (s *Service) SaveIndividualScorecard(ctx context.Context, cycleID, employee
 }
 
 // HEAD_POSITION_CODES are role codes considered department heads for KPI purposes.
+// NOTE: HR/HC roles are intentionally excluded — they are handled via IsHROrAdmin.
 var HEAD_POSITION_CODES = []string{
 	"GROUP_HEAD_WEALTH_MGMT", "HEAD_OF_INVESTMENT", "HEAD_INVESTMENT_MGMT",
 	"HEAD_OF_OPERATIONS", "TREASURY_OPS_FINANCE_MGR", "TL_FINANCIAL_REPORTING",
 	"HEAD_CORPORATE_COMPLIANCE", "HEAD_RISK_TRADE_MGMT",
-	"HEAD_HUMAN_CAPITAL", "HR_MANAGER", "HR_OPS_MANAGER",
+	"MANAGING_DIRECTOR", "GROUP_HEAD_BUSINESS_DEV", "FINOPS_MANAGER",
+	"IT_ADMIN", "BRAND_STRATEGY_MANAGER",
 }
 
 // IsDeptHead returns true if the user holds any department-head position.
@@ -444,9 +455,44 @@ func (s *Service) NotifyEmployeesOnAppraisalPhase(ctx context.Context, cycleID u
 	}
 }
 
+// validTargetStatuses is the complete set of allowed target_status values.
+var validTargetStatuses = map[string]bool{
+	"not_set":  true,
+	"set":      true,
+	"accepted": true,
+	"rejected": true,
+}
+
+// validTargetTransitions maps current status → set of valid next statuses.
+var validTargetTransitions = map[string]map[string]bool{
+	"not_set":  {"set": true},
+	"set":      {"accepted": true, "rejected": true},
+	"rejected": {"set": true},
+	"accepted": {}, // terminal — no further transitions
+}
+
 // SetTargetStatus updates the target_status field on a submission.
+// It validates the new status and enforces the allowed state machine transitions.
 func (s *Service) SetTargetStatus(ctx context.Context, cycleID, employeeID uuid.UUID, status string) error {
-	_, err := s.pool.Exec(ctx,
+	if !validTargetStatuses[status] {
+		return fmt.Errorf("invalid target_status %q: must be one of not_set, set, accepted, rejected", status)
+	}
+
+	// Load current status for transition validation.
+	var current string
+	err := s.pool.QueryRow(ctx,
+		`SELECT COALESCE(target_status, 'not_set') FROM appraisal.submission WHERE cycle_id=$1 AND appraisee_id=$2`,
+		cycleID, employeeID,
+	).Scan(&current)
+	if err != nil {
+		return fmt.Errorf("appraisal: set target status: resolve current: %w", err)
+	}
+	allowed, ok := validTargetTransitions[current]
+	if !ok || !allowed[status] {
+		return fmt.Errorf("invalid target status transition: %s → %s", current, status)
+	}
+
+	_, err = s.pool.Exec(ctx,
 		`UPDATE appraisal.submission SET target_status=$1, updated_at=now() WHERE cycle_id=$2 AND appraisee_id=$3`,
 		status, cycleID, employeeID,
 	)
@@ -524,13 +570,17 @@ func (s *Service) NotifyTargetsSet(ctx context.Context, cycleID, employeeID, man
 // ── Phase management ───────────────────────────────────────────────────────────
 
 // SetCyclePhase switches a cycle between 'target' and 'appraisal' phases.
+// The cycle must have status='open'; closed or archived cycles cannot change phase.
 func (s *Service) SetCyclePhase(ctx context.Context, cycleID uuid.UUID, phase string) error {
 	if phase != "target" && phase != "appraisal" {
 		return fmt.Errorf("invalid phase %q: must be 'target' or 'appraisal'", phase)
 	}
-	_, err := s.pool.Exec(ctx, `UPDATE appraisal.cycle SET phase=$1, updated_at=now() WHERE id=$2`, phase, cycleID)
+	tag, err := s.pool.Exec(ctx, `UPDATE appraisal.cycle SET phase=$1, updated_at=now() WHERE id=$2 AND status='open'`, phase, cycleID)
 	if err != nil {
 		return fmt.Errorf("appraisal: set phase: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("cycle is not open — phase can only be changed on open cycles")
 	}
 	return nil
 }
@@ -538,13 +588,15 @@ func (s *Service) SetCyclePhase(ctx context.Context, cycleID uuid.UUID, phase st
 // GetCyclePhase returns the current phase of a cycle.
 func (s *Service) GetCyclePhase(ctx context.Context, cycleID uuid.UUID) (string, error) {
 	var phase string
-	err := s.pool.QueryRow(ctx, `SELECT COALESCE(phase, 'appraisal') FROM appraisal.cycle WHERE id=$1`, cycleID).Scan(&phase)
+	err := s.pool.QueryRow(ctx, `SELECT COALESCE(phase, 'target') FROM appraisal.cycle WHERE id=$1`, cycleID).Scan(&phase)
 	return phase, err
 }
 
 // TargetsProgress returns how many employees in a cycle have had their individual
 // scorecard set by their manager.
-func (s *Service) TargetsProgress(ctx context.Context, cycleID uuid.UUID) ([]TargetProgress, error) {
+// When managerFilter is non-nil, only submissions managed by that user are returned
+// (used for non-HR dept-head scoping).
+func (s *Service) TargetsProgress(ctx context.Context, cycleID uuid.UUID, managerFilter *uuid.UUID) ([]TargetProgress, error) {
 	const q = `
 		SELECT
 			s.appraisee_id,
@@ -559,9 +611,10 @@ func (s *Service) TargetsProgress(ctx context.Context, cycleID uuid.UUID) ([]Tar
 		JOIN identity.users u  ON u.id = s.appraisee_id
 		LEFT JOIN identity.users mu ON mu.id = s.manager_id
 		WHERE s.cycle_id = $1
+		  AND ($2::uuid IS NULL OR s.manager_id = $2)
 		ORDER BY s.department, employee_name
 	`
-	rows, err := s.pool.Query(ctx, q, cycleID)
+	rows, err := s.pool.Query(ctx, q, cycleID, managerFilter)
 	if err != nil {
 		return nil, fmt.Errorf("appraisal: targets progress: %w", err)
 	}
@@ -769,7 +822,24 @@ type BSCAction struct {
 
 // ApplyBSCAction applies a workflow action to a BSC submission and returns the updated record.
 // It enforces the state machine and validates ratings before committing.
+// The initial SELECT and final UPDATE are wrapped in a transaction with FOR UPDATE
+// to prevent race conditions on concurrent actions.
 func (s *Service) ApplyBSCAction(ctx context.Context, submissionID, actorID uuid.UUID, isHR bool, action BSCAction) (BSCSubmission, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return BSCSubmission{}, fmt.Errorf("appraisal: apply bsc action begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	// Lock the row for the duration of the transaction to prevent race conditions.
+	var lockID uuid.UUID
+	if err := tx.QueryRow(ctx,
+		`SELECT id FROM appraisal.submission WHERE id=$1 FOR UPDATE`,
+		submissionID,
+	).Scan(&lockID); err != nil {
+		return BSCSubmission{}, fmt.Errorf("appraisal: apply bsc action: lock submission: %w", err)
+	}
+
 	current, err := s.GetBSCSubmission(ctx, submissionID)
 	if err != nil {
 		return BSCSubmission{}, err
@@ -888,7 +958,7 @@ func (s *Service) ApplyBSCAction(ctx context.Context, submissionID, actorID uuid
 	if selfScore > 0 { selfScorePtr = &selfScore }
 	if agreedScore > 0 { agreedScorePtr = &agreedScore }
 
-	if _, err := s.pool.Exec(ctx, upd,
+	if _, err := tx.Exec(ctx, upd,
 		status, string(selfJSONB), string(agreedJSONB),
 		empC, mgrC, devP, hcC,
 		activeBand, selfScorePtr, agreedScorePtr,
@@ -898,7 +968,132 @@ func (s *Service) ApplyBSCAction(ctx context.Context, submissionID, actorID uuid
 		return BSCSubmission{}, fmt.Errorf("appraisal: apply bsc action: %w", err)
 	}
 
+	if err := tx.Commit(ctx); err != nil {
+		return BSCSubmission{}, fmt.Errorf("appraisal: apply bsc action commit: %w", err)
+	}
+
+	// Fire-and-forget notifications after successful commit.
+	// Use context.Background() so a cancelled request context doesn't drop the notification.
+	cycleIDCopy := current.CycleID
+	appraiseeIDCopy := current.AppraiseeID
+	var managerIDCopy uuid.UUID
+	if current.ManagerID != nil {
+		managerIDCopy = *current.ManagerID
+	}
+
+	switch status {
+	case "self_submitted":
+		if current.ManagerID != nil {
+			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						log.Printf("appraisal: notify manager on self_submitted panic: %v", r)
+					}
+				}()
+				_ = notification.SendToUserByID(context.Background(), s.pool, managerIDCopy, notification.InApp{
+					Type:       "appraisal_self_submitted",
+					Title:      "Employee submitted self-assessment",
+					Body:       fmt.Sprintf("An employee's self-assessment is ready for your review in the appraisal cycle."),
+					Link:       fmt.Sprintf("/appraisal/%s/submissions/%s", cycleIDCopy, submissionID),
+					Priority:   "high",
+					EntityType: "appraisal_submission",
+					EntityID:   &submissionID,
+				})
+			}()
+		}
+	case "submitted_to_hc":
+		// Notify all HR/HC roles
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("appraisal: notify hr on submit_to_hc panic: %v", r)
+				}
+			}()
+			s.notifyHROnSubmitToHC(context.Background(), cycleIDCopy, submissionID)
+		}()
+	case "finalized":
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("appraisal: notify appraisee on finalized panic: %v", r)
+				}
+			}()
+			var cycleName string
+			_ = s.pool.QueryRow(context.Background(), `SELECT title FROM appraisal.cycle WHERE id=$1`, cycleIDCopy).Scan(&cycleName)
+			submIDCopy := submissionID
+			_ = notification.SendToUserByID(context.Background(), s.pool, appraiseeIDCopy, notification.InApp{
+				Type:       "appraisal_finalized",
+				Title:      "Your appraisal has been finalised",
+				Body:       fmt.Sprintf("Your appraisal for the \"%s\" cycle has been finalised by HR. Log in to view your final scores.", cycleName),
+				Link:       fmt.Sprintf("/appraisal/%s", cycleIDCopy),
+				Priority:   "high",
+				EntityType: "appraisal_submission",
+				EntityID:   &submIDCopy,
+			})
+		}()
+	case "self_draft":
+		// returned to employee
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("appraisal: notify appraisee on return_to_employee panic: %v", r)
+				}
+			}()
+			var cycleName string
+			_ = s.pool.QueryRow(context.Background(), `SELECT title FROM appraisal.cycle WHERE id=$1`, cycleIDCopy).Scan(&cycleName)
+			submIDCopy := submissionID
+			_ = notification.SendToUserByID(context.Background(), s.pool, appraiseeIDCopy, notification.InApp{
+				Type:       "appraisal_returned_to_employee",
+				Title:      "Your appraisal has been returned for revision",
+				Body:       fmt.Sprintf("Your manager has returned your appraisal for the \"%s\" cycle for further self-assessment. Please log in and revise your responses.", cycleName),
+				Link:       fmt.Sprintf("/appraisal/%s", cycleIDCopy),
+				Priority:   "medium",
+				EntityType: "appraisal_submission",
+				EntityID:   &submIDCopy,
+			})
+		}()
+	}
+
 	return s.GetBSCSubmission(ctx, submissionID)
+}
+
+// notifyHROnSubmitToHC sends a notification to all active HR/HC staff when
+// a manager submits a BSC appraisal to HC for finalisation.
+func (s *Service) notifyHROnSubmitToHC(ctx context.Context, cycleID, submissionID uuid.UUID) {
+	const q = `
+		SELECT DISTINCT u.id
+		FROM identity.users u
+		JOIN organization.person per ON per.user_id = u.id
+		JOIN organization.assignment a ON a.person_id = per.id AND a.effective_to IS NULL
+		JOIN organization.position pos ON pos.id = a.position_id
+		WHERE pos.code IN ('HEAD_HUMAN_CAPITAL','HR_MANAGER','HR_OPS_MANAGER','HR_ADMIN','HC_OFFICER')
+		  AND u.status = 'active'
+	`
+	rows, err := s.pool.Query(ctx, q)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	var cycleName string
+	_ = s.pool.QueryRow(ctx, `SELECT title FROM appraisal.cycle WHERE id=$1`, cycleID).Scan(&cycleName)
+	submIDCopy := submissionID
+
+	for rows.Next() {
+		var userID uuid.UUID
+		if err := rows.Scan(&userID); err != nil {
+			continue
+		}
+		_ = notification.SendToUserByID(ctx, s.pool, userID, notification.InApp{
+			Type:       "appraisal_submitted_to_hc",
+			Title:      "Appraisal submitted for HC review",
+			Body:       fmt.Sprintf("A manager has submitted an employee appraisal to HC for finalisation in the \"%s\" cycle.", cycleName),
+			Link:       fmt.Sprintf("/appraisal/%s/submissions/%s", cycleID, submissionID),
+			Priority:   "medium",
+			EntityType: "appraisal_submission",
+			EntityID:   &submIDCopy,
+		})
+	}
 }
 
 func validateRatings(m map[string]float64) map[string]float64 {
@@ -930,32 +1125,40 @@ func allRated(scorecard []IndividualKPI, ratings map[string]float64) bool {
 // ── Auto-generate submissions ──────────────────────────────────────────────────
 
 // GenerateBSCSubmissions creates submissions for all active employees in the org
-// who have a manager, populating department/grade/level/manager_id.
+// who have a primary assignment, populating department/grade/level/manager_id.
+// Department is sourced from organization.department (via assignment.department_id),
+// grade uses grade_level.display_name for human-readable labels, and manager_id
+// is resolved via assignment.manager_override_person_id first, then the position
+// hierarchy. Only primary assignments (is_primary = true) are considered.
 func (s *Service) GenerateBSCSubmissions(ctx context.Context, cycleID uuid.UUID) (created, existing int, err error) {
 	const fetchEmps = `
 		SELECT
 			u.id AS user_id,
-			COALESCE(p.grade_level_code, '') AS grade,
+			COALESCE(gl.display_name, a.grade_level_code, '') AS grade,
 			COALESCE(pos.code, '') AS role_code,
-			COALESCE(pos.title, '') AS dept,
-			COALESCE(mu.id, '00000000-0000-0000-0000-000000000000'::uuid) AS manager_user_id
+			COALESCE(d.name, '') AS dept,
+			COALESCE(
+				-- manager_override_person_id takes precedence over the position hierarchy
+				(SELECT p_ov.user_id FROM organization.person p_ov WHERE p_ov.id = a.manager_override_person_id LIMIT 1),
+				-- fallback: find the holder of the parent position
+				(SELECT p_mgr.user_id
+				 FROM organization.person p_mgr
+				 JOIN organization.assignment a_mgr ON a_mgr.person_id = p_mgr.id
+				 WHERE a_mgr.position_id = pos.reports_to_position_id
+				   AND a_mgr.effective_to IS NULL
+				   AND a_mgr.is_primary = true
+				 LIMIT 1),
+				'00000000-0000-0000-0000-000000000000'::uuid
+			) AS manager_user_id
 		FROM identity.users u
 		JOIN organization.person per ON per.user_id = u.id
-		JOIN organization.assignment a ON a.person_id = per.id AND a.effective_to IS NULL
+		JOIN organization.assignment a ON a.person_id = per.id
+			AND a.effective_to IS NULL
+			AND a.is_primary = true
 		JOIN organization.position pos ON pos.id = a.position_id
 		LEFT JOIN organization.grade_level gl ON gl.code = a.grade_level_code
-		LEFT JOIN organization.assignment ma ON ma.person_id = (
-			SELECT p2.id FROM organization.person p2
-			JOIN organization.assignment a2 ON a2.person_id = p2.id
-			WHERE a2.position_id = pos.reports_to_position_id AND a2.effective_to IS NULL
-			LIMIT 1
-		) AND ma.effective_to IS NULL
-		LEFT JOIN identity.users mu ON mu.id = (
-			SELECT p3.user_id FROM organization.person p3
-			WHERE p3.id = ma.person_id LIMIT 1
-		)
+		LEFT JOIN organization.department d ON d.id = a.department_id
 		WHERE u.status = 'active'
-		  AND a.effective_to IS NULL
 	`
 	rows, err := s.pool.Query(ctx, fetchEmps)
 	if err != nil {
@@ -964,16 +1167,17 @@ func (s *Service) GenerateBSCSubmissions(ctx context.Context, cycleID uuid.UUID)
 	defer rows.Close()
 
 	type empRow struct {
-		UserID       uuid.UUID
-		Grade        string
-		RoleCode     string
-		Dept         string
+		UserID        uuid.UUID
+		Grade         string
+		RoleCode      string
+		Dept          string
 		ManagerUserID uuid.UUID
 	}
 	var emps []empRow
 	for rows.Next() {
 		var e empRow
 		if err := rows.Scan(&e.UserID, &e.Grade, &e.RoleCode, &e.Dept, &e.ManagerUserID); err != nil {
+			log.Printf("appraisal: generate submissions: scan row: %v", err)
 			continue
 		}
 		emps = append(emps, e)
@@ -995,6 +1199,7 @@ func (s *Service) GenerateBSCSubmissions(ctx context.Context, cycleID uuid.UUID)
 		}
 		tag, qErr := s.pool.Exec(ctx, ins, cycleID, e.UserID, e.Dept, e.Grade, 1, mgrPtr)
 		if qErr != nil {
+			log.Printf("appraisal: generate submissions: skipping employee %s: %v", e.UserID, qErr)
 			continue
 		}
 		if tag.RowsAffected() > 0 {

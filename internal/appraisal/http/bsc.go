@@ -8,6 +8,8 @@ import (
 	"context"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
+	"log"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -57,6 +59,11 @@ func (h *Handler) RegisterBSCRoutes(r chi.Router) {
 // ── KPI management ─────────────────────────────────────────────────────────────
 
 func (h *Handler) listKPIs(w http.ResponseWriter, r *http.Request) {
+	user, ok := identityhttp.UserFrom(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+		return
+	}
 	cycleID, ok := parseCycleID(w, r)
 	if !ok {
 		return
@@ -66,29 +73,48 @@ func (h *Handler) listKPIs(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "dept query param required")
 		return
 	}
+	// Access control: HR/admin can query any dept; dept heads can query their own; others 403.
+	isHR := h.svc.IsHROrAdmin(r.Context(), user.ID)
+	if !isHR && !h.svc.IsDeptHead(r.Context(), user.ID) {
+		httpx.Error(w, http.StatusForbidden, "forbidden", "HR, admin or department head role required")
+		return
+	}
 	kpis, err := h.svc.ListKPIs(r.Context(), cycleID, dept)
 	if err != nil {
-		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		log.Printf("appraisal: listKPIs: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "internal", "an internal error occurred")
 		return
 	}
 	if kpis == nil {
 		kpis = []appraisal.KPI{}
 	}
 	httpx.JSON(w, http.StatusOK, map[string]any{
-		"department":  dept,
+		"department":   dept,
 		"perspectives": appraisal.BSCPerspectives,
-		"kpis":        kpis,
+		"kpis":         kpis,
 	})
 }
 
 func (h *Handler) listKPIDepartments(w http.ResponseWriter, r *http.Request) {
+	user, ok := identityhttp.UserFrom(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+		return
+	}
 	cycleID, ok := parseCycleID(w, r)
 	if !ok {
 		return
 	}
+	// Access control: HR/admin or dept heads only.
+	isHR := h.svc.IsHROrAdmin(r.Context(), user.ID)
+	if !isHR && !h.svc.IsDeptHead(r.Context(), user.ID) {
+		httpx.Error(w, http.StatusForbidden, "forbidden", "HR, admin or department head role required")
+		return
+	}
 	depts, err := h.svc.ListKPIDepartments(r.Context(), cycleID)
 	if err != nil {
-		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		log.Printf("appraisal: listKPIDepartments: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "internal", "an internal error occurred")
 		return
 	}
 	if depts == nil {
@@ -151,15 +177,27 @@ func (h *Handler) saveKPIs(w http.ResponseWriter, r *http.Request) {
 
 	kpis, err := h.svc.SaveKPIs(r.Context(), cycleID, body.Department, items, user.ID)
 	if err != nil {
-		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		log.Printf("appraisal: saveKPIs: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "internal", "an internal error occurred")
 		return
 	}
 	httpx.JSON(w, http.StatusOK, map[string]any{"kpis": kpis})
 }
 
 func (h *Handler) getKPITargets(w http.ResponseWriter, r *http.Request) {
+	user, ok := identityhttp.UserFrom(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+		return
+	}
 	cycleID, ok := parseCycleID(w, r)
 	if !ok {
+		return
+	}
+	// Access control: HR/admin or dept heads only.
+	isHR := h.svc.IsHROrAdmin(r.Context(), user.ID)
+	if !isHR && !h.svc.IsDeptHead(r.Context(), user.ID) {
+		httpx.Error(w, http.StatusForbidden, "forbidden", "HR, admin or department head role required")
 		return
 	}
 	q := r.URL.Query()
@@ -170,7 +208,8 @@ func (h *Handler) getKPITargets(w http.ResponseWriter, r *http.Request) {
 	}
 	targets, err := h.svc.GetKPITargets(r.Context(), cycleID, dept, role, grade)
 	if err != nil {
-		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		log.Printf("appraisal: getKPITargets: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "internal", "an internal error occurred")
 		return
 	}
 	httpx.JSON(w, http.StatusOK, map[string]any{"targets": targets})
@@ -200,7 +239,8 @@ func (h *Handler) saveKPITargets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.svc.SaveKPITargets(r.Context(), cycleID, body.Department, body.Role, body.Grade, body.Targets); err != nil {
-		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		log.Printf("appraisal: saveKPITargets: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "internal", "an internal error occurred")
 		return
 	}
 	httpx.JSON(w, http.StatusOK, map[string]bool{"ok": true})
@@ -241,12 +281,21 @@ func (h *Handler) getIndividualScorecard(w http.ResponseWriter, r *http.Request)
 	role := r.URL.Query().Get("role")
 	grade := r.URL.Query().Get("grade")
 	if dept != "" && role != "" && grade != "" {
-		_ = h.svc.SeedIndividualFromDept(r.Context(), cycleID, empID, dept, role, grade, user.ID)
+		if seedErr := h.svc.SeedIndividualFromDept(r.Context(), cycleID, empID, dept, role, grade, user.ID); seedErr != nil {
+			if errors.Is(seedErr, appraisal.ErrNoDeptKPIs) {
+				httpx.Error(w, http.StatusPreconditionFailed, "no_dept_kpis",
+					"Department KPIs have not been configured for this cycle. Please configure KPIs at /appraisal/{cycleId}/kpis first.")
+				return
+			}
+			log.Printf("appraisal: seedIndividualFromDept: %v", seedErr)
+			// Non-fatal: continue and return whatever scorecard exists
+		}
 	}
 
 	scorecard, err := h.svc.GetIndividualScorecard(r.Context(), cycleID, empID)
 	if err != nil {
-		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		log.Printf("appraisal: getIndividualScorecard: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "internal", "an internal error occurred")
 		return
 	}
 	if scorecard == nil {
@@ -275,12 +324,21 @@ func (h *Handler) saveIndividualScorecard(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	isHR     := h.svc.IsHR(r.Context(), user.ID)
-	isHead   := h.svc.IsDeptHead(r.Context(), user.ID)
-	isMgr    := h.svc.IsManagerOf(r.Context(), user.ID, empID)
+	isHR   := h.svc.IsHROrAdmin(r.Context(), user.ID)
+	isHead := h.svc.IsDeptHead(r.Context(), user.ID)
+	isMgr  := h.svc.IsManagerOf(r.Context(), user.ID, empID)
 	if !isHR && !isHead && !isMgr {
 		httpx.Error(w, http.StatusForbidden, "forbidden", "only line managers, department heads or HR can set targets")
 		return
+	}
+
+	// FIX 18: If the caller is a dept head (but not HR), verify the employee belongs to the
+	// same department as the caller's position. This prevents cross-dept target setting.
+	if isHead && !isHR {
+		if !h.svc.IsSameDepartment(r.Context(), user.ID, empID, cycleID) {
+			httpx.Error(w, http.StatusForbidden, "forbidden", "You can only set targets for employees in your department.")
+			return
+		}
 	}
 
 	var body struct {
@@ -294,11 +352,21 @@ func (h *Handler) saveIndividualScorecard(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Mark target_status as 'set' so employee knows to review
-	_ = h.svc.SetTargetStatus(r.Context(), cycleID, empID, "set")
+	// Mark target_status as 'set' so employee knows to review.
+	// Use idiomatic SetTargetStatus; if already 'set' the transition will be rejected, which is fine.
+	if tsErr := h.svc.SetTargetStatus(r.Context(), cycleID, empID, "set"); tsErr != nil {
+		log.Printf("appraisal: saveIndividualScorecard: SetTargetStatus: %v", tsErr)
+	}
 
-	// Notify the employee — fire-and-forget
-	go h.svc.NotifyTargetsSet(context.Background(), cycleID, empID, user.ID)
+	// Notify the employee — fire-and-forget with panic recovery.
+	go func() {
+		defer func() {
+			if rec := recover(); rec != nil {
+				log.Printf("appraisal: NotifyTargetsSet panic: %v", rec)
+			}
+		}()
+		h.svc.NotifyTargetsSet(context.Background(), cycleID, empID, user.ID)
+	}()
 
 	scorecard, _ := h.svc.GetIndividualScorecard(r.Context(), cycleID, empID)
 	httpx.JSON(w, http.StatusOK, map[string]any{"scorecard": scorecard})
@@ -320,13 +388,32 @@ func (h *Handler) setCyclePhase(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
+
+	// FIX 17: Guard against switching to appraisal phase when no submissions exist.
+	if body.Phase == "appraisal" {
+		var subCount int
+		_ = h.svc.CountSubmissions(r.Context(), cycleID, &subCount)
+		if subCount == 0 {
+			httpx.Error(w, http.StatusBadRequest, "no_submissions",
+				"Cannot switch to appraisal phase: no employee submissions exist. Generate submissions first.")
+			return
+		}
+	}
+
 	if err := h.svc.SetCyclePhase(r.Context(), cycleID, body.Phase); err != nil {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", err.Error())
 		return
 	}
-	// When switching to appraisal phase, notify all employees that they can now submit
+	// When switching to appraisal phase, notify all employees that they can now submit.
 	if body.Phase == "appraisal" {
-		go h.svc.NotifyEmployeesOnAppraisalPhase(context.Background(), cycleID)
+		go func() {
+			defer func() {
+				if rec := recover(); rec != nil {
+					log.Printf("appraisal: NotifyEmployeesOnAppraisalPhase panic: %v", rec)
+				}
+			}()
+			h.svc.NotifyEmployeesOnAppraisalPhase(context.Background(), cycleID)
+		}()
 	}
 	httpx.JSON(w, http.StatusOK, map[string]string{"phase": body.Phase})
 }
@@ -337,7 +424,8 @@ func (h *Handler) targetsProgress(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
-	if !h.svc.IsHR(r.Context(), user.ID) && !h.svc.IsDeptHead(r.Context(), user.ID) {
+	isHR := h.svc.IsHROrAdmin(r.Context(), user.ID)
+	if !isHR && !h.svc.IsDeptHead(r.Context(), user.ID) {
 		httpx.Error(w, http.StatusForbidden, "forbidden", "HR or department head role required")
 		return
 	}
@@ -345,17 +433,26 @@ func (h *Handler) targetsProgress(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rows, err := h.svc.TargetsProgress(r.Context(), cycleID)
+
+	// FIX 16: Non-HR callers (dept heads) see only their own direct reports.
+	var managerFilter *uuid.UUID
+	if !isHR {
+		callerID := user.ID
+		managerFilter = &callerID
+	}
+
+	rows, err := h.svc.TargetsProgress(r.Context(), cycleID, managerFilter)
 	if err != nil {
-		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		log.Printf("appraisal: targetsProgress: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "internal", "an internal error occurred")
 		return
 	}
 	if rows == nil {
 		rows = []appraisal.TargetProgress{}
 	}
 	set := 0
-	for _, r := range rows {
-		if r.TargetsSet {
+	for _, pr := range rows {
+		if pr.TargetsSet {
 			set++
 		}
 	}
@@ -410,13 +507,8 @@ func (h *Handler) bscAction(w http.ResponseWriter, r *http.Request) {
 // ── Generate submissions ───────────────────────────────────────────────────────
 
 func (h *Handler) generateSubmissions(w http.ResponseWriter, r *http.Request) {
-	user, ok := identityhttp.UserFrom(r.Context())
-	if !ok {
-		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
-		return
-	}
-	if !h.svc.IsHR(r.Context(), user.ID) && !h.svc.IsDeptHead(r.Context(), user.ID) {
-		httpx.Error(w, http.StatusForbidden, "forbidden", "HR or department head role required")
+	// FIX 19: Only HR can trigger org-wide submission generation.
+	if !h.requireHR(w, r) {
 		return
 	}
 	cycleID, ok := parseCycleID(w, r)
@@ -425,7 +517,8 @@ func (h *Handler) generateSubmissions(w http.ResponseWriter, r *http.Request) {
 	}
 	created, existing, err := h.svc.GenerateBSCSubmissions(r.Context(), cycleID)
 	if err != nil {
-		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		log.Printf("appraisal: generateSubmissions: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "internal", "an internal error occurred")
 		return
 	}
 	httpx.JSON(w, http.StatusOK, map[string]any{"created": created, "existing": existing, "total": created + existing})
@@ -443,7 +536,8 @@ func (h *Handler) listBSCSubmissions(w http.ResponseWriter, r *http.Request) {
 	}
 	subs, err := h.svc.ListBSCSubmissions(r.Context(), cycleID)
 	if err != nil {
-		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		log.Printf("appraisal: listBSCSubmissions: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "internal", "an internal error occurred")
 		return
 	}
 	if subs == nil {
@@ -506,7 +600,8 @@ func (h *Handler) acceptTargets(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.svc.SetTargetStatus(r.Context(), sub.CycleID, sub.AppraiseeID, "accepted"); err != nil {
-		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		log.Printf("appraisal: acceptTargets: SetTargetStatus: %v", err)
+		httpx.Error(w, http.StatusBadRequest, "status_error", err.Error())
 		return
 	}
 	httpx.JSON(w, http.StatusOK, map[string]string{"target_status": "accepted"})
@@ -541,12 +636,25 @@ func (h *Handler) rejectTargets(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.svc.SetTargetStatus(r.Context(), sub.CycleID, sub.AppraiseeID, "rejected"); err != nil {
-		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		log.Printf("appraisal: rejectTargets: SetTargetStatus: %v", err)
+		httpx.Error(w, http.StatusBadRequest, "status_error", err.Error())
 		return
 	}
 
-	// Notify manager
-	go h.svc.NotifyManagerOnTargetRejection(r.Context(), sub.CycleID, sub.AppraiseeID, body.Reason)
+	// FIX 22: Use context.Background() — not r.Context() — so the notification is not
+	// cancelled when the HTTP connection closes after the response is sent.
+	// FIX 23: Wrap in anonymous func with defer recover() for panic safety.
+	cycleIDCopy := sub.CycleID
+	appraiseeIDCopy := sub.AppraiseeID
+	reason := body.Reason
+	go func() {
+		defer func() {
+			if rec := recover(); rec != nil {
+				log.Printf("appraisal: NotifyManagerOnTargetRejection panic: %v", rec)
+			}
+		}()
+		h.svc.NotifyManagerOnTargetRejection(context.Background(), cycleIDCopy, appraiseeIDCopy, reason)
+	}()
 
 	httpx.JSON(w, http.StatusOK, map[string]string{"target_status": "rejected"})
 }
@@ -563,7 +671,8 @@ func (h *Handler) exportCSV(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := h.svc.ExportCSVRows(r.Context(), cycleID)
 	if err != nil {
-		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		log.Printf("appraisal: exportCSV: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "internal", "an internal error occurred")
 		return
 	}
 	var buf bytes.Buffer
