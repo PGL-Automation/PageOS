@@ -807,6 +807,17 @@ export default function EmployeeProfilePage() {
 
   async function uploadFile(file: File) {
     if (!profile) return;
+
+    // UI defence: non-HR/admin users can only upload to their own profile
+    if (!isHR && !isOwnProfile) {
+      toast({
+        title: "Not allowed",
+        description: "You can only upload documents to your own profile.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (file.size > 20 * 1024 * 1024) {
       toast({
         title: "File too large",
