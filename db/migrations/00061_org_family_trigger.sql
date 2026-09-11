@@ -1,5 +1,7 @@
 -- +goose Up
 -- Auto-inherit department family when creating a new position
+
+-- +goose StatementBegin
 CREATE OR REPLACE FUNCTION organization.inherit_position_family()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -13,8 +15,10 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+-- +goose StatementEnd
 
 DROP TRIGGER IF EXISTS trg_inherit_position_family ON organization.position;
+
 CREATE TRIGGER trg_inherit_position_family
   BEFORE INSERT ON organization.position
   FOR EACH ROW EXECUTE FUNCTION organization.inherit_position_family();

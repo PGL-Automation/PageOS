@@ -9,14 +9,10 @@ ALTER TABLE appraisal.cycle ADD COLUMN IF NOT EXISTS snapshot_date date;
 UPDATE appraisal.cycle SET snapshot_date = created_at::date WHERE snapshot_date IS NULL;
 
 -- JSONB validation on self_json and agreed_json
-DO $$ BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_self_json_is_object') THEN
-        ALTER TABLE appraisal.submission ADD CONSTRAINT chk_self_json_is_object CHECK (self_json IS NULL OR jsonb_typeof(self_json) = 'object');
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_agreed_json_is_object') THEN
-        ALTER TABLE appraisal.submission ADD CONSTRAINT chk_agreed_json_is_object CHECK (agreed_json IS NULL OR jsonb_typeof(agreed_json) = 'object');
-    END IF;
-END $$;
+ALTER TABLE appraisal.submission
+    ADD CONSTRAINT chk_self_json_is_object CHECK (self_json IS NULL OR jsonb_typeof(self_json) = 'object');
+ALTER TABLE appraisal.submission
+    ADD CONSTRAINT chk_agreed_json_is_object CHECK (agreed_json IS NULL OR jsonb_typeof(agreed_json) = 'object');
 
 -- +goose Down
 ALTER TABLE appraisal.submission

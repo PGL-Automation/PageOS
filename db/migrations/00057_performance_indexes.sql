@@ -5,23 +5,19 @@ CREATE INDEX IF NOT EXISTS idx_appraisal_submission_manager_id ON appraisal.subm
 CREATE INDEX IF NOT EXISTS idx_appraisal_submission_cycle_appraisee ON appraisal.submission(cycle_id, appraisee_id);
 CREATE INDEX IF NOT EXISTS idx_appraisal_individual_kpi_cycle_emp ON appraisal.individual_kpi(cycle_id, employee_id);
 
--- Add max_attempts to notification outbox
-DO $$ BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE table_schema = 'notification' AND table_name = 'outbox' AND column_name = 'max_attempts'
-    ) THEN
-        ALTER TABLE notification.outbox ADD COLUMN max_attempts int NOT NULL DEFAULT 5;
-    END IF;
-END $$;
+-- Add max_attempts to notification outbox (idempotent via IF NOT EXISTS)
+ALTER TABLE notification.outbox ADD COLUMN IF NOT EXISTS max_attempts int NOT NULL DEFAULT 5;
 
 -- updated_at trigger function
+-- +goose StatementBegin
 CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN NEW.updated_at = now(); RETURN NEW; END;
 $$ LANGUAGE plpgsql;
+-- +goose StatementEnd
 
--- Apply to tables missing auto-update
+-- Apply trigger to tables that have an updated_at column
+-- +goose StatementBegin
 DO $$
 DECLARE t text;
 BEGIN
@@ -40,8 +36,10 @@ BEGIN
         END IF;
     END LOOP;
 END $$;
+-- +goose StatementEnd
 
 -- +goose Down
+-- +goose StatementBegin
 DO $$
 DECLARE t text;
 BEGIN
@@ -49,6 +47,7 @@ BEGIN
         EXECUTE format('DROP TRIGGER IF EXISTS trg_set_updated_at ON %s', t);
     END LOOP;
 END $$;
+-- +goose StatementEnd
 
 DROP FUNCTION IF EXISTS set_updated_at();
 
