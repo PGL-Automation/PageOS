@@ -8,7 +8,7 @@ import {
   TrendingDown, FileText,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { usePosition, roleFamily } from "@/lib/position";
+import { usePosition } from "@/lib/position";
 import { useTeamView, TeamViewBar } from "@/lib/team-view";
 import { cn } from "@/lib/utils";
 
@@ -663,8 +663,7 @@ const TABS = ["all", "pending", "approved", "rejected", "cancelled"] as const;
 type Tab = typeof TABS[number];
 
 export default function MyLeavePage() {
-  const { activePosition } = usePosition();
-  const family = roleFamily(activePosition?.code);
+  const { primaryFamily: family } = usePosition();
   const isHR = family === "hr" || family === "md";
   const tv = useTeamView();
 

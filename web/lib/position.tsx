@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
+import { createContext, useContext, useState, useEffect, useMemo, ReactNode, useCallback } from "react";
 import { useAuth } from "./auth";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -13,6 +13,8 @@ export interface UserPosition {
   department_id?: string;
   is_primary: boolean;
   isDemo?: boolean;      // true when using client-side demo mode (no org assignment yet)
+  /** Server-authoritative role family — set by the backend on GET /org/me/positions. */
+  family?: string;
 }
 
 // Canonical role codes — must match position codes in the database.
@@ -69,6 +71,10 @@ export const ROLE = {
 
 export type RoleCode = (typeof ROLE)[keyof typeof ROLE];
 
+// roleFamily is a FALLBACK for rendering other users' position codes or when
+// position.family is not yet available from the API.
+// For the current logged-in user's family, use primaryFamily from usePosition().
+//
 // Maps a position code to a role family for nav/routing/badge decisions.
 // Patterns are evaluated in priority order; more specific checks come first.
 export function roleFamily(code: string | null | undefined): "wm" | "md" | "hr" | "finance" | "compliance" | "pm" | "default" {
@@ -123,6 +129,12 @@ interface PositionCtx {
   hasRole:        (code: string) => boolean;
   /** The primary role code, or null while loading. */
   primaryCode:    string | null;
+  /**
+   * Server-authoritative role family for the primary position.
+   * Sourced from position.family returned by GET /org/me/positions.
+   * Falls back to roleFamily(primaryCode) for demo/legacy positions.
+   */
+  primaryFamily:  string;
   /** True when running in demo mode (no real org assignments found). */
   isDemoMode:     boolean;
   /**
@@ -137,7 +149,7 @@ interface PositionCtx {
 
 const Ctx = createContext<PositionCtx>({
   positions: [], activePosition: null, setActive: () => {}, isLoading: true,
-  hasRole: () => false, primaryCode: null, isDemoMode: false,
+  hasRole: () => false, primaryCode: null, primaryFamily: "default", isDemoMode: false,
   isAdminMode: false, adminPosition: null,
 });
 
@@ -151,6 +163,16 @@ export function PositionProvider({ children }: { children: ReactNode }) {
   const [isDemoMode, setIsDemoMode]         = useState(false);
   const [isAdminMode, setIsAdminMode]       = useState(false);
   const [adminPosition, setAdminPosition]   = useState<UserPosition | null>(null);
+
+  // Derive primaryFamily from the active position. Prefer the server-authoritative
+  // position.family field; fall back to roleFamily() for demo/legacy positions.
+  const primaryFamily = useMemo(() => {
+    if (!activePosition) return "default";
+    if (activePosition.family && activePosition.family !== "default") {
+      return activePosition.family;
+    }
+    return roleFamily(activePosition.code);
+  }, [activePosition]);
 
   useEffect(() => {
     if (!user || !subsidiary) { setIsLoading(false); return; }
@@ -230,7 +252,7 @@ export function PositionProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={{
       positions, activePosition, setActive, isLoading,
-      hasRole, primaryCode, isDemoMode,
+      hasRole, primaryCode, primaryFamily, isDemoMode,
       isAdminMode, adminPosition,
     }}>
       {children}

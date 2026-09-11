@@ -3,9 +3,9 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, ShieldAlert } from "lucide-react";
-import { usePosition, roleFamily } from "@/lib/position";
+import { usePosition } from "@/lib/position";
 
-type Family = ReturnType<typeof roleFamily>;
+type Family = "wm" | "md" | "hr" | "finance" | "compliance" | "pm" | "default";
 
 // Where each role family lands after login.
 const ROLE_HOME: Record<Family, string> = {
@@ -33,18 +33,17 @@ interface RoleGuardProps {
  */
 export function RoleGuard({ allow, children }: RoleGuardProps) {
   const router  = useRouter();
-  const { primaryCode, isLoading, isDemoMode } = usePosition();
+  const { primaryFamily: family, isLoading, isDemoMode } = usePosition();
 
-  const family  = roleFamily(primaryCode);
-  const allowed = isDemoMode || allow.includes(family);
+  const allowed = isDemoMode || allow.includes(family as Family);
 
   useEffect(() => {
     if (isLoading || isDemoMode) return;
-    if (!allow.includes(roleFamily(primaryCode))) {
-      router.replace(ROLE_HOME[roleFamily(primaryCode)]);
+    if (!allow.includes(family as Family)) {
+      router.replace(ROLE_HOME[family as Family] ?? ROLE_HOME.default);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoading, primaryCode, isDemoMode]);
+  }, [isLoading, family, isDemoMode]);
 
   if (isLoading) {
     return (
