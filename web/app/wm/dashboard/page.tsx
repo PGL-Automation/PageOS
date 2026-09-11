@@ -31,7 +31,7 @@ type Fund = {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const BASE = "http://localhost:8081";
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
 const QUARTERLY_TARGET = 1_000_000_000; // ₦1B demo target
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

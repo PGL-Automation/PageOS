@@ -29,6 +29,8 @@ function koboToNaira(k: number) {
   }).format(k / 100);
 }
 
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
+
 export default function ReconciliationPage() {
   const router = useRouter();
   const { toast } = useToast();
@@ -100,7 +102,7 @@ export default function ReconciliationPage() {
   const syncGLMutation = useMutation({
     mutationFn: async ({ accountId, from, to }: { accountId: string; from: string; to: string }) => {
       const res = await fetch(
-        `http://localhost:8081/api/v1/reconciliation/accounts/${accountId}/sync-gl`,
+        `${BASE}/api/v1/reconciliation/accounts/${accountId}/sync-gl`,
         {
           method: "POST", credentials: "include",
           headers: { "Content-Type": "application/json" },
@@ -125,7 +127,7 @@ export default function ReconciliationPage() {
       fd.append("period_start", periodStart);
       fd.append("period_end", periodEnd);
       const res = await fetch(
-        `http://localhost:8081/api/v1/reconciliation/accounts/${accountId}/statements`,
+        `${BASE}/api/v1/reconciliation/accounts/${accountId}/statements`,
         { method: "POST", body: fd, credentials: "include" }
       );
       if (!res.ok) throw new Error("Statement upload failed");
@@ -143,7 +145,7 @@ export default function ReconciliationPage() {
       const fd = new FormData();
       fd.append("file", file);
       const res = await fetch(
-        `http://localhost:8081/api/v1/reconciliation/accounts/${accountId}/ledger?subsidiary_id=${subsidId}`,
+        `${BASE}/api/v1/reconciliation/accounts/${accountId}/ledger?subsidiary_id=${subsidId}`,
         { method: "POST", body: fd, credentials: "include" }
       );
       const json = await res.json();
