@@ -80,6 +80,10 @@ const PM_NAV: NavGroup[] = [
     { href: "/wm/portfolio",          label: "Funds & Mandates", icon: Briefcase },
     { href: "/wm/portfolio/accounts", label: "Client Accounts",  icon: Users },
   ]},
+  { id: "appraisal", label: "Appraisals", items: [
+    { href: "/appraisal/dashboard", label: "Appraisal Overview", icon: ClipboardList },
+    { href: "/appraisal",           label: "My Appraisal",       icon: Star },
+  ]},
   { id: "personal", label: "My Work", items: [
     { href: "/approval",       label: "Approvals",        icon: CheckSquare },
     { href: "/leave",          label: "My Leave",         icon: CalendarDays },
@@ -145,10 +149,6 @@ const FINANCE_NAV: NavGroup[] = [
   { id: "core", items: [
     { href: "/dashboard",             label: "Dashboard",      icon: LayoutDashboard },
     { href: "/ai",                    label: "AI Copilot",     icon: Brain, badge: "AI" },
-  ]},
-  { id: "portfolio", label: "Investments", items: [
-    { href: "/wm/portfolio",          label: "Funds & Mandates",  icon: BarChart2 },
-    { href: "/wm/portfolio/accounts", label: "Client Accounts",   icon: Users },
   ]},
   { id: "finance", label: "Finance", items: [
     { href: "/finance",               label: "Overview",       icon: TrendingUp },
@@ -247,6 +247,10 @@ const ADMIN_NAV: NavGroup[] = [
     { href: "/payroll",                label: "Payroll",          icon: DollarSign },
     { href: "/hr/documents",           label: "Doc Requests",     icon: FolderOpen },
   ]},
+  { id: "appraisal", label: "Appraisals", items: [
+    { href: "/appraisal/dashboard",    label: "Manage Appraisals", icon: ClipboardList },
+    { href: "/appraisal",              label: "My Appraisal",      icon: Star },
+  ]},
   { id: "intel", label: "Intelligence", items: [
     { href: "/reports",                label: "Reports",          icon: FileBarChart },
     { href: "/analytics",              label: "Analytics",        icon: BarChart },
@@ -293,7 +297,7 @@ function navForRole(code: string | null): NavGroup[] {
   switch (roleFamily(code)) {
     case "pm":         return PM_NAV;
     case "wm":         return WM_NAV;
-    case "md":         return ADMIN_NAV;
+    case "md":         return MD_NAV;
     case "hr":         return HR_NAV;
     case "finance":    return FINANCE_NAV;
     case "compliance": return COMPLIANCE_NAV;
@@ -552,7 +556,7 @@ function NotifRow({ n, isRead, onRead, onClose }: {
 export function AppLayout({ children }: { children: ReactNode }) {
   const pathname   = usePathname();
   const { user, subsidiary, subsidiaries, isLoading: authLoading, logout, setSubsidiary } = useAuth();
-  const { activePosition, positions, setActive, primaryCode, isLoading: posLoading, isDemoMode, isAdminMode, adminPosition } = usePosition();
+  const { activePosition, positions, setActive, primaryCode, isLoading: posLoading, positionLoadError, isDemoMode, isAdminMode, adminPosition } = usePosition();
   const { dark, toggle: toggleTheme } = useTheme();
 
   const [collapsed, setCollapsed]   = useState(false);
@@ -1000,6 +1004,17 @@ export function AppLayout({ children }: { children: ReactNode }) {
             </Link>
           </div>
         </header>
+
+        {/* Position load error banner */}
+        {positionLoadError && (
+          <div className="shrink-0 flex items-center gap-2 px-4 py-2.5"
+               style={{ background: "#fef2f2", borderBottom: "1px solid #fecaca" }}>
+            <AlertCircle className="w-4 h-4 shrink-0" style={{ color: "#dc2626" }} />
+            <p className="text-[12px] font-medium" style={{ color: "#b91c1c" }}>
+              Could not load your role. Please refresh. If the problem persists, contact IT.
+            </p>
+          </div>
+        )}
 
         {/* Simulation banner — shown when admin is previewing another role */}
         {isAdminMode && activePosition?.isDemo && (
