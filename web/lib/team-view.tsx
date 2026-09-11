@@ -52,14 +52,17 @@ export const HR_POSITION_CODES = [
 ];
 
 export const IT_POSITION_CODES = [
-  "IT_SUPPORT", "LEAD_SOFTWARE_ENGINEER",
+  "IT_SUPPORT", "IT_ADMIN", "LEAD_SOFTWARE_ENGINEER",
 ];
 
 export const BUSINESS_DEV_POSITION_CODES = [
   "RELATIONSHIP_MANAGER", "WEALTH_MANAGER",
 ];
 
-export const BRAND_STRATEGY_POSITION_CODES: string[] = [];
+export const BRAND_POSITION_CODES = [
+  "BRAND_STRATEGY_MANAGER", "ADMIN_OFFICER",
+];
+
 
 // ── Head-of-department role registry ──────────────────────────────────────────
 // Add new head roles here — pages that import useTeamView() will automatically
@@ -126,14 +129,14 @@ const HEAD_CODES: Record<string, { label: string; teamLabel: string; memberCodes
 
   // ── IT ─────────────────────────────────────────────────────────────────────
   IT_ADMIN: {
-    label: "IT Admin", teamLabel: "IT Team",
+    label: "IT Administrator", teamLabel: "IT Team",
     memberCodes: IT_POSITION_CODES,
   },
 
   // ── Brand & Strategy ───────────────────────────────────────────────────────
   BRAND_STRATEGY_MANAGER: {
-    label: "Brand Strategy Manager", teamLabel: "Brand & Strategy Team",
-    memberCodes: BRAND_STRATEGY_POSITION_CODES,
+    label: "Brand & Strategy Manager", teamLabel: "Brand & Strategy Team",
+    memberCodes: BRAND_POSITION_CODES,
   },
 
   // ── Business Development ───────────────────────────────────────────────────

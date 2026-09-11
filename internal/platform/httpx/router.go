@@ -6,6 +6,8 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -30,13 +32,32 @@ func NewRouter(logger *slog.Logger, deps Deps, mountAPI func(chi.Router)) http.H
 	r.Use(middleware.Recoverer)
 	r.Use(CORS)
 
+	// Warn once at startup if /readyz is running without a token guard.
+	healthToken := os.Getenv("HEALTH_CHECK_TOKEN")
+	if healthToken == "" {
+		logger.Warn("HEALTH_CHECK_TOKEN is not set; /readyz is unauthenticated — set the env var to enable bearer-token protection")
+	}
+
 	// Liveness: process is up.
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 
 	// Readiness: dependencies (DB) are reachable.
+	// If HEALTH_CHECK_TOKEN is set, require "Authorization: Bearer <token>" to
+	// prevent leaking DB topology to unauthenticated callers. When the env var
+	// is absent the endpoint retains its original open behaviour (backwards compat).
 	r.Get("/readyz", func(w http.ResponseWriter, req *http.Request) {
+		if healthToken != "" {
+			auth := strings.TrimSpace(req.Header.Get("Authorization"))
+			want := "Bearer " + healthToken
+			if auth != want {
+				// Return 404 so the endpoint is not discoverable by scanners.
+				http.NotFound(w, req)
+				return
+			}
+		}
+
 		ctx, cancel := context.WithTimeout(req.Context(), 3*time.Second)
 		defer cancel()
 		if err := deps.DB.Ping(ctx); err != nil {
