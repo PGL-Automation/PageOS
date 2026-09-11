@@ -30,6 +30,7 @@ type Department struct {
 	SubsidiaryID uuid.UUID `json:"subsidiary_id"`
 	Code         string    `json:"code"`
 	Name         string    `json:"name"`
+	Family       string    `json:"family"`
 }
 
 type Position struct {
@@ -38,6 +39,7 @@ type Position struct {
 	DepartmentID        *uuid.UUID `json:"department_id,omitempty"`
 	Code                string     `json:"code"`
 	Title               string     `json:"title"`
+	Family              string     `json:"family"`
 	ReportsToPositionID *uuid.UUID `json:"reports_to_position_id,omitempty"`
 }
 
@@ -106,24 +108,22 @@ func (s *Service) ListDepartments(ctx context.Context, subsidiaryID *uuid.UUID) 
 	return out, nil
 }
 
-func (s *Service) CreateDepartment(ctx context.Context, subsidiaryID uuid.UUID, code, name string) (Department, error) {
-	row, err := s.store.CreateDepartment(ctx, orgdb.CreateDepartmentParams{
-		SubsidiaryID: subsidiaryID, Code: code, Name: name,
-	})
+func (s *Service) CreateDepartment(ctx context.Context, subsidiaryID uuid.UUID, code, name, family string) (Department, error) {
+	row, err := s.store.CreateDepartmentWithFamily(ctx, subsidiaryID, code, name, family)
 	if err != nil {
 		return Department{}, err
 	}
-	return Department{ID: row.ID, SubsidiaryID: row.SubsidiaryID, Code: row.Code, Name: row.Name}, nil
+	return Department{ID: row.ID, SubsidiaryID: row.SubsidiaryID, Code: row.Code, Name: row.Name, Family: row.Family}, nil
 }
 
-func (s *Service) CreatePosition(ctx context.Context, subsidiaryID, departmentID *uuid.UUID, code, title string, reportsTo *uuid.UUID) (Position, error) {
-	row, err := s.store.CreatePositionFull(ctx, subsidiaryID, departmentID, code, title, reportsTo)
+func (s *Service) CreatePosition(ctx context.Context, subsidiaryID, departmentID *uuid.UUID, code, title, family string, reportsTo *uuid.UUID) (Position, error) {
+	row, err := s.store.CreatePositionFull(ctx, subsidiaryID, departmentID, code, title, family, reportsTo)
 	if err != nil {
 		return Position{}, err
 	}
 	return Position{
 		ID: row.ID, SubsidiaryID: row.SubsidiaryID,
-		Code: row.Code, Title: row.Title, ReportsToPositionID: row.ReportsToPositionID,
+		Code: row.Code, Title: row.Title, Family: row.Family, ReportsToPositionID: row.ReportsToPositionID,
 	}, nil
 }
 
@@ -204,6 +204,7 @@ type UserPosition struct {
 	ID           uuid.UUID  `json:"id"`
 	Code         string     `json:"code"`
 	Title        string     `json:"title"`
+	Family       string     `json:"family"`
 	SubsidiaryID *uuid.UUID `json:"subsidiary_id,omitempty"`
 	DepartmentID *uuid.UUID `json:"department_id,omitempty"`
 	IsPrimary    bool       `json:"is_primary"`
@@ -259,6 +260,7 @@ type PositionWithMeta struct {
 	ID                  uuid.UUID  `json:"id"`
 	Code                string     `json:"code"`
 	Title               string     `json:"title"`
+	Family              string     `json:"family"`
 	SubsidiaryID        *uuid.UUID `json:"subsidiary_id,omitempty"`
 	IsGroupLevel        bool       `json:"is_group_level"`
 	ReportsToTitle      string     `json:"reports_to_title,omitempty"`
@@ -288,7 +290,7 @@ func (s *Service) GetPositionsBySubsidiary(ctx context.Context, subsidiaryID *uu
 	out := make([]PositionWithMeta, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, PositionWithMeta{
-			ID: r.ID, Code: r.Code, Title: r.Title,
+			ID: r.ID, Code: r.Code, Title: r.Title, Family: r.Family,
 			SubsidiaryID: r.SubsidiaryID, IsGroupLevel: r.IsGroupLevel,
 			ReportsToTitle: r.ReportsToTitle, ReportsToPositionID: r.ReportsToPositionID,
 		})
@@ -327,7 +329,7 @@ func (s *Service) GetUserPositionsInSubsidiary(ctx context.Context, userID, subs
 	out := make([]UserPosition, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, UserPosition{
-			ID: r.ID, Code: r.Code, Title: r.Title,
+			ID: r.ID, Code: r.Code, Title: r.Title, Family: r.Family,
 			SubsidiaryID: r.SubsidiaryID, DepartmentID: r.DepartmentID,
 			IsPrimary: r.IsPrimary,
 		})

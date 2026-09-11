@@ -131,11 +131,23 @@ func (h *Handler) createDepartment(w http.ResponseWriter, r *http.Request) {
 		SubsidiaryID uuid.UUID `json:"subsidiary_id"`
 		Code         string    `json:"code"`
 		Name         string    `json:"name"`
+		Family       string    `json:"family"`
 	}
 	if !decode(w, r, &in) {
 		return
 	}
-	dep, err := h.svc.CreateDepartment(r.Context(), in.SubsidiaryID, in.Code, in.Name)
+	if in.Family == "" {
+		in.Family = "default"
+	}
+	validFamilies := map[string]bool{
+		"hr": true, "finance": true, "compliance": true,
+		"pm": true, "wm": true, "md": true, "default": true,
+	}
+	if !validFamilies[in.Family] {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "family must be one of: hr, finance, compliance, pm, wm, md, default")
+		return
+	}
+	dep, err := h.svc.CreateDepartment(r.Context(), in.SubsidiaryID, in.Code, in.Name, in.Family)
 	if err != nil {
 		httpx.Error(w, http.StatusBadRequest, "create_failed", err.Error())
 		return
@@ -159,6 +171,7 @@ func (h *Handler) createPosition(w http.ResponseWriter, r *http.Request) {
 		DepartmentID *uuid.UUID `json:"department_id"`
 		Code         string     `json:"code"`
 		Title        string     `json:"title"`
+		Family       string     `json:"family"`
 		ReportsToID  *uuid.UUID `json:"reports_to_position_id"`
 	}
 	if !decode(w, r, &in) {
@@ -168,7 +181,10 @@ func (h *Handler) createPosition(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "code and title are required")
 		return
 	}
-	pos, err := h.svc.CreatePosition(r.Context(), in.SubsidiaryID, in.DepartmentID, in.Code, in.Title, in.ReportsToID)
+	if in.Family == "" {
+		in.Family = "default"
+	}
+	pos, err := h.svc.CreatePosition(r.Context(), in.SubsidiaryID, in.DepartmentID, in.Code, in.Title, in.Family, in.ReportsToID)
 	if err != nil {
 		httpx.Error(w, http.StatusBadRequest, "create_failed", err.Error())
 		return
