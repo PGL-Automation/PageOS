@@ -187,6 +187,12 @@ func (h *Handler) createRequest(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) listRequests(w http.ResponseWriter, r *http.Request) {
+	caller, ok := identityhttp.UserFrom(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+		return
+	}
+
 	q := r.URL.Query()
 	status := q.Get("status")
 
@@ -200,7 +206,28 @@ func (h *Handler) listRequests(w http.ResponseWriter, r *http.Request) {
 		personID = &pid
 	}
 
-	requests, err := h.svc.ListRequests(r.Context(), personID, status)
+	// Resolve the caller's subsidiary and position code to apply scoping.
+	// GROUP_ADMIN (or equivalent) can see all subsidiaries; everyone else is
+	// scoped to their own subsidiary via their primary active assignment.
+	var subsidiaryID *uuid.UUID
+	var posCode string
+	_ = h.pool.QueryRow(r.Context(), `
+		SELECT a.subsidiary_id, COALESCE(pos.code, '')
+		FROM   organization.person per
+		JOIN   organization.assignment a   ON a.person_id    = per.id
+		                                  AND a.is_primary   = true
+		                                  AND a.effective_to IS NULL
+		JOIN   organization.position   pos ON pos.id         = a.position_id
+		WHERE  per.user_id = $1
+		LIMIT  1
+	`, caller.ID).Scan(&subsidiaryID, &posCode)
+
+	// GROUP_ADMIN sees across all subsidiaries — pass nil to skip subsidiary filter.
+	if posCode == "GROUP_ADMIN" {
+		subsidiaryID = nil
+	}
+
+	requests, err := h.svc.ListRequests(r.Context(), personID, status, subsidiaryID)
 	if err != nil {
 		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
 		return
@@ -233,26 +260,18 @@ func (h *Handler) reviewRequest(w http.ResponseWriter, r *http.Request, action s
 		return
 	}
 
+	// Only accept reviewer_note from the body — reviewer_person_id is always
+	// resolved from the authenticated caller to prevent self-approval bypass.
 	var body struct {
-		ReviewerNote     string `json:"reviewer_note"`
-		ReviewerPersonID string `json:"reviewer_person_id"`
+		ReviewerNote string `json:"reviewer_note"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
 
-	// Resolve reviewer person_id — explicit override or caller's own.
-	var reviewerPersonID uuid.UUID
-	if body.ReviewerPersonID != "" {
-		if pid, parseErr := uuid.Parse(body.ReviewerPersonID); parseErr == nil {
-			reviewerPersonID = pid
-		}
-	}
-	if reviewerPersonID == uuid.Nil {
-		pid, lookupErr := h.personIDFromUserID(r.Context(), caller.ID)
-		if lookupErr != nil {
-			httpx.Error(w, http.StatusBadRequest, "no_person_record", "reviewer has no person record")
-			return
-		}
-		reviewerPersonID = pid
+	// Resolve reviewer person_id strictly from the authenticated caller.
+	reviewerPersonID, lookupErr := h.personIDFromUserID(r.Context(), caller.ID)
+	if lookupErr != nil {
+		httpx.Error(w, http.StatusBadRequest, "no_person_record", "reviewer has no person record")
+		return
 	}
 
 	if err := h.svc.ReviewRequest(r.Context(), hr.ReviewInput{
