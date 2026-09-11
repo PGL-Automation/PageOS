@@ -2,6 +2,7 @@
 package portfoliohttp
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -10,15 +11,95 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/pagegroup/pageos/internal/identity"
 	identityhttp "github.com/pagegroup/pageos/internal/identity/http"
 	"github.com/pagegroup/pageos/internal/platform/httpx"
 	"github.com/pagegroup/pageos/internal/portfolio"
 )
 
-type Handler struct{ svc *portfolio.Service }
+type Handler struct {
+	svc  *portfolio.Service
+	pool *pgxpool.Pool
+}
 
-func New(svc *portfolio.Service) *Handler { return &Handler{svc: svc} }
+func New(svc *portfolio.Service, pool *pgxpool.Pool) *Handler {
+	return &Handler{svc: svc, pool: pool}
+}
+
+// portfolioStaffRoles may read all portfolio data and perform non-mutating actions.
+var portfolioStaffRoles = []string{
+	"HEAD_OF_INVESTMENT",
+	"HEAD_INVESTMENT_MGMT",
+	"GROUP_HEAD_WEALTH_MGMT",
+	"PORTFOLIO_MANAGER",
+	"PORTFOLIO_MGMT_ASSISTANT",
+	"EQUITY_TRADER",
+	"GROUP_ADMIN",
+}
+
+// portfolioWriteRoles may initiate trades, subscriptions, and redemptions.
+var portfolioWriteRoles = []string{
+	"HEAD_OF_INVESTMENT",
+	"HEAD_INVESTMENT_MGMT",
+	"GROUP_HEAD_WEALTH_MGMT",
+	"PORTFOLIO_MANAGER",
+	"EQUITY_TRADER",
+	"GROUP_ADMIN",
+}
+
+// hasAnyRole returns true when the user holds at least one of the provided
+// position codes in an active organisation.assignment.
+func (h *Handler) hasAnyRole(ctx context.Context, userID uuid.UUID, codes []string) (bool, error) {
+	const q = `
+		SELECT EXISTS (
+			SELECT 1
+			FROM organization.assignment a
+			JOIN organization.position pos ON pos.id = a.position_id
+			JOIN organization.person   per ON per.id = a.person_id
+			WHERE per.user_id = $1
+			  AND pos.code = ANY($2::text[])
+			  AND a.effective_from <= CURRENT_DATE
+			  AND (a.effective_to IS NULL OR a.effective_to >= CURRENT_DATE)
+		)
+	`
+	var exists bool
+	if err := h.pool.QueryRow(ctx, q, userID, codes).Scan(&exists); err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
+// requirePortfolioStaff checks that the caller holds any portfolio-staff role.
+// Returns (caller, true) on success; writes 401/403 and returns (_, false) on failure.
+func (h *Handler) requirePortfolioStaff(w http.ResponseWriter, r *http.Request) (identity.User, bool) {
+	caller, ok := identityhttp.UserFrom(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+		return identity.User{}, false
+	}
+	if ok2, err := h.hasAnyRole(r.Context(), caller.ID, portfolioStaffRoles); err != nil || !ok2 {
+		httpx.Error(w, http.StatusForbidden, "forbidden", "portfolio staff role required")
+		return identity.User{}, false
+	}
+	return caller, true
+}
+
+// requirePortfolioWrite checks that the caller holds a write-capable portfolio role.
+// Returns (caller, true) on success; writes 401/403 and returns (_, false) on failure.
+func (h *Handler) requirePortfolioWrite(w http.ResponseWriter, r *http.Request) (identity.User, bool) {
+	caller, ok := identityhttp.UserFrom(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+		return identity.User{}, false
+	}
+	if ok2, err := h.hasAnyRole(r.Context(), caller.ID, portfolioWriteRoles); err != nil || !ok2 {
+		httpx.Error(w, http.StatusForbidden, "forbidden", "portfolio write role required (manager/trader/head)")
+		return identity.User{}, false
+	}
+	return caller, true
+}
 
 func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	r := chi.NewRouter()
@@ -59,6 +140,9 @@ func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 }
 
 func (h *Handler) listInstruments(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.requirePortfolioStaff(w, r); !ok {
+		return
+	}
 	q := r.URL.Query()
 	instruments, err := h.svc.ListInstruments(r.Context(), q.Get("asset_class"), q.Get("active") != "false")
 	if err != nil {
@@ -72,6 +156,9 @@ func (h *Handler) listInstruments(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) createInstrument(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.requirePortfolioWrite(w, r); !ok {
+		return
+	}
 	var in portfolio.CreateInstrumentInput
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", err.Error())
@@ -86,6 +173,9 @@ func (h *Handler) createInstrument(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) listFunds(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.requirePortfolioStaff(w, r); !ok {
+		return
+	}
 	var subID *uuid.UUID
 	if s := r.URL.Query().Get("subsidiary_id"); s != "" {
 		id, err := uuid.Parse(s)
@@ -107,9 +197,8 @@ func (h *Handler) listFunds(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) createFund(w http.ResponseWriter, r *http.Request) {
-	caller, ok := identityhttp.UserFrom(r.Context())
+	caller, ok := h.requirePortfolioWrite(w, r)
 	if !ok {
-		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated")
 		return
 	}
 	var in portfolio.CreateFundInput
@@ -126,6 +215,9 @@ func (h *Handler) createFund(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getFund(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.requirePortfolioStaff(w, r); !ok {
+		return
+	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid id")
@@ -140,6 +232,9 @@ func (h *Handler) getFund(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getHoldings(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.requirePortfolioStaff(w, r); !ok {
+		return
+	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid id")
@@ -157,6 +252,9 @@ func (h *Handler) getHoldings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getPortfolioSummary(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.requirePortfolioStaff(w, r); !ok {
+		return
+	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid id")
@@ -171,9 +269,8 @@ func (h *Handler) getPortfolioSummary(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) bookTrade(w http.ResponseWriter, r *http.Request) {
-	caller, ok := identityhttp.UserFrom(r.Context())
+	caller, ok := h.requirePortfolioWrite(w, r)
 	if !ok {
-		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated")
 		return
 	}
 	var in portfolio.TradeInput
@@ -190,9 +287,8 @@ func (h *Handler) bookTrade(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) recordIncome(w http.ResponseWriter, r *http.Request) {
-	caller, ok := identityhttp.UserFrom(r.Context())
+	caller, ok := h.requirePortfolioWrite(w, r)
 	if !ok {
-		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated")
 		return
 	}
 	var in portfolio.IncomeInput
@@ -209,6 +305,9 @@ func (h *Handler) recordIncome(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) listTransactions(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.requirePortfolioStaff(w, r); !ok {
+		return
+	}
 	q := r.URL.Query()
 	var fundID *uuid.UUID
 	if s := q.Get("fund_id"); s != "" {
@@ -239,6 +338,9 @@ func (h *Handler) listTransactions(w http.ResponseWriter, r *http.Request) {
 // ── Client accounts ────────────────────────────────────────────────────────────
 
 func (h *Handler) listClientAccounts(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.requirePortfolioStaff(w, r); !ok {
+		return
+	}
 	q := r.URL.Query()
 	var clientID, fundID *uuid.UUID
 	if s := q.Get("client_id"); s != "" {
@@ -269,9 +371,8 @@ func (h *Handler) listClientAccounts(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) openClientAccount(w http.ResponseWriter, r *http.Request) {
-	caller, ok := identityhttp.UserFrom(r.Context())
+	caller, ok := h.requirePortfolioWrite(w, r)
 	if !ok {
-		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated")
 		return
 	}
 	var in portfolio.OpenAccountInput
@@ -288,6 +389,9 @@ func (h *Handler) openClientAccount(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getClientAccount(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.requirePortfolioStaff(w, r); !ok {
+		return
+	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid id")
@@ -308,6 +412,9 @@ func (h *Handler) getClientAccount(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getClientStatement(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.requirePortfolioStaff(w, r); !ok {
+		return
+	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid id")
@@ -326,9 +433,8 @@ func (h *Handler) getClientStatement(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) processSubscription(w http.ResponseWriter, r *http.Request) {
-	caller, ok := identityhttp.UserFrom(r.Context())
+	caller, ok := h.requirePortfolioWrite(w, r)
 	if !ok {
-		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated")
 		return
 	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
@@ -351,9 +457,8 @@ func (h *Handler) processSubscription(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) processRedemption(w http.ResponseWriter, r *http.Request) {
-	caller, ok := identityhttp.UserFrom(r.Context())
+	caller, ok := h.requirePortfolioWrite(w, r)
 	if !ok {
-		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated")
 		return
 	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
@@ -376,6 +481,9 @@ func (h *Handler) processRedemption(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) redemptionPreview(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.requirePortfolioStaff(w, r); !ok {
+		return
+	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid id")
@@ -403,9 +511,8 @@ func (h *Handler) redemptionPreview(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) processRedemptionWithPenalty(w http.ResponseWriter, r *http.Request) {
-	caller, ok := identityhttp.UserFrom(r.Context())
+	caller, ok := h.requirePortfolioWrite(w, r)
 	if !ok {
-		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated")
 		return
 	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
@@ -431,6 +538,9 @@ func (h *Handler) processRedemptionWithPenalty(w http.ResponseWriter, r *http.Re
 }
 
 func (h *Handler) updatePrices(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.requirePortfolioWrite(w, r); !ok {
+		return
+	}
 	var prices []portfolio.PriceInput
 	if err := json.NewDecoder(r.Body).Decode(&prices); err != nil {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", err.Error())
