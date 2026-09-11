@@ -598,6 +598,7 @@ export default function AppraisalDashboard() {
     try {
       await apiPost(`/cycles/${id}/open`);
       queryClient.invalidateQueries({ queryKey: ["appraisal-cycles-all"] });
+      queryClient.invalidateQueries({ queryKey: ["appraisal-cycles"] });
       toast({ title: "Cycle Opened", description: "Employees can now submit their self-assessments." });
     } catch (e) {
       toast({ title: "Failed", description: (e as Error).message, variant: "destructive" });
@@ -612,6 +613,7 @@ export default function AppraisalDashboard() {
     try {
       await apiPost(`/cycles/${id}/close`);
       queryClient.invalidateQueries({ queryKey: ["appraisal-cycles-all"] });
+      queryClient.invalidateQueries({ queryKey: ["appraisal-cycles"] });
       toast({ title: "Cycle Closed", description: "The appraisal cycle has been closed." });
     } catch (e) {
       toast({ title: "Failed", description: (e as Error).message, variant: "destructive" });
