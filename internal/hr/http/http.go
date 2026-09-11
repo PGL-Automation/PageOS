@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -69,6 +70,45 @@ func (h *Handler) personIDFromUserID(ctx context.Context, userID uuid.UUID) (uui
 	return personID, err
 }
 
+// isHROrAdmin returns true if the user holds an HR or admin position in the org,
+// or has an hr/admin role in identity.users. Mirrors the pattern used in the
+// appraisal module's HasHROrAdminRole.
+func (h *Handler) isHROrAdmin(ctx context.Context, userID uuid.UUID) (bool, error) {
+	// Quick path: check identity.users role column.
+	var roleStr string
+	_ = h.pool.QueryRow(ctx,
+		`SELECT COALESCE(role, '') FROM identity.users WHERE id = $1`, userID,
+	).Scan(&roleStr)
+	role := strings.ToLower(roleStr)
+	if strings.Contains(role, "hr") || strings.Contains(role, "admin") {
+		return true, nil
+	}
+
+	// Fallback: check org position codes / titles.
+	const sql = `
+		SELECT EXISTS (
+			SELECT 1
+			FROM organization.assignment a
+			JOIN organization.position pos ON pos.id = a.position_id
+			JOIN organization.person   per ON per.id = a.person_id
+			WHERE per.user_id = $1
+			  AND (
+			      LOWER(pos.code)  LIKE '%hr%'
+			      OR LOWER(pos.code)  LIKE '%admin%'
+			      OR LOWER(pos.title) LIKE '%human resource%'
+			      OR LOWER(pos.title) LIKE '%administrator%'
+			  )
+			  AND a.effective_from <= CURRENT_DATE
+			  AND (a.effective_to IS NULL OR a.effective_to >= CURRENT_DATE)
+		)
+	`
+	var exists bool
+	if err := h.pool.QueryRow(ctx, sql, userID).Scan(&exists); err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
 // ── Policies ──────────────────────────────────────────────────────────────────
 
 func (h *Handler) listPolicies(w http.ResponseWriter, r *http.Request) {
@@ -97,6 +137,12 @@ func (h *Handler) listPolicies(w http.ResponseWriter, r *http.Request) {
 // ── Requests ──────────────────────────────────────────────────────────────────
 
 func (h *Handler) createRequest(w http.ResponseWriter, r *http.Request) {
+	caller, ok := identityhttp.UserFrom(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+		return
+	}
+
 	var in struct {
 		PersonIDStr            string  `json:"person_id"`
 		PolicyIDStr            string  `json:"policy_id"`
@@ -112,27 +158,35 @@ func (h *Handler) createRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Resolve the caller's own person ID (always needed for authorization).
+	callerPersonID, err := h.personIDFromUserID(r.Context(), caller.ID)
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "no_person_record", err.Error())
+		return
+	}
+
 	var personID uuid.UUID
 	if in.PersonIDStr != "" {
-		pid, err := uuid.Parse(in.PersonIDStr)
-		if err != nil {
+		pid, parseErr := uuid.Parse(in.PersonIDStr)
+		if parseErr != nil {
 			httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid person_id")
 			return
 		}
+		// FIX 4: If person_id differs from the caller's own, require HR/admin.
+		if pid != callerPersonID {
+			isHR, roleErr := h.isHROrAdmin(r.Context(), caller.ID)
+			if roleErr != nil {
+				httpx.Error(w, http.StatusInternalServerError, "internal", roleErr.Error())
+				return
+			}
+			if !isHR {
+				httpx.Error(w, http.StatusForbidden, "forbidden", "only HR or admin may create leave on behalf of another employee")
+				return
+			}
+		}
 		personID = pid
 	} else {
-		// No person_id supplied — use the caller's own person record.
-		caller, ok := identityhttp.UserFrom(r.Context())
-		if !ok {
-			httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
-			return
-		}
-		pid, err := h.personIDFromUserID(r.Context(), caller.ID)
-		if err != nil {
-			httpx.Error(w, http.StatusBadRequest, "no_person_record", err.Error())
-			return
-		}
-		personID = pid
+		personID = callerPersonID
 	}
 
 	policyID, err := uuid.Parse(in.PolicyIDStr)
@@ -187,17 +241,44 @@ func (h *Handler) createRequest(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) listRequests(w http.ResponseWriter, r *http.Request) {
+	// FIX 2: Non-HR callers may only see their own requests.
+	caller, ok := identityhttp.UserFrom(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+		return
+	}
+
+	isHR, err := h.isHROrAdmin(r.Context(), caller.ID)
+	if err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		return
+	}
+
+	callerPersonID, personErr := h.personIDFromUserID(r.Context(), caller.ID)
+	if personErr != nil && !isHR {
+		httpx.Error(w, http.StatusBadRequest, "no_person_record", personErr.Error())
+		return
+	}
+
 	q := r.URL.Query()
 	status := q.Get("status")
 
 	var personID *uuid.UUID
 	if pidStr := q.Get("person_id"); pidStr != "" {
-		pid, err := uuid.Parse(pidStr)
-		if err != nil {
+		pid, parseErr := uuid.Parse(pidStr)
+		if parseErr != nil {
 			httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid person_id")
 			return
 		}
+		// Non-HR users cannot filter by a different person's ID.
+		if !isHR && pid != callerPersonID {
+			httpx.Error(w, http.StatusForbidden, "forbidden", "you may only view your own leave requests")
+			return
+		}
 		personID = &pid
+	} else if !isHR {
+		// Non-HR: force filter to caller's own records.
+		personID = &callerPersonID
 	}
 
 	requests, err := h.svc.ListRequests(r.Context(), personID, status)
@@ -227,6 +308,7 @@ func (h *Handler) reviewRequest(w http.ResponseWriter, r *http.Request, action s
 		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
+
 	reqID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid request id")
@@ -253,6 +335,37 @@ func (h *Handler) reviewRequest(w http.ResponseWriter, r *http.Request, action s
 			return
 		}
 		reviewerPersonID = pid
+	}
+
+	// FIX 1a: approve and reject require HR/admin role.
+	// cancel is permitted for any authenticated user (employee cancelling own request
+	// is validated at the DB level via status=pending check in ReviewRequest).
+	if action == "approve" || action == "reject" {
+		isHR, roleErr := h.isHROrAdmin(r.Context(), caller.ID)
+		if roleErr != nil {
+			httpx.Error(w, http.StatusInternalServerError, "internal", roleErr.Error())
+			return
+		}
+		if !isHR {
+			httpx.Error(w, http.StatusForbidden, "forbidden", "only HR or admin may approve or reject leave requests")
+			return
+		}
+	}
+
+	// FIX 1b: Anti-self-approval — reviewer must not be the requester.
+	if action == "approve" || action == "reject" {
+		var requesterPersonID uuid.UUID
+		lookupErr := h.pool.QueryRow(r.Context(),
+			`SELECT person_id FROM hr.leave_request WHERE id = $1`, reqID,
+		).Scan(&requesterPersonID)
+		if lookupErr != nil {
+			httpx.Error(w, http.StatusBadRequest, "not_found", "leave request not found")
+			return
+		}
+		if requesterPersonID == reviewerPersonID {
+			httpx.Error(w, http.StatusForbidden, "forbidden", "you may not approve or reject your own leave request")
+			return
+		}
 	}
 
 	if err := h.svc.ReviewRequest(r.Context(), hr.ReviewInput{
@@ -301,11 +414,33 @@ func (h *Handler) getOwnBalance(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getPersonBalance(w http.ResponseWriter, r *http.Request) {
+	// FIX 3: Only allow if caller is HR/admin OR caller's own personID matches.
+	caller, ok := identityhttp.UserFrom(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+		return
+	}
+
 	personID, err := uuid.Parse(chi.URLParam(r, "personId"))
 	if err != nil {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid person id")
 		return
 	}
+
+	isHR, roleErr := h.isHROrAdmin(r.Context(), caller.ID)
+	if roleErr != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", roleErr.Error())
+		return
+	}
+
+	if !isHR {
+		callerPersonID, personErr := h.personIDFromUserID(r.Context(), caller.ID)
+		if personErr != nil || callerPersonID != personID {
+			httpx.Error(w, http.StatusForbidden, "forbidden", "you may only view your own leave balance")
+			return
+		}
+	}
+
 	year := time.Now().Year()
 	if y := r.URL.Query().Get("year"); y != "" {
 		if parsed, parseErr := strconv.Atoi(y); parseErr == nil {
@@ -330,9 +465,19 @@ func (h *Handler) listDocumentTypes(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) createDocumentRequest(w http.ResponseWriter, r *http.Request) {
+	// FIX 5: createDocumentRequest requires HR/admin.
 	caller, ok := identityhttp.UserFrom(r.Context())
 	if !ok {
 		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated")
+		return
+	}
+	isHR, roleErr := h.isHROrAdmin(r.Context(), caller.ID)
+	if roleErr != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", roleErr.Error())
+		return
+	}
+	if !isHR {
+		httpx.Error(w, http.StatusForbidden, "forbidden", "only HR or admin may create document requests")
 		return
 	}
 	callerPersonID, err := h.personIDFromUserID(r.Context(), caller.ID)
@@ -354,6 +499,22 @@ func (h *Handler) createDocumentRequest(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *Handler) listDocumentRequests(w http.ResponseWriter, r *http.Request) {
+	// FIX 5: listDocumentRequests requires HR/admin.
+	caller, ok := identityhttp.UserFrom(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated")
+		return
+	}
+	isHR, roleErr := h.isHROrAdmin(r.Context(), caller.ID)
+	if roleErr != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", roleErr.Error())
+		return
+	}
+	if !isHR {
+		httpx.Error(w, http.StatusForbidden, "forbidden", "only HR or admin may list all document requests")
+		return
+	}
+
 	q := r.URL.Query()
 	var personID *uuid.UUID
 	if s := q.Get("person_id"); s != "" {
@@ -457,6 +618,22 @@ func (h *Handler) declineDocumentRequest(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *Handler) remindDocumentRequest(w http.ResponseWriter, r *http.Request) {
+	// FIX 5: remindDocumentRequest requires HR/admin.
+	caller, ok := identityhttp.UserFrom(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated")
+		return
+	}
+	isHR, roleErr := h.isHROrAdmin(r.Context(), caller.ID)
+	if roleErr != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", roleErr.Error())
+		return
+	}
+	if !isHR {
+		httpx.Error(w, http.StatusForbidden, "forbidden", "only HR or admin may send document reminders")
+		return
+	}
+
 	requestID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid id")
