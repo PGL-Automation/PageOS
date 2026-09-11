@@ -703,7 +703,10 @@ function PendingDocumentsBanner() {
 export default function LeavePage() {
   const { activePosition } = usePosition();
   const family = roleFamily(activePosition?.code);
-  const isHR = family === "hr" || family === "md";
+  // Only HR staff can approve/reject; MD and HR can view all requests
+  const isLeaveAdmin = family === "hr";          // can approve / reject
+  const isLeaveViewer = family === "hr" || family === "md"; // sees all requests
+  const isHR = isLeaveViewer; // alias kept for modal prop (employee picker)
 
   const [tab, setTab] = useState<Tab>("all");
   const [search, setSearch] = useState("");
@@ -902,7 +905,7 @@ export default function LeavePage() {
 
                 {/* Actions */}
                 <div className="flex items-center gap-1.5 justify-end">
-                  {req.status === "pending" && (
+                  {req.status === "pending" && isLeaveAdmin && (
                     <>
                       <button
                         onClick={() => setReviewing({ request: req, action: "approve" })}

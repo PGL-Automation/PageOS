@@ -157,7 +157,11 @@ export default function KPIConfigPage() {
         const raw = Array.isArray(data) ? data : (data as { departments?: string[] }).departments ?? [];
         const list = raw.filter(Boolean);
         if (list.length > 0) {
-          setDepartments(list);
+          // Non-HR dept heads should only see their own department to prevent data leakage
+          const visibleDepts = isHRRole
+            ? list
+            : list.filter((d) => !myDept || d === myDept);
+          setDepartments(visibleDepts.length > 0 ? visibleDepts : list);
           const preferred = myDept && list.includes(myDept) ? myDept : list[0];
           setSelectedDept(preferred);
         } else if (myDept) {

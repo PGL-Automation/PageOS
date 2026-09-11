@@ -47,12 +47,18 @@ function PendingGradeCard() {
   const queryClient = useQueryClient();
   const [confirming, setConfirming] = useState<string | null>(null); // person_id
   const [newGrade, setNewGrade] = useState<Record<string, string>>({});
+  const [accessDenied, setAccessDenied] = useState(false);
 
   const { data: pending = [] } = useQuery<PendingGradeRow[]>({
     queryKey: ["pending-grades"],
     queryFn: async () => {
       const res = await fetch(`${BASE}/api/v1/admin/pending-grades`, { credentials: "include" });
+      if (res.status === 403) {
+        setAccessDenied(true);
+        return [];
+      }
       if (!res.ok) return [];
+      setAccessDenied(false);
       return ((await res.json()) ?? []) as PendingGradeRow[];
     },
   });
@@ -99,6 +105,17 @@ function PendingGradeCard() {
       setConfirming(null);
     },
   });
+
+  if (accessDenied) return (
+    <div className="rounded-2xl overflow-hidden" style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}>
+      <div className="flex items-center gap-2.5 px-5 py-3.5">
+        <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+        <p className="text-[13px]" style={{ color: "var(--pg-text-3)" }}>
+          You don&apos;t have access to grade management.
+        </p>
+      </div>
+    </div>
+  );
 
   if (pending.length === 0) return null;
 

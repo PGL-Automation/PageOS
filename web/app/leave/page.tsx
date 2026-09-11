@@ -665,7 +665,10 @@ type Tab = typeof TABS[number];
 export default function MyLeavePage() {
   const { activePosition } = usePosition();
   const family = roleFamily(activePosition?.code);
-  const isHR = family === "hr" || family === "md";
+  // Only HR staff can approve/reject; MD and HR can view all requests
+  const isLeaveAdmin = family === "hr";          // can approve / reject
+  const isLeaveViewer = family === "hr" || family === "md"; // sees all requests
+  const isHR = isLeaveViewer; // alias kept for query key / UI labels
   const tv = useTeamView();
 
   const [showApply, setShowApply] = useState(false);
@@ -880,8 +883,8 @@ export default function MyLeavePage() {
                       </button>
                     )}
 
-                    {/* HR: approve / reject */}
-                    {isHR && req.status === "pending" && (
+                    {/* HR only: approve / reject (MD cannot approve/reject) */}
+                    {isLeaveAdmin && req.status === "pending" && (
                       <>
                         <button onClick={() => setReviewing({ request: req, action: "approve" })}
                                 className="flex items-center gap-1 h-8 px-3 rounded-lg text-[11px] font-semibold text-white"

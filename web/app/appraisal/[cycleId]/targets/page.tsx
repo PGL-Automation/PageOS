@@ -68,6 +68,8 @@ export default function TeamTargetsPage() {
 
   // The dept head's own department — used to filter to only their team
   const myDept = activePosition?.code ? (ROLE_TO_DEPT[activePosition.code] ?? "") : "";
+  // No dept mapping = HR / admin role → can see all and call HR-only endpoints
+  const isHRRole = !myDept;
 
   const [cycle, setCycle] = useState<Cycle | null>(null);
   const [progress, setProgress] = useState<TargetsProgress | null>(null);
@@ -76,10 +78,17 @@ export default function TeamTargetsPage() {
   const [error, setError] = useState<string | null>(null);
   const [hoveredRow, setHoveredRow] = useState<string | null>(null);
 
-  async function loadData(signal?: AbortSignal) {
+  async function loadData(hrRole: boolean, signal?: AbortSignal) {
     setLoading(true);
     setError(null);
     try {
+      // Auto-generate submissions only for HR — dept heads don't have access to this endpoint
+      if (hrRole) {
+        await fetch(`${BASE}/api/v1/appraisal/cycles/${cycleId}/generate-submissions`, {
+          method: "POST", credentials: "include",
+        });
+      }
+
       const [cycleRes, progressRes] = await Promise.all([
         fetch(`${BASE}/api/v1/appraisal/cycles/${cycleId}`, { credentials: "include", signal }),
         fetch(`${BASE}/api/v1/appraisal/cycles/${cycleId}/targets-progress`, { credentials: "include", signal }),
@@ -99,10 +108,10 @@ export default function TeamTargetsPage() {
   useEffect(() => {
     if (!cycleId) return;
     const controller = new AbortController();
-    loadData(controller.signal);
+    loadData(isHRRole, controller.signal);
     return () => controller.abort();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cycleId]);
+  }, [cycleId, isHRRole]);
 
   async function generateSubmissions() {
     setGenerating(true);
@@ -111,7 +120,7 @@ export default function TeamTargetsPage() {
         method: "POST", credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to generate submissions");
-      await loadData(); // reload to show new rows (no abort — user-triggered)
+      await loadData(isHRRole); // reload to show new rows (no abort — user-triggered)
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -124,7 +133,6 @@ export default function TeamTargetsPage() {
 
   // Filter rows to only the dept head's department (if known)
   // HR/MD sees all departments; dept heads see only their own team
-  const isHRRole = !myDept; // no dept mapping = HR/admin = see all
   const visibleRows = (progress?.rows ?? []).filter(row =>
     isHRRole || !myDept || !row.department || row.department === myDept
   );
@@ -211,17 +219,28 @@ export default function TeamTargetsPage() {
             )}
           </div>
 
-          {/* Generate / refresh button in header */}
-          <button
-            onClick={generateSubmissions}
-            disabled={generating}
-            className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-[12px] font-semibold disabled:opacity-60"
-            style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}
-            title="Generate or refresh team member records"
-          >
-            {generating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-            {generating ? "Generating…" : "Generate Team"}
-          </button>
+          {/* Generate / refresh button in header — HR only */}
+          {isHRRole ? (
+            <button
+              onClick={generateSubmissions}
+              disabled={generating}
+              className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-[12px] font-semibold disabled:opacity-60"
+              style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}
+              title="Generate or refresh team member records"
+            >
+              {generating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+              {generating ? "Generating…" : "Generate Team"}
+            </button>
+          ) : (
+            <span
+              className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-[12px] font-semibold opacity-40 cursor-not-allowed"
+              style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-3)" }}
+              title="Contact HR to generate team submissions"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Generate Team
+            </span>
+          )}
 
           {/* Phase badge */}
           {isTargetPhase && (
@@ -353,22 +372,25 @@ export default function TeamTargetsPage() {
               No team members loaded yet
             </p>
             <p className="text-[12px] max-w-sm mb-5" style={{ color: "var(--pg-text-3)" }}>
-              Click "Generate Team" to load all active employees from the organisation.
-              This creates their appraisal records so you can set individual targets.
+              {isHRRole
+                ? 'Click "Generate Team" to load all active employees from the organisation. This creates their appraisal records so you can set individual targets.'
+                : "Contact HR to generate team submissions for this appraisal cycle."}
             </p>
-            <button
-              onClick={generateSubmissions}
-              disabled={generating}
-              className="flex items-center gap-2 h-9 px-5 rounded-xl text-[13px] font-semibold text-white disabled:opacity-60"
-              style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}
-            >
-              {generating ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Users className="w-3.5 h-3.5" />
-              )}
-              {generating ? "Generating…" : "Generate Team"}
-            </button>
+            {isHRRole && (
+              <button
+                onClick={generateSubmissions}
+                disabled={generating}
+                className="flex items-center gap-2 h-9 px-5 rounded-xl text-[13px] font-semibold text-white disabled:opacity-60"
+                style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}
+              >
+                {generating ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Users className="w-3.5 h-3.5" />
+                )}
+                {generating ? "Generating…" : "Generate Team"}
+              </button>
+            )}
           </div>
         ) : (
           visibleRows.map((row, i) => (
