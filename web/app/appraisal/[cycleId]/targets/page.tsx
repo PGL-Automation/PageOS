@@ -76,32 +76,33 @@ export default function TeamTargetsPage() {
   const [error, setError] = useState<string | null>(null);
   const [hoveredRow, setHoveredRow] = useState<string | null>(null);
 
-  async function loadData() {
+  async function loadData(signal?: AbortSignal) {
     setLoading(true);
     setError(null);
     try {
-      // Always auto-generate submissions first (idempotent — ON CONFLICT DO NOTHING)
-      // This ensures all employees in the org have submission rows in this cycle
-      await fetch(`${BASE}/api/v1/appraisal/cycles/${cycleId}/generate-submissions`, {
-        method: "POST", credentials: "include",
-      });
-
       const [cycleRes, progressRes] = await Promise.all([
-        fetch(`${BASE}/api/v1/appraisal/cycles/${cycleId}`, { credentials: "include" }),
-        fetch(`${BASE}/api/v1/appraisal/cycles/${cycleId}/targets-progress`, { credentials: "include" }),
+        fetch(`${BASE}/api/v1/appraisal/cycles/${cycleId}`, { credentials: "include", signal }),
+        fetch(`${BASE}/api/v1/appraisal/cycles/${cycleId}/targets-progress`, { credentials: "include", signal }),
       ]);
       if (!cycleRes.ok) throw new Error("Failed to load cycle");
       setCycle(await cycleRes.json());
       if (!progressRes.ok) throw new Error("Failed to load targets progress");
       setProgress(await progressRes.json());
     } catch (e) {
+      if ((e as Error).name === "AbortError") return;
       setError((e as Error).message);
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => { if (cycleId) loadData(); }, [cycleId]);
+  useEffect(() => {
+    if (!cycleId) return;
+    const controller = new AbortController();
+    loadData(controller.signal);
+    return () => controller.abort();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cycleId]);
 
   async function generateSubmissions() {
     setGenerating(true);
@@ -110,7 +111,7 @@ export default function TeamTargetsPage() {
         method: "POST", credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to generate submissions");
-      await loadData(); // reload to show new rows
+      await loadData(); // reload to show new rows (no abort — user-triggered)
     } catch (e) {
       setError((e as Error).message);
     } finally {

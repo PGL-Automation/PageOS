@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   ChevronLeft,
@@ -88,6 +88,11 @@ export default function IndividualTargetsPage() {
     department: searchParams.get("dept") ?? "",
   });
 
+  // Keep a ref so fetchScorecard can always read the latest employeeInfo without
+  // needing it as a useCallback dependency (prevents stale-closure loop).
+  const employeeInfoRef = useRef(employeeInfo);
+  useEffect(() => { employeeInfoRef.current = employeeInfo; }, [employeeInfo]);
+
   const [kpis, setKpis] = useState<KPI[]>([]);
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(true);
@@ -110,14 +115,17 @@ export default function IndividualTargetsPage() {
     setToast({ type, msg });
 
   // ── Fetch scorecard ──────────────────────────────────────────────────────
+  // Uses employeeInfoRef so the callback is stable across renders and never
+  // creates a stale-closure loop from reading + writing employeeInfo state.
   const fetchScorecard = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
+      const info = employeeInfoRef.current;
       const params = new URLSearchParams();
-      if (employeeInfo.department) params.set("dept", employeeInfo.department);
-      if (employeeInfo.role) params.set("role", employeeInfo.role);
-      if (employeeInfo.grade) params.set("grade", employeeInfo.grade);
+      if (info.department) params.set("dept", info.department);
+      if (info.role) params.set("role", info.role);
+      if (info.grade) params.set("grade", info.grade);
 
       const res = await fetch(
         `${BASE}/api/v1/appraisal/cycles/${cycleId}/individual-scorecard/${employeeId}?${params.toString()}`,
@@ -145,7 +153,7 @@ export default function IndividualTargetsPage() {
     } finally {
       setLoading(false);
     }
-  }, [cycleId, employeeId, employeeInfo.department, employeeInfo.role, employeeInfo.grade]);
+  }, [cycleId, employeeId]); // employeeInfo read via ref — no stale closure
 
   useEffect(() => {
     fetchScorecard();
