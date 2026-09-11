@@ -47,6 +47,7 @@ import (
 	reconhttp "github.com/pagegroup/pageos/internal/reconciliation/http"
 	"github.com/pagegroup/pageos/internal/notification"
 	notifhttp "github.com/pagegroup/pageos/internal/notification/http"
+	"github.com/pagegroup/pageos/internal/internalaudit"
 	"github.com/pagegroup/pageos/internal/onboarding"
 	onboardinghttp "github.com/pagegroup/pageos/internal/onboarding/http"
 	"github.com/pagegroup/pageos/internal/organization"
@@ -169,6 +170,9 @@ func run() error {
 	crmSvc := crm.NewService(pool)
 	crmH   := crmhttp.New(crmSvc)
 
+	internalAuditSvc := internalaudit.NewService(pool)
+	internalAuditH   := internalaudit.NewHandler(internalAuditSvc)
+
 	// --- Bootstrap: create super-admin and initial HR user if they don't exist ---
 	if err := seedBootstrap(ctx, pool, identitySvc, orgSvc, logger); err != nil {
 		logger.Warn("bootstrap seed failed (non-fatal)", "err", err)
@@ -203,6 +207,7 @@ func run() error {
 		api.Mount("/payroll", payrollH.Routes(identityH.Authenticator))
 		api.Mount("/portfolio", portfolioH.Routes(identityH.Authenticator))
 		api.Mount("/crm", crmH.Routes(identityH.Authenticator))
+		api.Mount("/internal-audit", internalAuditH.Routes(identityH.Authenticator))
 		api.Mount("/notifications", notifH.Routes(identityH.Authenticator))
 		// Vault notes — private personal notes scoped to the caller.
 		api.With(identityH.Authenticator).Get("/vault/notes", vaultListNotes(pool))
