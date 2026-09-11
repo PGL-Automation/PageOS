@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math"
 	"time"
 
@@ -372,8 +373,17 @@ func (s *Service) IsDeptHead(ctx context.Context, userID uuid.UUID) bool {
 // NotifyDeptHeadsOnCycleOpen sends an in-app notification to all department heads
 // in the subsidiary when a cycle is opened, asking them to configure KPIs.
 func (s *Service) NotifyDeptHeadsOnCycleOpen(ctx context.Context, cycleID uuid.UUID) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("NotifyDeptHeadsOnCycleOpen: recovered from panic: %v", r)
+		}
+	}()
+
 	var cycleName, subID string
-	_ = s.pool.QueryRow(ctx, `SELECT title, COALESCE(subsidiary_id::text,'') FROM appraisal.cycle WHERE id=$1`, cycleID).Scan(&cycleName, &subID)
+	if err := s.pool.QueryRow(ctx, `SELECT title, COALESCE(subsidiary_id::text,'') FROM appraisal.cycle WHERE id=$1`, cycleID).Scan(&cycleName, &subID); err != nil {
+		log.Printf("NotifyDeptHeadsOnCycleOpen: failed to load cycle metadata for %s: %v", cycleID, err)
+		return
+	}
 
 	// Fetch all dept head user IDs in the subsidiary
 	const q = `
@@ -388,6 +398,7 @@ func (s *Service) NotifyDeptHeadsOnCycleOpen(ctx context.Context, cycleID uuid.U
 	`
 	rows, err := s.pool.Query(ctx, q, HEAD_POSITION_CODES, subID)
 	if err != nil {
+		log.Printf("NotifyDeptHeadsOnCycleOpen: failed to query dept heads for cycle %s: %v", cycleID, err)
 		return
 	}
 	defer rows.Close()
@@ -413,8 +424,17 @@ func (s *Service) NotifyDeptHeadsOnCycleOpen(ctx context.Context, cycleID uuid.U
 // NotifyEmployeesOnAppraisalPhase sends an in-app notification to all employees
 // with submissions in the cycle when HR switches it to the "appraisal" phase.
 func (s *Service) NotifyEmployeesOnAppraisalPhase(ctx context.Context, cycleID uuid.UUID) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("NotifyEmployeesOnAppraisalPhase: recovered from panic: %v", r)
+		}
+	}()
+
 	var cycleName string
-	_ = s.pool.QueryRow(ctx, `SELECT title FROM appraisal.cycle WHERE id=$1`, cycleID).Scan(&cycleName)
+	if err := s.pool.QueryRow(ctx, `SELECT title FROM appraisal.cycle WHERE id=$1`, cycleID).Scan(&cycleName); err != nil {
+		log.Printf("NotifyEmployeesOnAppraisalPhase: failed to load cycle metadata for %s: %v", cycleID, err)
+		return
+	}
 
 	const q = `
 		SELECT DISTINCT appraisee_id FROM appraisal.submission
@@ -422,6 +442,7 @@ func (s *Service) NotifyEmployeesOnAppraisalPhase(ctx context.Context, cycleID u
 	`
 	rows, err := s.pool.Query(ctx, q, cycleID)
 	if err != nil {
+		log.Printf("NotifyEmployeesOnAppraisalPhase: failed to query submissions for cycle %s: %v", cycleID, err)
 		return
 	}
 	defer rows.Close()
@@ -455,15 +476,24 @@ func (s *Service) SetTargetStatus(ctx context.Context, cycleID, employeeID uuid.
 
 // NotifyManagerOnTargetRejection notifies the manager when an employee rejects their targets.
 func (s *Service) NotifyManagerOnTargetRejection(ctx context.Context, cycleID, employeeID uuid.UUID, reason string) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("NotifyManagerOnTargetRejection: recovered from panic: %v", r)
+		}
+	}()
+
 	var empName, cycleName, managerID string
-	_ = s.pool.QueryRow(ctx,
+	if err := s.pool.QueryRow(ctx,
 		`SELECT COALESCE(u.display_name, u.email), c.title, COALESCE(s.manager_id::text,'')
 		 FROM appraisal.submission s
 		 JOIN identity.users u ON u.id = s.appraisee_id
 		 JOIN appraisal.cycle c ON c.id = s.cycle_id
 		 WHERE s.cycle_id=$1 AND s.appraisee_id=$2`,
 		cycleID, employeeID,
-	).Scan(&empName, &cycleName, &managerID)
+	).Scan(&empName, &cycleName, &managerID); err != nil {
+		log.Printf("NotifyManagerOnTargetRejection: failed to load submission metadata for cycle %s employee %s: %v", cycleID, employeeID, err)
+		return
+	}
 
 	if managerID == "" {
 		return
@@ -493,9 +523,21 @@ func (s *Service) NotifyManagerOnTargetRejection(ctx context.Context, cycleID, e
 
 // NotifyTargetsSet sends an in-app notification to the employee when their
 // line manager saves their individual KPI scorecard.
+// The entity_id is a deterministic UUID derived from cycleID+employeeID so that
+// the dedup index prevents re-notification if the manager re-saves on a different day.
 func (s *Service) NotifyTargetsSet(ctx context.Context, cycleID, employeeID, managerID uuid.UUID) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("NotifyTargetsSet: recovered from panic: %v", r)
+		}
+	}()
+
 	var cycleName, managerName string
-	_ = s.pool.QueryRow(ctx, `SELECT title FROM appraisal.cycle WHERE id=$1`, cycleID).Scan(&cycleName)
+	if err := s.pool.QueryRow(ctx, `SELECT title FROM appraisal.cycle WHERE id=$1`, cycleID).Scan(&cycleName); err != nil {
+		log.Printf("NotifyTargetsSet: failed to load cycle metadata for %s: %v", cycleID, err)
+		return
+	}
+	// managerName is optional; ignore the error if the user record is missing.
 	_ = s.pool.QueryRow(ctx, `SELECT COALESCE(display_name, email) FROM identity.users WHERE id=$1`, managerID).Scan(&managerName)
 
 	body := fmt.Sprintf(
@@ -509,7 +551,9 @@ func (s *Service) NotifyTargetsSet(ctx context.Context, cycleID, employeeID, man
 		)
 	}
 
-	cycleIDCopy := cycleID
+	// Composite dedup key: XOR-derived UUID from cycleID + employeeID so that
+	// saves across multiple days don't re-notify the same employee for the same cycle.
+	compositeEntityID := xorUUID(cycleID, employeeID)
 	_ = notification.SendToUserByID(ctx, s.pool, employeeID, notification.InApp{
 		Type:       "appraisal_targets_set",
 		Title:      "Your performance targets have been set",
@@ -517,8 +561,19 @@ func (s *Service) NotifyTargetsSet(ctx context.Context, cycleID, employeeID, man
 		Link:       fmt.Sprintf("/appraisal/%s", cycleID),
 		Priority:   "medium",
 		EntityType: "appraisal_cycle",
-		EntityID:   &cycleIDCopy,
+		EntityID:   &compositeEntityID,
 	})
+}
+
+// xorUUID produces a deterministic UUID by XOR-ing the bytes of two UUIDs.
+// Used to create a composite dedup key for (cycleID, employeeID) pairs without
+// requiring a separate table or extra columns.
+func xorUUID(a, b uuid.UUID) uuid.UUID {
+	var result uuid.UUID
+	for i := range result {
+		result[i] = a[i] ^ b[i]
+	}
+	return result
 }
 
 // ── Phase management ───────────────────────────────────────────────────────────
