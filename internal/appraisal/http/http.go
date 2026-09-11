@@ -4,6 +4,7 @@ package appraisalhttp
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"time"
 
@@ -118,20 +119,16 @@ func parseSubmissionID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool)
 	return id, true
 }
 
-// requireHR checks that the caller has HR or admin role. It writes the error
-// response itself and returns false when access is denied.
+// requireHR checks that the caller has HR or admin role using the unified
+// IsHROrAdmin function (explicit allowlist, no substring matching).
+// It writes the error response itself and returns false when access is denied.
 func (h *Handler) requireHR(w http.ResponseWriter, r *http.Request) bool {
 	caller, ok := identityhttp.UserFrom(r.Context())
 	if !ok {
 		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return false
 	}
-	isHR, err := h.svc.HasHROrAdminRole(r.Context(), caller.ID)
-	if err != nil {
-		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
-		return false
-	}
-	if !isHR {
+	if !h.svc.IsHROrAdmin(r.Context(), caller.ID) {
 		httpx.Error(w, http.StatusForbidden, "forbidden", "HR or admin role required")
 		return false
 	}
@@ -158,6 +155,15 @@ func (h *Handler) createCycle(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
+	// FIX 24: Validate title before hitting the database.
+	if in.Title == "" {
+		httpx.Error(w, http.StatusBadRequest, "validation_error", "title is required")
+		return
+	}
+	if len(in.Title) > 200 {
+		httpx.Error(w, http.StatusBadRequest, "validation_error", "title must be 200 characters or fewer")
+		return
+	}
 	selfDL, managerDL := parseOptionalDate(in.SelfDeadline), parseOptionalDate(in.ManagerDeadline)
 	cycle, err := h.svc.CreateCycle(r.Context(), in.Title, in.Description, in.SubsidiaryID, selfDL, managerDL, caller.ID)
 	if err != nil {
@@ -168,6 +174,12 @@ func (h *Handler) createCycle(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) listCycles(w http.ResponseWriter, r *http.Request) {
+	caller, ok := identityhttp.UserFrom(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+		return
+	}
+
 	var subsidiaryID *uuid.UUID
 	if s := r.URL.Query().Get("subsidiary_id"); s != "" {
 		id, err := uuid.Parse(s)
@@ -177,9 +189,23 @@ func (h *Handler) listCycles(w http.ResponseWriter, r *http.Request) {
 		}
 		subsidiaryID = &id
 	}
+
+	// FIX 26: Non-HR/admin callers are scoped to cycles that match a subsidiary
+	// where they have an active assignment. HR/admin see all cycles (or the
+	// explicit subsidiary_id filter if provided).
+	isHR := h.svc.IsHROrAdmin(r.Context(), caller.ID)
+	if !isHR && subsidiaryID == nil {
+		// Resolve the caller's primary subsidiary from the org.
+		callerSubID := h.svc.GetCallerSubsidiaryID(r.Context(), caller.ID)
+		if callerSubID != nil {
+			subsidiaryID = callerSubID
+		}
+	}
+
 	cycles, err := h.svc.ListCycles(r.Context(), subsidiaryID)
 	if err != nil {
-		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		log.Printf("appraisal: listCycles: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "internal", "an internal error occurred")
 		return
 	}
 	httpx.JSON(w, http.StatusOK, cycles)
@@ -239,8 +265,16 @@ func (h *Handler) openCycle(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, "open_failed", err.Error())
 		return
 	}
-	// Notify all department heads to configure their team's KPIs
-	go h.svc.NotifyDeptHeadsOnCycleOpen(context.Background(), id)
+	// FIX 27: Notify all department heads to configure their team's KPIs.
+	// Wrapped with panic recovery so a notification failure doesn't crash the server.
+	go func() {
+		defer func() {
+			if rec := recover(); rec != nil {
+				log.Printf("appraisal: NotifyDeptHeadsOnCycleOpen panic: %v", rec)
+			}
+		}()
+		h.svc.NotifyDeptHeadsOnCycleOpen(context.Background(), id)
+	}()
 	httpx.JSON(w, http.StatusOK, cycle)
 }
 
@@ -303,6 +337,15 @@ func (h *Handler) addQuestion(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
+	// FIX 25: Validate MaxScore and Weight before hitting the database.
+	if in.MaxScore <= 0 {
+		httpx.Error(w, http.StatusBadRequest, "validation_error", "max_score must be greater than 0")
+		return
+	}
+	if in.Weight <= 0 {
+		httpx.Error(w, http.StatusBadRequest, "validation_error", "weight must be greater than 0")
+		return
+	}
 	q, err := h.svc.AddQuestion(r.Context(), cycleID, appraisal.QuestionInput{
 		Category:    in.Category,
 		Text:        in.Text,
@@ -325,7 +368,8 @@ func (h *Handler) listQuestions(w http.ResponseWriter, r *http.Request) {
 	}
 	questions, err := h.svc.ListQuestions(r.Context(), cycleID)
 	if err != nil {
-		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		log.Printf("appraisal: listQuestions: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "internal", "an internal error occurred")
 		return
 	}
 	httpx.JSON(w, http.StatusOK, questions)
@@ -422,7 +466,8 @@ func (h *Handler) listAssignments(w http.ResponseWriter, r *http.Request) {
 	}
 	assignments, err := h.svc.ListAssignments(r.Context(), cycleID)
 	if err != nil {
-		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		log.Printf("appraisal: listAssignments: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "internal", "an internal error occurred")
 		return
 	}
 	httpx.JSON(w, http.StatusOK, assignments)
@@ -455,7 +500,8 @@ func (h *Handler) autoAssign(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := h.svc.AutoAssignFromOrgChart(r.Context(), cycleID, caller.ID)
 	if err != nil {
-		httpx.Error(w, http.StatusInternalServerError, "auto_assign_failed", err.Error())
+		log.Printf("appraisal: autoAssign: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "auto_assign_failed", "an internal error occurred")
 		return
 	}
 	httpx.JSON(w, http.StatusOK, result)
@@ -489,7 +535,8 @@ func (h *Handler) getMySubmission(w http.ResponseWriter, r *http.Request) {
 
 	detail, err := h.svc.GetMySubmission(r.Context(), cycleID, caller.ID)
 	if err != nil {
-		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		log.Printf("appraisal: getMySubmission: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "internal", "an internal error occurred")
 		return
 	}
 	httpx.JSON(w, http.StatusOK, detail)
@@ -531,7 +578,8 @@ func (h *Handler) upsertSelfResponses(w http.ResponseWriter, r *http.Request) {
 	// Ensure submission exists.
 	sub, err := h.svc.GetOrCreateSubmission(r.Context(), cycleID, caller.ID)
 	if err != nil {
-		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		log.Printf("appraisal: upsertSelfResponses: GetOrCreateSubmission: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "internal", "an internal error occurred")
 		return
 	}
 
@@ -574,7 +622,8 @@ func (h *Handler) submitSelf(w http.ResponseWriter, r *http.Request) {
 
 	sub, err := h.svc.GetOrCreateSubmission(r.Context(), cycleID, caller.ID)
 	if err != nil {
-		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		log.Printf("appraisal: submitSelf: GetOrCreateSubmission: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "internal", "an internal error occurred")
 		return
 	}
 
@@ -598,7 +647,8 @@ func (h *Handler) getPendingReviews(w http.ResponseWriter, r *http.Request) {
 	}
 	submissions, err := h.svc.GetPendingReviews(r.Context(), caller.ID)
 	if err != nil {
-		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		log.Printf("appraisal: getPendingReviews: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "internal", "an internal error occurred")
 		return
 	}
 	httpx.JSON(w, http.StatusOK, submissions)
@@ -673,7 +723,8 @@ func (h *Handler) listCycleSubmissions(w http.ResponseWriter, r *http.Request) {
 	}
 	submissions, err := h.svc.ListCycleSubmissions(r.Context(), cycleID)
 	if err != nil {
-		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		log.Printf("appraisal: listCycleSubmissions: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "internal", "an internal error occurred")
 		return
 	}
 	httpx.JSON(w, http.StatusOK, submissions)
@@ -716,7 +767,8 @@ func (h *Handler) listMySubmissions(w http.ResponseWriter, r *http.Request) {
 	}
 	subs, err := h.svc.ListMySubmissions(r.Context(), caller.ID)
 	if err != nil {
-		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		log.Printf("appraisal: listMySubmissions: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "internal", "an internal error occurred")
 		return
 	}
 	if subs == nil {

@@ -763,18 +763,26 @@ func calculateWeightedScore(responses []ResponseInput, questions []Question) flo
 
 // UpsertSelfResponses persists self-assessment responses and updates the
 // submission status to self_draft and recalculates self_score.
+// The entire operation is wrapped in a transaction so a partial failure rolls
+// back all inserts rather than leaving the submission in an inconsistent state.
 func (s *Service) UpsertSelfResponses(ctx context.Context, submissionID, scorerID uuid.UUID, responses []ResponseInput) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("appraisal: upsert self responses begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	const ins = `
+		INSERT INTO appraisal.response (
+			id, submission_id, question_id, scorer_id, scorer_type, score, comment, scored_at
+		) VALUES (
+			gen_random_uuid(), $1, $2, $3, 'self', $4, $5, now()
+		)
+		ON CONFLICT (submission_id, question_id, scorer_type)
+		DO UPDATE SET score = EXCLUDED.score, comment = EXCLUDED.comment, scored_at = now()
+	`
 	for _, r := range responses {
-		const sql = `
-			INSERT INTO appraisal.response (
-				id, submission_id, question_id, scorer_id, scorer_type, score, comment, scored_at
-			) VALUES (
-				gen_random_uuid(), $1, $2, $3, 'self', $4, $5, now()
-			)
-			ON CONFLICT (submission_id, question_id, scorer_type)
-			DO UPDATE SET score = EXCLUDED.score, comment = EXCLUDED.comment, scored_at = now()
-		`
-		if _, err := s.pool.Exec(ctx, sql, submissionID, r.QuestionID, scorerID, r.Score, r.Comment); err != nil {
+		if _, err := tx.Exec(ctx, ins, submissionID, r.QuestionID, scorerID, r.Score, r.Comment); err != nil {
 			return fmt.Errorf("appraisal: upsert self response for question %s: %w", r.QuestionID, err)
 		}
 	}
@@ -791,10 +799,10 @@ func (s *Service) UpsertSelfResponses(ctx context.Context, submissionID, scorerI
 		SET status = 'self_draft', self_score = $2, updated_at = now()
 		WHERE id = $1
 	`
-	if _, err := s.pool.Exec(ctx, update, submissionID, score); err != nil {
+	if _, err := tx.Exec(ctx, update, submissionID, score); err != nil {
 		return fmt.Errorf("appraisal: upsert self responses: update submission: %w", err)
 	}
-	return nil
+	return tx.Commit(ctx)
 }
 
 // SubmitSelf finalises the self-assessment: sets status=self_submitted, records
@@ -902,6 +910,8 @@ func (s *Service) GetPendingReviews(ctx context.Context, reviewerID uuid.UUID) (
 
 // UpsertManagerResponses persists manager scoring responses and transitions
 // the submission to manager_scoring status.
+// The entire operation is wrapped in a transaction so a partial failure rolls
+// back all inserts rather than leaving the submission in an inconsistent state.
 func (s *Service) UpsertManagerResponses(ctx context.Context, submissionID, reviewerID uuid.UUID, responses []ResponseInput) error {
 	// Verify caller is the assigned reviewer via the reviewer_assignment table.
 	var assignedReviewer uuid.UUID
@@ -918,17 +928,23 @@ func (s *Service) UpsertManagerResponses(ctx context.Context, submissionID, revi
 		return errors.New("appraisal: upsert manager responses: caller is not the assigned reviewer")
 	}
 
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("appraisal: upsert manager responses begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	const ins = `
+		INSERT INTO appraisal.response (
+			id, submission_id, question_id, scorer_id, scorer_type, score, comment, scored_at
+		) VALUES (
+			gen_random_uuid(), $1, $2, $3, 'manager', $4, $5, now()
+		)
+		ON CONFLICT (submission_id, question_id, scorer_type)
+		DO UPDATE SET score = EXCLUDED.score, comment = EXCLUDED.comment, scored_at = now()
+	`
 	for _, r := range responses {
-		const sql = `
-			INSERT INTO appraisal.response (
-				id, submission_id, question_id, scorer_id, scorer_type, score, comment, scored_at
-			) VALUES (
-				gen_random_uuid(), $1, $2, $3, 'manager', $4, $5, now()
-			)
-			ON CONFLICT (submission_id, question_id, scorer_type)
-			DO UPDATE SET score = EXCLUDED.score, comment = EXCLUDED.comment, scored_at = now()
-		`
-		if _, err := s.pool.Exec(ctx, sql, submissionID, r.QuestionID, reviewerID, r.Score, r.Comment); err != nil {
+		if _, err := tx.Exec(ctx, ins, submissionID, r.QuestionID, reviewerID, r.Score, r.Comment); err != nil {
 			return fmt.Errorf("appraisal: upsert manager response for question %s: %w", r.QuestionID, err)
 		}
 	}
@@ -945,10 +961,10 @@ func (s *Service) UpsertManagerResponses(ctx context.Context, submissionID, revi
 		SET status = 'manager_scoring', manager_score = $2, updated_at = now()
 		WHERE id = $1
 	`
-	if _, err := s.pool.Exec(ctx, update, submissionID, score); err != nil {
+	if _, err := tx.Exec(ctx, update, submissionID, score); err != nil {
 		return fmt.Errorf("appraisal: upsert manager responses: update submission: %w", err)
 	}
-	return nil
+	return tx.Commit(ctx)
 }
 
 // SubmitManagerReview finalises the manager review: sets status=completed,
@@ -984,17 +1000,20 @@ func (s *Service) SubmitManagerReview(ctx context.Context, submissionID, reviewe
 	}
 	score := calculateWeightedScore(inputs, questions)
 
+	// reviewer_assignment check above already validated the caller is the assigned reviewer;
+	// we do NOT repeat AND reviewer_id=$3 in the WHERE clause here because the submission's
+	// reviewer_id column may be NULL or stale if assignments were changed after creation.
 	const sql = `
 		UPDATE appraisal.submission
 		SET status = 'completed', manager_submitted_at = now(),
 		    manager_score = $2, updated_at = now()
-		WHERE id = $1 AND reviewer_id = $3
+		WHERE id = $1
 		RETURNING id, cycle_id, appraisee_id, reviewer_id,
 		          status, self_score, manager_score,
 		          self_submitted_at, manager_submitted_at, updated_at
 	`
 	var sub Submission
-	err = s.pool.QueryRow(ctx, sql, submissionID, score, reviewerID).Scan(
+	err = s.pool.QueryRow(ctx, sql, submissionID, score).Scan(
 		&sub.ID, &sub.CycleID, &sub.AppraiseeID, &sub.ReviewerID,
 		&sub.Status, &sub.SelfScore, &sub.ManagerScore,
 		&sub.SelfSubmittedAt, &sub.ManagerSubmittedAt, &sub.UpdatedAt,
@@ -1111,21 +1130,36 @@ func (s *Service) GetSubmissionDetail(ctx context.Context, id uuid.UUID) (*Submi
 // Role helpers
 // -------------------------------------------------------------------------
 
-// HasHROrAdminRole returns true if the user holds any HR or admin position in
-// either the identity or organisation tables.
-func (s *Service) HasHROrAdminRole(ctx context.Context, userID uuid.UUID) (bool, error) {
-	// Check identity.users role column first (quick path).
+// hrAdminRoles is the explicit allowlist of identity.users.role values that
+// grant HR/admin access. Substring matching is intentionally avoided.
+var hrAdminRoles = []string{"hr_admin", "group_admin", "admin", "hr", "hc_admin"}
+
+// hrPositionCodes is the explicit allowlist of organization.position.code values
+// that grant HR/admin access. ILIKE patterns are intentionally avoided.
+var hrPositionCodes = []string{
+	"HEAD_HUMAN_CAPITAL", "HR_MANAGER", "HR_OPS_MANAGER",
+	"HR_ADMIN", "HC_OFFICER", "HC_MANAGER",
+}
+
+// IsHROrAdmin returns true if the user holds an HR or admin role in either
+// identity.users (role column explicit allowlist) or organization.position
+// (position code explicit allowlist). Deprecated HasHROrAdminRole and IsHR
+// now delegate to this unified function.
+func (s *Service) IsHROrAdmin(ctx context.Context, userID uuid.UUID) bool {
+	// Check identity.users role column with explicit allowlist.
 	var roleStr string
 	_ = s.pool.QueryRow(ctx,
 		`SELECT COALESCE(role, '') FROM identity.users WHERE id = $1`,
 		userID,
 	).Scan(&roleStr)
-	role := strings.ToLower(roleStr)
-	if strings.Contains(role, "hr") || strings.Contains(role, "admin") {
-		return true, nil
+	role := strings.ToLower(strings.TrimSpace(roleStr))
+	for _, r := range hrAdminRoles {
+		if role == r {
+			return true
+		}
 	}
 
-	// Fallback: check org position codes that imply HR / admin access.
+	// Fallback: check org position codes using explicit IN list.
 	const sql = `
 		SELECT EXISTS (
 			SELECT 1
@@ -1133,21 +1167,20 @@ func (s *Service) HasHROrAdminRole(ctx context.Context, userID uuid.UUID) (bool,
 			JOIN organization.position pos ON pos.id = a.position_id
 			JOIN organization.person   per ON per.id = a.person_id
 			WHERE per.user_id = $1
-			  AND (
-			      LOWER(pos.code)  LIKE '%hr%'
-			      OR LOWER(pos.code)  LIKE '%admin%'
-			      OR LOWER(pos.title) LIKE '%human resource%'
-			      OR LOWER(pos.title) LIKE '%administrator%'
-			  )
+			  AND pos.code = ANY($2::text[])
 			  AND a.effective_from <= CURRENT_DATE
 			  AND (a.effective_to IS NULL OR a.effective_to >= CURRENT_DATE)
 		)
 	`
 	var exists bool
-	if err := s.pool.QueryRow(ctx, sql, userID).Scan(&exists); err != nil {
-		return false, fmt.Errorf("appraisal: has hr or admin role: %w", err)
-	}
-	return exists, nil
+	_ = s.pool.QueryRow(ctx, sql, userID, hrPositionCodes).Scan(&exists)
+	return exists
+}
+
+// HasHROrAdminRole is deprecated; use IsHROrAdmin. Kept for backward compatibility
+// with callers that expect (bool, error).
+func (s *Service) HasHROrAdminRole(ctx context.Context, userID uuid.UUID) (bool, error) {
+	return s.IsHROrAdmin(ctx, userID), nil
 }
 
 // -------------------------------------------------------------------------
@@ -1211,20 +1244,11 @@ func (s *Service) questionsByCycleFromSubmission(ctx context.Context, submission
 	return s.ListQuestions(ctx, cycleID)
 }
 
-// IsHR returns true if the user holds an HR or HC role in the org.
+// IsHR returns true if the user holds an HR or HC role.
+// Deprecated: use IsHROrAdmin which consolidates both role and position checks
+// with an explicit allowlist rather than ILIKE patterns.
 func (s *Service) IsHR(ctx context.Context, userID uuid.UUID) bool {
-	const q = `
-		SELECT EXISTS(
-			SELECT 1 FROM organization.assignment a
-			JOIN organization.position p ON p.id = a.position_id
-			WHERE a.person_id = (SELECT id FROM organization.person WHERE user_id=$1 LIMIT 1)
-			  AND a.effective_to IS NULL
-			  AND (p.code ILIKE '%HR%' OR p.code ILIKE '%HUMAN_CAPITAL%' OR p.code ILIKE '%HEAD_HUMAN%' OR p.code ILIKE 'HR_MANAGER%')
-		)
-	`
-	var isHR bool
-	_ = s.pool.QueryRow(ctx, q, userID).Scan(&isHR)
-	return isHR
+	return s.IsHROrAdmin(ctx, userID)
 }
 
 // IsManagerOf returns true if managerUserID is recorded as the manager of employeeUserID
@@ -1253,6 +1277,56 @@ func (s *Service) IsManagerOf(ctx context.Context, managerUserID, employeeUserID
 	`
 	_ = s.pool.QueryRow(ctx, q, employeeUserID, managerUserID).Scan(&exists)
 	return exists
+}
+
+// CountSubmissions writes the count of submissions for a cycle into *out.
+// Used by the HTTP layer to guard phase transitions.
+func (s *Service) CountSubmissions(ctx context.Context, cycleID uuid.UUID, out *int) error {
+	return s.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM appraisal.submission WHERE cycle_id=$1`,
+		cycleID,
+	).Scan(out)
+}
+
+// IsSameDepartment returns true if the employee's submission for the given cycle
+// has the same department as any active assignment of the caller.
+// Used by dept-head access guards on saveIndividualScorecard.
+func (s *Service) IsSameDepartment(ctx context.Context, callerUserID, employeeUserID, cycleID uuid.UUID) bool {
+	const q = `
+		SELECT EXISTS(
+			SELECT 1
+			FROM appraisal.submission s
+			JOIN organization.person per ON per.user_id = $1
+			JOIN organization.assignment a ON a.person_id = per.id
+				AND a.effective_to IS NULL AND a.is_primary = true
+			JOIN organization.department d ON d.id = a.department_id
+			WHERE s.cycle_id = $3
+			  AND s.appraisee_id = $2
+			  AND s.department = d.name
+		)
+	`
+	var ok bool
+	_ = s.pool.QueryRow(ctx, q, callerUserID, employeeUserID, cycleID).Scan(&ok)
+	return ok
+}
+
+// GetCallerSubsidiaryID returns the subsidiary_id of the caller's primary active
+// assignment, or nil if one cannot be determined.
+// Used by listCycles to scope non-HR callers to their own subsidiary.
+func (s *Service) GetCallerSubsidiaryID(ctx context.Context, userID uuid.UUID) *uuid.UUID {
+	var subID uuid.UUID
+	err := s.pool.QueryRow(ctx, `
+		SELECT a.subsidiary_id
+		FROM organization.person per
+		JOIN organization.assignment a ON a.person_id = per.id
+			AND a.effective_to IS NULL AND a.is_primary = true
+		WHERE per.user_id = $1
+		LIMIT 1
+	`, userID).Scan(&subID)
+	if err != nil {
+		return nil
+	}
+	return &subID
 }
 
 // Ensure fmt, errors, strings are used (they are, but this guards against
