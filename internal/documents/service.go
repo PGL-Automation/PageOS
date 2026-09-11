@@ -17,18 +17,19 @@ import (
 
 // Document is the public representation of a stored file.
 type Document struct {
-	ID         uuid.UUID      `json:"id"`
-	UploadedBy uuid.UUID      `json:"uploaded_by"`
-	StorageKey string         `json:"storage_key"`
-	Filename   string         `json:"filename"`
-	MimeType   string         `json:"mime_type"`
-	SizeBytes  int64          `json:"size_bytes"`
-	Checksum   string         `json:"checksum"`
-	ScanStatus string         `json:"scan_status"`
-	VaultType  string         `json:"vault_type"`
-	Category   string         `json:"category,omitempty"`
-	Context    map[string]any `json:"context,omitempty"`
-	CreatedAt  time.Time      `json:"created_at"`
+	ID            uuid.UUID      `json:"id"`
+	UploadedBy    uuid.UUID      `json:"uploaded_by"`
+	SubjectUserID *uuid.UUID     `json:"subject_user_id,omitempty"`
+	StorageKey    string         `json:"storage_key"`
+	Filename      string         `json:"filename"`
+	MimeType      string         `json:"mime_type"`
+	SizeBytes     int64          `json:"size_bytes"`
+	Checksum      string         `json:"checksum"`
+	ScanStatus    string         `json:"scan_status"`
+	VaultType     string         `json:"vault_type"`
+	Category      string         `json:"category,omitempty"`
+	Context       map[string]any `json:"context,omitempty"`
+	CreatedAt     time.Time      `json:"created_at"`
 }
 
 // Service manages document uploads, retrievals, and scan lifecycle.
@@ -158,11 +159,11 @@ func (s *Service) DeleteDocument(ctx context.Context, id uuid.UUID) error {
 
 // GetDocument returns document metadata by ID.
 func (s *Service) GetDocument(ctx context.Context, id uuid.UUID) (Document, error) {
-	row, err := s.store.GetDocument(ctx, id)
+	row, err := s.store.GetFull(ctx, id)
 	if err != nil {
 		return Document{}, fmt.Errorf("documents: not found: %w", err)
 	}
-	return toDocument(row), nil
+	return fromFullDoc(row), nil
 }
 
 // ListDocumentsByEmployee returns all HR vault documents for a specific employee.
@@ -193,17 +194,18 @@ func (s *Service) ListPersonalDocuments(ctx context.Context, userID uuid.UUID) (
 
 func fromFullDoc(fd fullDoc) Document {
 	d := Document{
-		ID:         fd.ID,
-		UploadedBy: fd.UploadedBy,
-		StorageKey: fd.StorageKey,
-		Filename:   fd.Filename,
-		MimeType:   fd.MimeType,
-		SizeBytes:  fd.SizeBytes,
-		Checksum:   fd.Checksum,
-		ScanStatus: fd.ScanStatus,
-		VaultType:  fd.VaultType,
-		Category:   fd.Category,
-		CreatedAt:  fd.CreatedAt.Time,
+		ID:            fd.ID,
+		UploadedBy:    fd.UploadedBy,
+		SubjectUserID: fd.SubjectUserID,
+		StorageKey:    fd.StorageKey,
+		Filename:      fd.Filename,
+		MimeType:      fd.MimeType,
+		SizeBytes:     fd.SizeBytes,
+		Checksum:      fd.Checksum,
+		ScanStatus:    fd.ScanStatus,
+		VaultType:     fd.VaultType,
+		Category:      fd.Category,
+		CreatedAt:     fd.CreatedAt.Time,
 	}
 	if len(fd.Context) > 0 {
 		_ = json.Unmarshal(fd.Context, &d.Context)

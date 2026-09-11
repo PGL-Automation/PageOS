@@ -129,7 +129,7 @@ func run() error {
 	orgH := orghttp.New(orgSvc)
 
 	docSvc := documents.NewService(pool, objStore, documents.StubScanProvider{})
-	docH := documentshttp.New(docSvc)
+	docH := documentshttp.New(docSvc, orgSvc)
 
 	brokerSvc := broker.NewService(pool, auditWriter)
 	brokerH := brokerhttp.New(brokerSvc)

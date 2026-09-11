@@ -2,6 +2,7 @@
 package documentshttp
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,12 +17,18 @@ import (
 
 const maxUploadSize = 20 << 20 // 20 MB
 
-type Handler struct {
-	svc *documents.Service
+// RoleChecker can report whether a user holds any of the given role codes.
+type RoleChecker interface {
+	HasRole(ctx context.Context, userID uuid.UUID, codes ...string) (bool, error)
 }
 
-func New(svc *documents.Service) *Handler {
-	return &Handler{svc: svc}
+type Handler struct {
+	svc   *documents.Service
+	roles RoleChecker
+}
+
+func New(svc *documents.Service, roles RoleChecker) *Handler {
+	return &Handler{svc: svc, roles: roles}
 }
 
 func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
@@ -33,6 +40,12 @@ func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	r.Get("/{id}", h.get)
 	r.Delete("/{id}", h.deleteDoc)
 	return r
+}
+
+// isHROrAdmin returns true if the caller holds an HR manager, HR officer, or group-admin role.
+func (h *Handler) isHROrAdmin(ctx context.Context, userID uuid.UUID) bool {
+	ok, err := h.roles.HasRole(ctx, userID, "HR_MANAGER", "HR_OFFICER", "GROUP_ADMIN")
+	return err == nil && ok
 }
 
 func (h *Handler) upload(w http.ResponseWriter, r *http.Request) {
@@ -106,6 +119,12 @@ func (h *Handler) upload(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
+	user, ok := identityhttp.UserFrom(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+		return
+	}
+
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid document id")
@@ -116,10 +135,29 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusNotFound, "not_found", "document not found")
 		return
 	}
+
+	// FIX 2: caller must be HR/admin OR own the document.
+	if !h.isHROrAdmin(r.Context(), user.ID) && !docBelongsToCaller(doc, user.ID) {
+		httpx.Error(w, http.StatusForbidden, "forbidden", "access denied")
+		return
+	}
+
 	httpx.JSON(w, http.StatusOK, doc)
 }
 
 func (h *Handler) deleteDoc(w http.ResponseWriter, r *http.Request) {
+	user, ok := identityhttp.UserFrom(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+		return
+	}
+
+	// FIX 4: only HR/admin may delete documents.
+	if !h.isHROrAdmin(r.Context(), user.ID) {
+		httpx.Error(w, http.StatusForbidden, "forbidden", "HR or admin access required")
+		return
+	}
+
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid document id")
@@ -133,11 +171,29 @@ func (h *Handler) deleteDoc(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) download(w http.ResponseWriter, r *http.Request) {
+	user, ok := identityhttp.UserFrom(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+		return
+	}
+
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid document id")
 		return
 	}
+
+	// FIX 3: ownership check before streaming.
+	doc, err := h.svc.GetDocument(r.Context(), id)
+	if err != nil {
+		httpx.Error(w, http.StatusNotFound, "not_found", "document not found")
+		return
+	}
+	if !h.isHROrAdmin(r.Context(), user.ID) && !docBelongsToCaller(doc, user.ID) {
+		httpx.Error(w, http.StatusForbidden, "forbidden", "access denied")
+		return
+	}
+
 	rc, filename, mimeType, err := h.svc.StreamDocument(r.Context(), id)
 	if err != nil {
 		httpx.Error(w, http.StatusNotFound, "not_found", "document not found")
@@ -153,7 +209,7 @@ func (h *Handler) download(w http.ResponseWriter, r *http.Request) {
 
 // list handles two modes:
 //   - ?vault_type=personal  → caller's own private vault
-//   - ?for_employee_id=UUID → HR vault for a specific employee (any authenticated user)
+//   - ?for_employee_id=UUID → HR vault for a specific employee (HR/admin only, or self)
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	user, ok := identityhttp.UserFrom(r.Context())
 	if !ok {
@@ -185,6 +241,13 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid for_employee_id")
 		return
 	}
+
+	// FIX 1: non-HR/admin callers may only list their own employee documents.
+	if !h.isHROrAdmin(r.Context(), user.ID) && employeeID != user.ID {
+		httpx.Error(w, http.StatusForbidden, "forbidden", "access denied")
+		return
+	}
+
 	docs, err := h.svc.ListDocumentsByEmployee(r.Context(), employeeID)
 	if err != nil {
 		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
@@ -194,4 +257,21 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 		docs = []documents.Document{}
 	}
 	httpx.JSON(w, http.StatusOK, docs)
+}
+
+// docBelongsToCaller returns true if the document was uploaded by the caller
+// or its subject is the caller.
+func docBelongsToCaller(doc documents.Document, callerID uuid.UUID) bool {
+	if doc.UploadedBy == callerID {
+		return true
+	}
+	if doc.SubjectUserID != nil && *doc.SubjectUserID == callerID {
+		return true
+	}
+	// Also check the context map for for_employee_id (for documents stored before
+	// subject_user_id was populated).
+	if empID, ok := doc.Context["for_employee_id"].(string); ok && empID == callerID.String() {
+		return true
+	}
+	return false
 }
