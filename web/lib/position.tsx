@@ -74,9 +74,10 @@ export type RoleCode = (typeof ROLE)[keyof typeof ROLE];
 export function roleFamily(code: string | null | undefined): "wm" | "md" | "hr" | "finance" | "compliance" | "pm" | "default" {
   if (!code) return "default";
   const c = code.toUpperCase();
-  // HR family — any HR role, human capital, payroll, recruitment
-  if (c.startsWith("HR_") || c.endsWith("_HR") || c.includes("HUMAN_CAPITAL") ||
-      c.includes("PAYROLL") || c.includes("RECRUITMENT") || c.includes("TALENT")) return "hr";
+  // HR family — any HR/HC role, human capital, payroll, recruitment
+  if (c.startsWith("HR_") || c.startsWith("HC_") || c.endsWith("_HR") ||
+      c.includes("HUMAN_CAPITAL") || c.includes("PAYROLL") ||
+      c.includes("RECRUITMENT") || c.includes("TALENT")) return "hr";
   // GROUP_HEAD_WEALTH_MGMT — WM department head gets executive nav (/pm/*, /appraisal/dashboard)
   if (c === "GROUP_HEAD_WEALTH_MGMT") return "md";
   // MD/Senior leadership — directors, group admins
