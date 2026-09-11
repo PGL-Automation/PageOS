@@ -230,7 +230,7 @@ func run() error {
 		api.With(identityH.Authenticator).Patch("/admin/users/{userId}/grade",
 			updateGradeHandler(pool, orgSvc, auditWriter))
 		api.With(identityH.Authenticator).Get("/admin/pending-grades",
-			pendingGradesHandler(orgSvc))
+			pendingGradesHandler(pool, orgSvc))
 	})
 
 	srv := &http.Server{
@@ -426,7 +426,9 @@ func splitName(displayName string) (first, last string) {
 
 // ── Access control helpers ─────────────────────────────────────────────────────
 
-// isHROrAdmin returns true if the calling user holds an HR or group-admin position.
+// isHROrAdmin returns true if the calling user holds a core HR or group-admin position.
+// IT_ADMIN and MANAGING_DIRECTOR are intentionally excluded — they do NOT get access
+// to HR editor operations (profile edits, grade changes, transfers, onboarding).
 func isHROrAdmin(ctx context.Context, pool *pgxpool.Pool, callerID uuid.UUID) bool {
 	const q = `
 		SELECT EXISTS (
@@ -435,7 +437,33 @@ func isHROrAdmin(ctx context.Context, pool *pgxpool.Pool, callerID uuid.UUID) bo
 			JOIN organization.position pos ON pos.id = a.position_id
 			JOIN organization.person per ON per.id = a.person_id
 			WHERE per.user_id = $1
-			  AND pos.code = ANY(ARRAY['HR_MANAGER','HR_OFFICER','GROUP_ADMIN','IT_ADMIN','HEAD_HR'])
+			  AND pos.code = ANY(ARRAY[
+			        'HR_MANAGER','HR_OFFICER','GROUP_ADMIN','HEAD_HR',
+			        'HEAD_HUMAN_CAPITAL','HR_OPS_MANAGER','HR_ADMIN',
+			        'HC_OFFICER','HC_MANAGER'
+			      ])
+			  AND a.effective_from <= CURRENT_DATE
+			  AND (a.effective_to IS NULL OR a.effective_to >= CURRENT_DATE)
+		)
+	`
+	var exists bool
+	_ = pool.QueryRow(ctx, q, callerID).Scan(&exists)
+	return exists
+}
+
+// isAccountAdmin returns true if the calling user is an IT administrator or a
+// Managing Director. These roles have account-management access (password reset,
+// deactivate/reactivate) but NOT HR editor access (profile edits, grade changes,
+// transfers, or employee onboarding).
+func isAccountAdmin(ctx context.Context, pool *pgxpool.Pool, callerID uuid.UUID) bool {
+	const q = `
+		SELECT EXISTS (
+			SELECT 1
+			FROM organization.assignment a
+			JOIN organization.position pos ON pos.id = a.position_id
+			JOIN organization.person per ON per.id = a.person_id
+			WHERE per.user_id = $1
+			  AND pos.code = ANY(ARRAY['IT_ADMIN','MANAGING_DIRECTOR'])
 			  AND a.effective_from <= CURRENT_DATE
 			  AND (a.effective_to IS NULL OR a.effective_to >= CURRENT_DATE)
 		)
@@ -467,7 +495,10 @@ func provisionUserHandler(identitySvc *identity.Service, orgSvc *organization.Se
 			httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 			return
 		}
-		hasAccess, _ := orgSvc.HasRole(r.Context(), caller.ID, "HR_MANAGER", "HR_OFFICER", "GROUP_ADMIN")
+		hasAccess, _ := orgSvc.HasRole(r.Context(), caller.ID,
+			"HR_MANAGER", "HR_OFFICER", "GROUP_ADMIN",
+			"HEAD_HR", "HEAD_HUMAN_CAPITAL", "HR_OPS_MANAGER", "HR_ADMIN",
+			"HC_OFFICER", "HC_MANAGER")
 		if !hasAccess {
 			httpx.Error(w, http.StatusForbidden, "forbidden", "HR or admin access required")
 			return
@@ -661,10 +692,11 @@ func generateTempPassword() string {
 
 // resetPasswordHandler generates a new temporary password and updates the user record.
 // The new password is returned in the response for HR to communicate to the employee.
+// Allowed: HR roles (isHROrAdmin) OR account-admin roles (IT_ADMIN, MANAGING_DIRECTOR).
 func resetPasswordHandler(pool *pgxpool.Pool, auditWriter *audit.Writer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		caller, ok := identityhttp.UserFrom(r.Context())
-		if !ok || !isHROrAdmin(r.Context(), pool, caller.ID) {
+		if !ok || (!isHROrAdmin(r.Context(), pool, caller.ID) && !isAccountAdmin(r.Context(), pool, caller.ID)) {
 			httpx.Error(w, http.StatusForbidden, "forbidden", "HR or admin access required")
 			return
 		}
@@ -695,10 +727,11 @@ func resetPasswordHandler(pool *pgxpool.Pool, auditWriter *audit.Writer) http.Ha
 }
 
 // deactivateUserHandler sets a user's status to "inactive".
+// Allowed: HR roles (isHROrAdmin) OR account-admin roles (IT_ADMIN, MANAGING_DIRECTOR).
 func deactivateUserHandler(pool *pgxpool.Pool, auditWriter *audit.Writer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		caller, ok := identityhttp.UserFrom(r.Context())
-		if !ok || !isHROrAdmin(r.Context(), pool, caller.ID) {
+		if !ok || (!isHROrAdmin(r.Context(), pool, caller.ID) && !isAccountAdmin(r.Context(), pool, caller.ID)) {
 			httpx.Error(w, http.StatusForbidden, "forbidden", "HR or admin access required")
 			return
 		}
@@ -723,10 +756,11 @@ func deactivateUserHandler(pool *pgxpool.Pool, auditWriter *audit.Writer) http.H
 }
 
 // reactivateUserHandler sets a user's status back to "active".
+// Allowed: HR roles (isHROrAdmin) OR account-admin roles (IT_ADMIN, MANAGING_DIRECTOR).
 func reactivateUserHandler(pool *pgxpool.Pool, auditWriter *audit.Writer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		caller, ok := identityhttp.UserFrom(r.Context())
-		if !ok || !isHROrAdmin(r.Context(), pool, caller.ID) {
+		if !ok || (!isHROrAdmin(r.Context(), pool, caller.ID) && !isAccountAdmin(r.Context(), pool, caller.ID)) {
 			httpx.Error(w, http.StatusForbidden, "forbidden", "HR or admin access required")
 			return
 		}
@@ -746,13 +780,49 @@ func reactivateUserHandler(pool *pgxpool.Pool, auditWriter *audit.Writer) http.H
 }
 
 // getUserDetailHandler returns a user with their org assignments and last appraisal summary.
+// Access: HR roles or account-admins only. Non-GROUP_ADMIN callers are further scoped
+// to users who share at least one subsidiary with them (cross-subsidiary data is blocked).
 func getUserDetailHandler(pool *pgxpool.Pool, orgSvc *organization.Service, appraisalSvc *appraisal.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		caller, ok := identityhttp.UserFrom(r.Context())
+		if !ok || (!isHROrAdmin(r.Context(), pool, caller.ID) && !isAccountAdmin(r.Context(), pool, caller.ID)) {
+			httpx.Error(w, http.StatusForbidden, "forbidden", "HR or admin access required")
+			return
+		}
+
 		userID, err := uuid.Parse(chi.URLParam(r, "userId"))
 		if err != nil {
 			httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid user id")
 			return
 		}
+
+		// Subsidiary scope check: GROUP_ADMIN callers may access any user.
+		// All other callers may only access users in their own subsidiaries.
+		isGroupAdmin, _ := orgSvc.HasRole(r.Context(), caller.ID, "GROUP_ADMIN")
+		if !isGroupAdmin {
+			const scopeQ = `
+				SELECT EXISTS (
+					SELECT 1
+					FROM organization.assignment ca
+					JOIN organization.person cp ON cp.id = ca.person_id
+					JOIN organization.assignment ta ON ta.subsidiary_id = ca.subsidiary_id
+					JOIN organization.person tp ON tp.id = ta.person_id
+					WHERE cp.user_id = $1
+					  AND tp.user_id = $2
+					  AND ca.effective_from <= CURRENT_DATE
+					  AND (ca.effective_to IS NULL OR ca.effective_to >= CURRENT_DATE)
+					  AND ta.effective_from <= CURRENT_DATE
+					  AND (ta.effective_to IS NULL OR ta.effective_to >= CURRENT_DATE)
+				)
+			`
+			var inScope bool
+			_ = pool.QueryRow(r.Context(), scopeQ, caller.ID, userID).Scan(&inScope)
+			if !inScope {
+				httpx.Error(w, http.StatusForbidden, "forbidden", "access restricted to your subsidiary")
+				return
+			}
+		}
+
 		type UserDetail struct {
 			ID          uuid.UUID `json:"id"`
 			Email       string    `json:"email"`
@@ -866,8 +936,14 @@ func updateGradeHandler(pool *pgxpool.Pool, orgSvc *organization.Service, auditW
 }
 
 // pendingGradesHandler returns all employees whose grade level is awaiting confirmation.
-func pendingGradesHandler(orgSvc *organization.Service) http.HandlerFunc {
+// Access: HR roles only (no account-admin — grade management is an HR operation).
+func pendingGradesHandler(pool *pgxpool.Pool, orgSvc *organization.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		caller, ok := identityhttp.UserFrom(r.Context())
+		if !ok || !isHROrAdmin(r.Context(), pool, caller.ID) {
+			httpx.Error(w, http.StatusForbidden, "forbidden", "HR or admin access required")
+			return
+		}
 		rows, err := orgSvc.ListPendingGradeReview(r.Context())
 		if err != nil {
 			httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
