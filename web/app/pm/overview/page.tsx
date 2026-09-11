@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
-const BASE = "http://localhost:8081";
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
 
 // ---------------------------------------------------------------------------
 // Helpers

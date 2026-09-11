@@ -28,7 +28,7 @@ import {
   BarChart2,
 } from "lucide-react";
 
-const BASE = "http://localhost:8081";
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
 
 // ---------------------------------------------------------------------------
 // Helpers

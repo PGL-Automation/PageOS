@@ -29,7 +29,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 
-const BASE = "http://localhost:8081";
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
 
 function fmtCompact(n: number, cur: string) {
   const sym = cur === "USD" ? "$" : "₦";
