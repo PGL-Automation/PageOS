@@ -230,7 +230,7 @@ func run() error {
 		api.With(identityH.Authenticator).Patch("/admin/users/{userId}/grade",
 			updateGradeHandler(pool, orgSvc, auditWriter))
 		api.With(identityH.Authenticator).Get("/admin/pending-grades",
-			pendingGradesHandler(orgSvc))
+			pendingGradesHandler(pool, orgSvc))
 	})
 
 	srv := &http.Server{
@@ -695,6 +695,10 @@ func resetPasswordHandler(pool *pgxpool.Pool, auditWriter *audit.Writer) http.Ha
 }
 
 // deactivateUserHandler sets a user's status to "inactive".
+// Cascade effects:
+//   - Ends all open org assignments for the person (effective_to = today).
+//   - TODO: mark any in-progress appraisal submissions for this user as 'withdrawn'
+//     once the appraisal service exposes a WithdrawSubmissionsForUser method.
 func deactivateUserHandler(pool *pgxpool.Pool, auditWriter *audit.Writer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		caller, ok := identityhttp.UserFrom(r.Context())
@@ -707,12 +711,28 @@ func deactivateUserHandler(pool *pgxpool.Pool, auditWriter *audit.Writer) http.H
 			httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid user id")
 			return
 		}
+
+		today := time.Now().UTC().Truncate(24 * time.Hour)
+
+		// Deactivate the identity account.
 		_, err = pool.Exec(r.Context(),
 			"UPDATE identity.users SET status = 'inactive' WHERE id = $1", userID)
 		if err != nil {
 			httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
 			return
 		}
+
+		// End all open org assignments for this person (effective_to = today).
+		_, _ = pool.Exec(r.Context(), `
+			UPDATE organization.assignment a
+			SET    effective_to = $1
+			FROM   organization.person p
+			WHERE  p.id = a.person_id
+			  AND  p.user_id = $2
+			  AND  (a.effective_to IS NULL OR a.effective_to >= $1)
+			  AND  a.effective_from <= $1`,
+			today, userID)
+
 		_ = auditWriter.Write(r.Context(), audit.Entry{
 			Actor:        audit.Actor{Type: "user", ID: caller.ID.String()},
 			Action:       "identity.user.deactivated",
@@ -748,6 +768,11 @@ func reactivateUserHandler(pool *pgxpool.Pool, auditWriter *audit.Writer) http.H
 // getUserDetailHandler returns a user with their org assignments and last appraisal summary.
 func getUserDetailHandler(pool *pgxpool.Pool, orgSvc *organization.Service, appraisalSvc *appraisal.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		caller, ok := identityhttp.UserFrom(r.Context())
+		if !ok || !isHROrAdmin(r.Context(), pool, caller.ID) {
+			httpx.Error(w, http.StatusForbidden, "forbidden", "HR or admin access required")
+			return
+		}
 		userID, err := uuid.Parse(chi.URLParam(r, "userId"))
 		if err != nil {
 			httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid user id")
@@ -866,8 +891,13 @@ func updateGradeHandler(pool *pgxpool.Pool, orgSvc *organization.Service, auditW
 }
 
 // pendingGradesHandler returns all employees whose grade level is awaiting confirmation.
-func pendingGradesHandler(orgSvc *organization.Service) http.HandlerFunc {
+func pendingGradesHandler(pool *pgxpool.Pool, orgSvc *organization.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		caller, ok := identityhttp.UserFrom(r.Context())
+		if !ok || !isHROrAdmin(r.Context(), pool, caller.ID) {
+			httpx.Error(w, http.StatusForbidden, "forbidden", "HR or admin access required")
+			return
+		}
 		rows, err := orgSvc.ListPendingGradeReview(r.Context())
 		if err != nil {
 			httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
@@ -929,9 +959,41 @@ func transferEmployeeHandler(pool *pgxpool.Pool, orgSvc *organization.Service, a
 			return
 		}
 
-		// Optionally end all active assignments
+		// --- Validate all new_subsidiary_ids and resolve positions BEFORE any mutation ---
+		type resolvedSub struct {
+			sid uuid.UUID
+			pos organization.Position
+		}
+		resolved := make([]resolvedSub, 0, len(in.NewSubsidiaryIDs))
+		for _, sidStr := range in.NewSubsidiaryIDs {
+			sid, err := uuid.Parse(sidStr)
+			if err != nil {
+				httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid subsidiary_id: "+sidStr)
+				return
+			}
+			pos, err := orgSvc.GetPositionByCode(r.Context(), sid, in.NewPositionCode)
+			if err != nil {
+				pos, err = orgSvc.GetGroupPosition(r.Context(), in.NewPositionCode)
+				if err != nil {
+					httpx.Error(w, http.StatusBadRequest, "position_not_found",
+						fmt.Sprintf("Position '%s' not found for subsidiary %s or at group level", in.NewPositionCode, sidStr))
+					return
+				}
+			}
+			resolved = append(resolved, resolvedSub{sid: sid, pos: pos})
+		}
+
+		// --- Wrap end-current and new assignments in a single transaction ---
+		tx, err := pool.Begin(r.Context())
+		if err != nil {
+			httpx.Error(w, http.StatusInternalServerError, "internal", fmt.Sprintf("begin tx: %v", err))
+			return
+		}
+		defer func() { _ = tx.Rollback(r.Context()) }()
+
+		// Optionally end all active assignments (inside transaction).
 		if in.EndCurrent {
-			_, err = pool.Exec(r.Context(), `
+			_, err = tx.Exec(r.Context(), `
 				UPDATE organization.assignment
 				SET effective_to = $1
 				WHERE person_id = $2
@@ -944,29 +1006,27 @@ func transferEmployeeHandler(pool *pgxpool.Pool, orgSvc *organization.Service, a
 			}
 		}
 
-		// Create new assignments
+		// Create new assignments (inside transaction) using pre-validated positions.
 		var newAssignments []organization.Assignment
-		for i, sidStr := range in.NewSubsidiaryIDs {
-			sid, err := uuid.Parse(sidStr)
+		for i, rs := range resolved {
+			a, err := orgSvc.AssignPosition(r.Context(), personID, rs.pos.ID, rs.sid, nil, from, i == 0, in.ManagerOverridePersonID)
 			if err != nil {
-				continue
+				// Roll back so we never leave the employee with no active assignment.
+				httpx.Error(w, http.StatusInternalServerError, "internal",
+					fmt.Sprintf("create assignment for subsidiary %s: %v", rs.sid, err))
+				return
 			}
-			pos, err := orgSvc.GetPositionByCode(r.Context(), sid, in.NewPositionCode)
-			if err != nil {
-				pos, err = orgSvc.GetGroupPosition(r.Context(), in.NewPositionCode)
-				if err != nil {
-					continue
-				}
-			}
-			a, err := orgSvc.AssignPosition(r.Context(), personID, pos.ID, sid, nil, from, i == 0, in.ManagerOverridePersonID)
-			if err == nil {
-				newAssignments = append(newAssignments, a)
-			}
+			newAssignments = append(newAssignments, a)
 		}
 
 		if len(newAssignments) == 0 {
 			httpx.Error(w, http.StatusBadRequest, "no_assignments_created",
 				"Could not create any new assignments. Check position code and subsidiary IDs.")
+			return
+		}
+
+		if err := tx.Commit(r.Context()); err != nil {
+			httpx.Error(w, http.StatusInternalServerError, "internal", fmt.Sprintf("commit tx: %v", err))
 			return
 		}
 
