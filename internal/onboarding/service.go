@@ -511,7 +511,7 @@ func (s *Service) SubmitCase(ctx context.Context, caseID, userID uuid.UUID) (dom
 	// Notify compliance that a new case needs review.
 	cID := c.ID
 	_ = notification.SendToRole(ctx, s.store.Pool(), c.SubsidiaryID,
-		[]string{"COMPLIANCE_MANAGER", "HEAD_COMPLIANCE_CORPORATE", "MANAGING_DIRECTOR"},
+		[]string{"COMPLIANCE_MANAGER", "HEAD_CORPORATE_COMPLIANCE", "MANAGING_DIRECTOR"},
 		notification.InApp{
 			Type:       "onboarding_submitted",
 			Title:      "New Client Onboarding Submitted",
