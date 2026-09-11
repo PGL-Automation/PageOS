@@ -212,6 +212,11 @@ func (h *Handler) listCycles(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getCycle(w http.ResponseWriter, r *http.Request) {
+	user, ok := identityhttp.UserFrom(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+		return
+	}
 	id, ok := parseCycleID(w, r)
 	if !ok {
 		return
@@ -221,6 +226,25 @@ func (h *Handler) getCycle(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusNotFound, "not_found", "cycle not found")
 		return
 	}
+
+	// Enforce subsidiary membership: HR/admin may access any cycle;
+	// all others must belong to the cycle's subsidiary.
+	isHR := h.svc.IsHR(r.Context(), user.ID)
+	if !isHR && cycle.SubsidiaryID != nil {
+		callerSubIDs := h.svc.CallerSubsidiaryIDs(r.Context(), user.ID)
+		found := false
+		for _, sid := range callerSubIDs {
+			if sid == *cycle.SubsidiaryID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			httpx.Error(w, http.StatusForbidden, "forbidden", "you do not have access to this cycle")
+			return
+		}
+	}
+
 	httpx.JSON(w, http.StatusOK, cycle)
 }
 
@@ -564,6 +588,13 @@ func (h *Handler) upsertSelfResponses(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Verify cycle is in the appraisal phase.
+	phase, err := h.svc.GetCyclePhase(r.Context(), cycleID)
+	if err == nil && phase != "appraisal" && phase != "" {
+		httpx.Error(w, http.StatusBadRequest, "wrong_phase", "self-assessment is only available during the appraisal phase")
+		return
+	}
+
 	var body struct {
 		Responses []struct {
 			QuestionID uuid.UUID `json:"question_id"`
@@ -617,6 +648,13 @@ func (h *Handler) submitSelf(w http.ResponseWriter, r *http.Request) {
 	}
 	if cycle.Status != "open" {
 		httpx.Error(w, http.StatusBadRequest, "cycle_not_open", "cycle is not open")
+		return
+	}
+
+	// Verify cycle is in the appraisal phase.
+	phase, err := h.svc.GetCyclePhase(r.Context(), cycleID)
+	if err == nil && phase != "appraisal" && phase != "" {
+		httpx.Error(w, http.StatusBadRequest, "wrong_phase", "self-assessment is only available during the appraisal phase")
 		return
 	}
 

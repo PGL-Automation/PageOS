@@ -73,12 +73,17 @@ func (h *Handler) listKPIs(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "dept query param required")
 		return
 	}
-	// Access control: HR/admin can query any dept; dept heads can query their own; others 403.
+
+	// Access control: HR/admin can query any dept; others are restricted to their own department.
 	isHR := h.svc.IsHROrAdmin(r.Context(), user.ID)
-	if !isHR && !h.svc.IsDeptHead(r.Context(), user.ID) {
-		httpx.Error(w, http.StatusForbidden, "forbidden", "HR, admin or department head role required")
-		return
+	if !isHR {
+		callerDept := h.svc.CallerDepartment(r.Context(), user.ID)
+		if callerDept != dept {
+			httpx.Error(w, http.StatusForbidden, "forbidden", "you can only view KPIs for your own department")
+			return
+		}
 	}
+
 	kpis, err := h.svc.ListKPIs(r.Context(), cycleID, dept)
 	if err != nil {
 		log.Printf("appraisal: listKPIs: %v", err)
@@ -130,7 +135,8 @@ func (h *Handler) saveKPIs(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
-	if !h.svc.IsDeptHead(r.Context(), user.ID) {
+	isHR := h.svc.IsHR(r.Context(), user.ID)
+	if !isHR && !h.svc.IsDeptHead(r.Context(), user.ID) {
 		httpx.Error(w, http.StatusForbidden, "forbidden", "only department heads can configure KPIs")
 		return
 	}
@@ -155,6 +161,15 @@ func (h *Handler) saveKPIs(w http.ResponseWriter, r *http.Request) {
 	if body.Department == "" || len(body.KPIs) == 0 {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "department and kpis required")
 		return
+	}
+
+	// Dept heads may only configure KPIs for their own department.
+	if !isHR {
+		callerDept := h.svc.CallerDepartment(r.Context(), user.ID)
+		if callerDept == "" || callerDept != body.Department {
+			httpx.Error(w, http.StatusForbidden, "forbidden", "you can only configure KPIs for your own department")
+			return
+		}
 	}
 
 	// Validate weights total 100
@@ -331,6 +346,11 @@ func (h *Handler) saveIndividualScorecard(w http.ResponseWriter, r *http.Request
 		httpx.Error(w, http.StatusForbidden, "forbidden", "only line managers, department heads or HR can set targets")
 		return
 	}
+	// HR cannot set their own scorecard — a different reviewer must be assigned.
+	if isHR && user.ID == empID {
+		httpx.Error(w, http.StatusForbidden, "forbidden", "HR cannot set their own scorecard — assign a different reviewer")
+		return
+	}
 
 	// FIX 18: If the caller is a dept head (but not HR), verify the employee belongs to the
 	// same department as the caller's position. This prevents cross-dept target setting.
@@ -488,6 +508,22 @@ func (h *Handler) bscAction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	isHR := h.svc.IsHR(r.Context(), user.ID)
+
+	// For employee self-assessment actions, enforce the cycle is in "appraisal" phase.
+	if body.Action == "save-self" || body.Action == "submit-self" {
+		// Resolve cycle_id from the submission.
+		sub, err := h.svc.GetBSCSubmission(r.Context(), subID)
+		if err != nil {
+			httpx.Error(w, http.StatusNotFound, "not_found", "submission not found")
+			return
+		}
+		phase, err := h.svc.GetCyclePhase(r.Context(), sub.CycleID)
+		if err == nil && phase != "appraisal" && phase != "" {
+			httpx.Error(w, http.StatusBadRequest, "wrong_phase", "self-assessment is only available during the appraisal phase")
+			return
+		}
+	}
+
 	result, err := h.svc.ApplyBSCAction(r.Context(), subID, user.ID, isHR, appraisal.BSCAction{
 		Action:           body.Action,
 		SelfJSON:         body.SelfJSON,

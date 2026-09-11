@@ -1251,6 +1251,48 @@ func (s *Service) IsHR(ctx context.Context, userID uuid.UUID) bool {
 	return s.IsHROrAdmin(ctx, userID)
 }
 
+// CallerDepartment resolves the primary department name for the given user by
+// looking up their primary active assignment and the associated department.
+// Returns "" if the user has no primary assignment.
+func (s *Service) CallerDepartment(ctx context.Context, userID uuid.UUID) string {
+	const q = `
+		SELECT COALESCE(d.name, '')
+		FROM organization.department d
+		JOIN organization.assignment a ON a.department_id = d.id
+		JOIN organization.person p ON p.id = a.person_id
+		WHERE p.user_id = $1 AND a.is_primary = true AND a.effective_to IS NULL
+		LIMIT 1
+	`
+	var dept string
+	_ = s.pool.QueryRow(ctx, q, userID).Scan(&dept)
+	return dept
+}
+
+// CallerSubsidiaryIDs returns all subsidiary IDs associated with the caller's
+// active org assignments. Used to scope access to subsidiary-bound resources.
+func (s *Service) CallerSubsidiaryIDs(ctx context.Context, userID uuid.UUID) []uuid.UUID {
+	const q = `
+		SELECT DISTINCT a.subsidiary_id
+		FROM organization.assignment a
+		JOIN organization.person p ON p.id = a.person_id
+		WHERE p.user_id = $1 AND a.effective_to IS NULL AND a.subsidiary_id IS NOT NULL
+	`
+	rows, err := s.pool.Query(ctx, q, userID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			continue
+		}
+		out = append(out, id)
+	}
+	return out
+}
+
 // IsManagerOf returns true if managerUserID is recorded as the manager of employeeUserID
 // in the current cycle's submissions or in the org assignment.
 func (s *Service) IsManagerOf(ctx context.Context, managerUserID, employeeUserID uuid.UUID) bool {
