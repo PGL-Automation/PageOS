@@ -24,7 +24,7 @@ jobs:
           [ -z "${{ secrets.VPS_KNOWN_HOSTS }}" ]  && missing="$missing VPS_KNOWN_HOSTS"
           if [ -n "$missing" ]; then
             echo "ERROR: Missing GitHub secrets:$missing"
-            echo "Go to: Settings → Secrets and variables → Actions → New repository secret"
+            echo "Go to: Settings -> Secrets and variables -> Actions -> New repository secret"
             echo "  VPS_HOST        = 187.124.112.25"
             echo "  VPS_SSH_KEY     = contents of the private SSH key for root@187.124.112.25"
             echo "  VPS_KNOWN_HOSTS = output of: ssh-keyscan 187.124.112.25"
@@ -39,7 +39,6 @@ jobs:
           printf '%s\n' "${{ secrets.VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
 
       - name: Sync code to VPS
-        # Same retry pattern as imole-v2 (VPS occasionally drops SYNs briefly)
         run: |
           for i in $(seq 1 12); do
             rsync -az --delete \
@@ -69,45 +68,50 @@ jobs:
             docker compose -f docker-compose.prod.yml ps
           '
 
-      - name: Configure nginx for pageos.org
+      - name: Update Caddy config for pageos.org
         run: |
           for i in $(seq 1 8); do
             ssh -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=8 \
                 root@${{ secrets.VPS_HOST }} '
               set -e
 
-              # Remove conflicting old configs that share port 443
-              rm -f /etc/nginx/sites-enabled/app.pageos.org
+              python3 - <<PYEOF
+import re
 
-              # Install/update vhost config (HTTP-only; certbot adds HTTPS blocks)
-              cp /opt/pageos/nginx/pageos.org /etc/nginx/sites-available/pageos.org
-              ln -sf /etc/nginx/sites-available/pageos.org /etc/nginx/sites-enabled/pageos.org
+with open("/opt/proxy/Caddyfile", "r") as f:
+    content = f.read()
 
-              # Validate config
-              nginx -t
+new_block = """
+www.pageos.org {
+\tredir https://pageos.org{uri} permanent
+}
 
-              # Stop anything holding port 80 (Caddy, old nginx, etc.)
-              systemctl stop caddy 2>/dev/null || true
-              systemctl stop nginx 2>/dev/null || true
-              sleep 2
+pageos.org {
+\thandle /api/* {
+\t\treverse_proxy pageos-api-1:8080
+\t}
+\thandle {
+\t\treverse_proxy pageos-web-1:3000
+\t}
+}
+"""
 
-              # Enable and start nginx
-              systemctl enable nginx
-              systemctl start nginx
-              echo "nginx running"
+# Remove any existing pageos.org or app.pageos.org blocks (idempotent)
+content = re.sub(r"app\.pageos\.org \{[^}]*\}\n?", "", content)
+content = re.sub(r"(www\.)?pageos\.org \{[^}]*\}\n?", "", content)
+content = content.rstrip() + "\n" + new_block
 
-              # Issue SSL cert if DNS resolves to this server
-              if [ ! -f /etc/letsencrypt/live/pageos.org/fullchain.pem ]; then
-                certbot --nginx -d pageos.org -d www.pageos.org \
-                  --non-interactive --agree-tos -m admin@pageos.org \
-                  --redirect 2>&1 \
-                  && echo "SSL certificate issued" \
-                  || echo "WARNING: certbot failed - retry on next deploy once DNS resolves"
-              else
-                certbot renew --quiet && echo "SSL cert renewed" || true
-              fi
+with open("/opt/proxy/Caddyfile", "w") as f:
+    f.write(content)
+
+print("Caddyfile updated")
+PYEOF
+
+              docker compose -f /opt/proxy/docker-compose.yml exec -T caddy \
+                caddy reload --config /etc/caddy/Caddyfile
+              echo "Caddy reloaded"
             ' && exit 0
-            echo "nginx setup attempt $i failed, retrying in 15s..."; sleep 15
+            echo "Caddy config attempt $i failed, retrying in 15s..."; sleep 15
           done
           exit 1
 
@@ -115,7 +119,7 @@ jobs:
         run: |
           for i in $(seq 1 15); do
             if curl -fsS --max-time 10 https://pageos.org/api/v1/healthz; then
-              echo; echo "healthy ✓"; exit 0
+              echo; echo "healthy"; exit 0
             fi
             echo "waiting for API (attempt $i)..."; sleep 15
           done
