@@ -1,13 +1,28 @@
 #!/usr/bin/env python3
 """
-Idempotently ensures /opt/proxy/Caddyfile imports /opt/pageos/caddy.conf.
-Removes any inline pageos.org / app.pageos.org blocks first (brace-counted).
+Idempotently upserts the pageos.org block inline in /opt/proxy/Caddyfile.
+Uses brace-counting to correctly handle nested blocks.
 Run after every deploy; safe to run multiple times.
 """
+import re
 
 CADDYFILE = "/opt/proxy/Caddyfile"
-IMPORT_LINE = "import /etc/caddy/pageos.conf\n"  # resolves to /opt/proxy/pageos.conf on host
 REMOVE_PREFIXES = ("pageos.org {", "www.pageos.org {", "app.pageos.org {")
+
+NEW_BLOCK = """\
+www.pageos.org {
+\tredir https://pageos.org{uri} permanent
+}
+
+pageos.org {
+\thandle /api/* {
+\t\treverse_proxy pageos-api-1:8080
+\t}
+\thandle {
+\t\treverse_proxy pageos-web-1:3000
+\t}
+}
+"""
 
 
 def remove_pageos_blocks(lines):
@@ -17,16 +32,13 @@ def remove_pageos_blocks(lines):
     for line in lines:
         s = line.strip()
         if not skipping:
-            if any(s == p or s.startswith(p + "\n") for p in REMOVE_PREFIXES) or s in REMOVE_PREFIXES:
+            if s in REMOVE_PREFIXES:
                 skipping = True
-                depth = s.count("{") - s.count("}")
+                depth = 1
                 continue
             out.append(line)
         else:
-            # Only count standalone braces, ignore {placeholder} patterns
-            opens = sum(1 for c in s if c == "{")
-            closes = sum(1 for c in s if c == "}")
-            depth += opens - closes
+            depth += s.count("{") - s.count("}")
             if depth <= 0:
                 skipping = False
     return out
@@ -37,21 +49,15 @@ with open(CADDYFILE, "r") as f:
 
 lines = remove_pageos_blocks(lines)
 
-# Strip trailing whitespace lines
-while lines and lines[-1].strip() == "":
-    lines.pop()
-
+# Remove stale import lines
 content = "".join(lines)
-
-# Remove any stale pageos import lines (all variants, idempotent)
-import re
-content = re.sub(r"import\s+[^\n]*pageos[^\n]*\n?", "", content)
+content = re.sub(r"import[^\n]*pageos[^\n]*\n?", "", content)
 content = content.rstrip()
 
-# Append the import directive
-content += "\n\n" + IMPORT_LINE
+# Append inline block
+content += "\n\n" + NEW_BLOCK
 
 with open(CADDYFILE, "w") as f:
     f.write(content)
 
-print("Caddyfile updated — pageos.org served via import")
+print("Caddyfile updated")
