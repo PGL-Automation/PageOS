@@ -6,7 +6,7 @@ Run after every deploy; safe to run multiple times.
 """
 
 CADDYFILE = "/opt/proxy/Caddyfile"
-IMPORT_LINE = "import /opt/pageos/caddy.conf\n"
+IMPORT_LINE = "import /etc/caddy/pageos.conf\n"  # resolves to /opt/proxy/pageos.conf on host
 REMOVE_PREFIXES = ("pageos.org {", "www.pageos.org {", "app.pageos.org {")
 
 
