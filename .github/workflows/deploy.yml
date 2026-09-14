@@ -82,10 +82,17 @@ jobs:
             cp /opt/pageos/nginx/pageos.org /etc/nginx/sites-available/pageos.org
             ln -sf /etc/nginx/sites-available/pageos.org /etc/nginx/sites-enabled/pageos.org
 
-            # Validate then start/reload nginx
+            # Validate config
             nginx -t
+
+            # Show what is listening on 80/443 (diagnostic)
+            ss -tlnp | grep -E ':80|:443' || true
+
+            # Kill any stale nginx master process not under systemd, then (re)start
             systemctl enable nginx
-            systemctl is-active nginx && systemctl reload nginx || systemctl start nginx
+            systemctl stop nginx 2>/dev/null || nginx -s stop 2>/dev/null || true
+            sleep 1
+            systemctl start nginx || { journalctl -xeu nginx.service --no-pager -n 30; exit 1; }
             echo "nginx running ✓"
 
             # Issue SSL cert (certbot modifies the config to add HTTPS + redirect).
