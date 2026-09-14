@@ -3,7 +3,9 @@ package msgraphhttp
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -24,14 +26,25 @@ func New(svc *msgraph.Service) *Handler { return &Handler{svc: svc} }
 func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	r := chi.NewRouter()
 	r.Use(authMW)
-	r.Get("/connect",        h.connect)
-	r.Get("/callback",       h.callback)
-	r.Get("/status",         h.status)
-	r.Post("/disconnect",    h.disconnect)
-	r.Get("/mail",           h.mail)
-	r.Get("/calendar",       h.calendar)
-	r.Get("/teams",          h.teams)
-	r.Get("/presence",       h.presence)
+	r.Get("/connect",                       h.connect)
+	r.Get("/callback",                      h.callback)
+	r.Get("/status",                        h.status)
+	r.Post("/disconnect",                   h.disconnect)
+	// Mail — read + write
+	r.Get("/mail",                          h.mail)
+	r.Get("/mail/{messageId}",              h.mailBody)
+	r.Post("/mail/{messageId}/reply",       h.replyEmail)
+	r.Post("/mail/{messageId}/reply-all",   h.replyAllEmail)
+	r.Post("/mail/compose",                 h.composeEmail)
+	// Calendar — read + write
+	r.Get("/calendar",                      h.calendar)
+	r.Post("/calendar/events",              h.createEvent)
+	// Teams — read + write
+	r.Get("/teams",                         h.teams)
+	r.Get("/teams/{chatId}/messages",       h.chatMessages)
+	r.Post("/teams/{chatId}/send",          h.sendTeamsMessage)
+	// Presence — read only
+	r.Get("/presence",                      h.presence)
 	return r
 }
 
@@ -98,21 +111,26 @@ func (h *Handler) callback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/microsoft?connected=1", http.StatusFound)
 }
 
-// status returns whether the caller has a connected Microsoft account.
+// status returns whether the caller has a connected Microsoft account and current scope.
 func (h *Handler) status(w http.ResponseWriter, r *http.Request) {
 	caller, ok := identityhttp.UserFrom(r.Context())
 	if !ok {
 		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated")
 		return
 	}
-	connected, msEmail, err := h.svc.Status(r.Context(), caller.ID)
+	connected, msEmail, scope, err := h.svc.StatusWithScope(r.Context(), caller.ID)
 	if err != nil {
 		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
 		return
 	}
+	// Check whether the stored scope includes the write permissions.
+	needsReconnect := connected && (!strings.Contains(scope, "Mail.Send") ||
+		!strings.Contains(scope, "Calendars.ReadWrite") ||
+		!strings.Contains(scope, "Chat.ReadWrite"))
 	httpx.JSON(w, http.StatusOK, map[string]any{
 		"connected":       connected,
 		"microsoft_email": msEmail,
+		"needs_reconnect": needsReconnect,
 	})
 }
 
@@ -170,6 +188,98 @@ func (h *Handler) presence(w http.ResponseWriter, r *http.Request) {
 	p, err := h.svc.GetPresence(r.Context(), id)
 	if err != nil { notConnected(w); return }
 	httpx.JSON(w, http.StatusOK, p)
+}
+
+// ── Mail write handlers ────────────────────────────────────────────────────────
+
+func (h *Handler) mailBody(w http.ResponseWriter, r *http.Request) {
+	id, ok := callerID(r)
+	if !ok { httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated"); return }
+	body, err := h.svc.GetEmailBody(r.Context(), id, chi.URLParam(r, "messageId"))
+	if err != nil { notConnected(w); return }
+	httpx.JSON(w, http.StatusOK, map[string]string{"body": body})
+}
+
+func (h *Handler) replyEmail(w http.ResponseWriter, r *http.Request) {
+	id, ok := callerID(r)
+	if !ok { httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated"); return }
+	var in struct{ Comment string `json:"comment"` }
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.Comment == "" {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "comment is required"); return
+	}
+	if err := h.svc.ReplyToEmail(r.Context(), id, chi.URLParam(r, "messageId"), in.Comment); err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error()); return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (h *Handler) replyAllEmail(w http.ResponseWriter, r *http.Request) {
+	id, ok := callerID(r)
+	if !ok { httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated"); return }
+	var in struct{ Comment string `json:"comment"` }
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.Comment == "" {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "comment is required"); return
+	}
+	if err := h.svc.ReplyAllToEmail(r.Context(), id, chi.URLParam(r, "messageId"), in.Comment); err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error()); return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (h *Handler) composeEmail(w http.ResponseWriter, r *http.Request) {
+	id, ok := callerID(r)
+	if !ok { httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated"); return }
+	var in struct {
+		To      string `json:"to"`
+		Subject string `json:"subject"`
+		Body    string `json:"body"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.To == "" || in.Subject == "" {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "to and subject are required"); return
+	}
+	if err := h.svc.SendEmail(r.Context(), id, in.To, in.Subject, in.Body); err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error()); return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// ── Calendar write handlers ────────────────────────────────────────────────────
+
+func (h *Handler) createEvent(w http.ResponseWriter, r *http.Request) {
+	id, ok := callerID(r)
+	if !ok { httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated"); return }
+	var in msgraph.CreateEventReq
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.Subject == "" || in.Start == "" || in.End == "" {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "subject, start, and end are required"); return
+	}
+	ev, err := h.svc.CreateCalendarEvent(r.Context(), id, in)
+	if err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error()); return
+	}
+	httpx.JSON(w, http.StatusCreated, ev)
+}
+
+// ── Teams write handlers ───────────────────────────────────────────────────────
+
+func (h *Handler) chatMessages(w http.ResponseWriter, r *http.Request) {
+	id, ok := callerID(r)
+	if !ok { httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated"); return }
+	msgs, err := h.svc.GetChatMessages(r.Context(), id, chi.URLParam(r, "chatId"))
+	if err != nil { notConnected(w); return }
+	httpx.JSON(w, http.StatusOK, map[string]any{"messages": msgs})
+}
+
+func (h *Handler) sendTeamsMessage(w http.ResponseWriter, r *http.Request) {
+	id, ok := callerID(r)
+	if !ok { httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated"); return }
+	var in struct{ Content string `json:"content"` }
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.Content == "" {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "content is required"); return
+	}
+	if err := h.svc.SendTeamsMessage(r.Context(), id, chi.URLParam(r, "chatId"), in.Content); err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error()); return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 // ── SSO (login via Microsoft) ──────────────────────────────────────────────────

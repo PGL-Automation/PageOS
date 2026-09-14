@@ -37,10 +37,15 @@ var ssoScopes = []string{
 }
 
 // Scopes requested during OAuth authorization.
+// Write scopes (Mail.Send, Calendars.ReadWrite, Chat.ReadWrite) enable two-way interaction.
+// Users who connected before these scopes were added must disconnect + reconnect.
 var oauthScopes = []string{
 	"Mail.Read",
+	"Mail.Send",
 	"Calendars.Read",
+	"Calendars.ReadWrite",
 	"Chat.Read",
+	"Chat.ReadWrite",
 	"Presence.Read",
 	"offline_access",
 	"User.Read",
@@ -185,6 +190,19 @@ func (s *Service) Status(ctx context.Context, userID uuid.UUID) (connected bool,
 		return false, "", nil
 	}
 	return true, rec.MicrosoftEmail, nil
+}
+
+// StatusWithScope returns connection status, email, and the stored scope string.
+// Used by the frontend to detect when the user needs to reconnect for new permissions.
+func (s *Service) StatusWithScope(ctx context.Context, userID uuid.UUID) (connected bool, msEmail, scope string, err error) {
+	rec, err := s.store.Get(ctx, userID)
+	if err != nil {
+		return false, "", "", err
+	}
+	if rec == nil {
+		return false, "", "", nil
+	}
+	return true, rec.MicrosoftEmail, rec.Scope, nil
 }
 
 // SSOAuthURL returns the Microsoft OAuth2 URL for the login SSO flow.
@@ -335,6 +353,41 @@ func (s *Service) fetchMe(ctx context.Context, accessToken string) (*msUser, err
 	return &u, nil
 }
 
+// graphPOST performs an authenticated POST to the Graph API with a JSON body.
+// Pass nil for out if no response body is expected (e.g. 202 Accepted replies).
+func (s *Service) graphPOST(ctx context.Context, userID uuid.UUID, path string, body any, out any) error {
+	token, err := s.accessToken(ctx, userID)
+	if err != nil {
+		return err
+	}
+	encoded, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, graphBase+path, strings.NewReader(string(encoded)))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("graph POST %s: %d %s", path, resp.StatusCode, string(b))
+	}
+	if out != nil && resp.ContentLength != 0 {
+		return json.NewDecoder(resp.Body).Decode(out)
+	}
+	return nil
+}
+
 // ── Mail ──────────────────────────────────────────────────────────────────────
 
 type MailMessage struct {
@@ -383,6 +436,84 @@ func (s *Service) GetMail(ctx context.Context, userID uuid.UUID) ([]MailMessage,
 	return out, nil
 }
 
+// GetEmailBody fetches the full HTML body of a single email message.
+func (s *Service) GetEmailBody(ctx context.Context, userID uuid.UUID, messageID string) (string, error) {
+	var raw struct {
+		Body struct {
+			ContentType string `json:"contentType"`
+			Content     string `json:"content"`
+		} `json:"body"`
+	}
+	path := fmt.Sprintf("/me/messages/%s?$select=body", url.PathEscape(messageID))
+	if err := s.graphGET(ctx, userID, path, &raw); err != nil {
+		return "", err
+	}
+	return raw.Body.Content, nil
+}
+
+// ReplyToEmail sends a reply to the sender of a message.
+func (s *Service) ReplyToEmail(ctx context.Context, userID uuid.UUID, messageID, comment string) error {
+	path := fmt.Sprintf("/me/messages/%s/reply", url.PathEscape(messageID))
+	body := map[string]any{
+		"message": map[string]any{},
+		"comment": comment,
+	}
+	if err := s.graphPOST(ctx, userID, path, body, nil); err != nil {
+		return err
+	}
+	_ = s.auditWriter.Write(ctx, audit.Entry{
+		Actor:  audit.Actor{Type: "user", ID: userID.String()},
+		Action: "msgraph.email.replied",
+		ResourceType: "email", ResourceID: messageID,
+	})
+	return nil
+}
+
+// ReplyAllToEmail sends a reply-all to a message thread.
+func (s *Service) ReplyAllToEmail(ctx context.Context, userID uuid.UUID, messageID, comment string) error {
+	path := fmt.Sprintf("/me/messages/%s/replyAll", url.PathEscape(messageID))
+	body := map[string]any{
+		"message": map[string]any{},
+		"comment": comment,
+	}
+	if err := s.graphPOST(ctx, userID, path, body, nil); err != nil {
+		return err
+	}
+	_ = s.auditWriter.Write(ctx, audit.Entry{
+		Actor:  audit.Actor{Type: "user", ID: userID.String()},
+		Action: "msgraph.email.replied_all",
+		ResourceType: "email", ResourceID: messageID,
+	})
+	return nil
+}
+
+// SendEmail composes and sends a new email.
+func (s *Service) SendEmail(ctx context.Context, userID uuid.UUID, to, subject, body string) error {
+	payload := map[string]any{
+		"message": map[string]any{
+			"subject": subject,
+			"body": map[string]string{
+				"contentType": "Text",
+				"content":     body,
+			},
+			"toRecipients": []map[string]any{
+				{"emailAddress": map[string]string{"address": to}},
+			},
+		},
+		"saveToSentItems": true,
+	}
+	if err := s.graphPOST(ctx, userID, "/me/sendMail", payload, nil); err != nil {
+		return err
+	}
+	_ = s.auditWriter.Write(ctx, audit.Entry{
+		Actor:  audit.Actor{Type: "user", ID: userID.String()},
+		Action: "msgraph.email.sent",
+		ResourceType: "email",
+		Context: map[string]any{"to": to, "subject": subject},
+	})
+	return nil
+}
+
 // ── Calendar ──────────────────────────────────────────────────────────────────
 
 type CalendarEvent struct {
@@ -429,6 +560,67 @@ func (s *Service) GetCalendar(ctx context.Context, userID uuid.UUID) ([]Calendar
 		})
 	}
 	return out, nil
+}
+
+// CreateEventReq holds the fields for creating a new calendar event.
+type CreateEventReq struct {
+	Subject   string   `json:"subject"`
+	Body      string   `json:"body"`
+	Start     string   `json:"start"`      // ISO 8601 datetime e.g. "2026-09-15T10:00:00"
+	End       string   `json:"end"`        // ISO 8601 datetime
+	TimeZone  string   `json:"timeZone"`   // e.g. "Africa/Lagos"
+	Location  string   `json:"location"`
+	IsOnline  bool     `json:"isOnline"`
+	Attendees []string `json:"attendees"`  // email addresses
+}
+
+// CreateCalendarEvent creates a new event on the user's default calendar.
+func (s *Service) CreateCalendarEvent(ctx context.Context, userID uuid.UUID, req CreateEventReq) (*CalendarEvent, error) {
+	tz := req.TimeZone
+	if tz == "" {
+		tz = "Africa/Lagos"
+	}
+	attendees := make([]map[string]any, 0, len(req.Attendees))
+	for _, email := range req.Attendees {
+		attendees = append(attendees, map[string]any{
+			"emailAddress": map[string]string{"address": email},
+			"type":         "required",
+		})
+	}
+	payload := map[string]any{
+		"subject": req.Subject,
+		"body":    map[string]string{"contentType": "Text", "content": req.Body},
+		"start":   map[string]string{"dateTime": req.Start, "timeZone": tz},
+		"end":     map[string]string{"dateTime": req.End, "timeZone": tz},
+		"location": map[string]string{"displayName": req.Location},
+		"attendees": attendees,
+		"isOnlineMeeting": req.IsOnline,
+	}
+	var raw struct {
+		ID      string `json:"id"`
+		Subject string `json:"subject"`
+		Start   struct{ DateTime string `json:"dateTime"` } `json:"start"`
+		End     struct{ DateTime string `json:"dateTime"` } `json:"end"`
+		Location struct{ DisplayName string `json:"displayName"` } `json:"location"`
+		IsOnline bool   `json:"isOnlineMeeting"`
+		JoinURL  string `json:"onlineMeetingUrl"`
+	}
+	if err := s.graphPOST(ctx, userID, "/me/events", payload, &raw); err != nil {
+		return nil, err
+	}
+	_ = s.auditWriter.Write(ctx, audit.Entry{
+		Actor:  audit.Actor{Type: "user", ID: userID.String()},
+		Action: "msgraph.calendar.event_created",
+		ResourceType: "calendar_event", ResourceID: raw.ID,
+		Context: map[string]any{"subject": req.Subject},
+	})
+	ev := &CalendarEvent{
+		ID: raw.ID, Subject: raw.Subject,
+		Start: raw.Start.DateTime, End: raw.End.DateTime,
+		Location: raw.Location.DisplayName,
+		IsOnline: raw.IsOnline, JoinURL: raw.JoinURL,
+	}
+	return ev, nil
 }
 
 // ── Teams Presence ────────────────────────────────────────────────────────────
@@ -498,4 +690,55 @@ func (s *Service) GetTeamsChats(ctx context.Context, userID uuid.UUID) ([]TeamsM
 		})
 	}
 	return out, nil
+}
+
+// GetChatMessages returns the last 20 messages in a specific chat (ascending order).
+func (s *Service) GetChatMessages(ctx context.Context, userID uuid.UUID, chatID string) ([]TeamsMessage, error) {
+	var msgs struct {
+		Value []struct {
+			ID   string `json:"id"`
+			Body struct {
+				Content string `json:"content"`
+			} `json:"body"`
+			CreatedAt string `json:"createdDateTime"`
+			From      struct {
+				User struct{ DisplayName string `json:"displayName"` } `json:"user"`
+			} `json:"from"`
+		} `json:"value"`
+	}
+	path := fmt.Sprintf("/me/chats/%s/messages?$top=20&$orderby=createdDateTime%%20asc", url.PathEscape(chatID))
+	if err := s.graphGET(ctx, userID, path, &msgs); err != nil {
+		return nil, err
+	}
+	out := make([]TeamsMessage, 0, len(msgs.Value))
+	for _, m := range msgs.Value {
+		out = append(out, TeamsMessage{
+			ID:         m.ID,
+			ChatID:     chatID,
+			Body:       m.Body.Content,
+			SentAt:     m.CreatedAt,
+			SenderName: m.From.User.DisplayName,
+		})
+	}
+	return out, nil
+}
+
+// SendTeamsMessage sends a message to an existing chat.
+func (s *Service) SendTeamsMessage(ctx context.Context, userID uuid.UUID, chatID, content string) error {
+	path := fmt.Sprintf("/me/chats/%s/messages", url.PathEscape(chatID))
+	payload := map[string]any{
+		"body": map[string]string{
+			"contentType": "text",
+			"content":     content,
+		},
+	}
+	if err := s.graphPOST(ctx, userID, path, payload, nil); err != nil {
+		return err
+	}
+	_ = s.auditWriter.Write(ctx, audit.Entry{
+		Actor:        audit.Actor{Type: "user", ID: userID.String()},
+		Action:       "msgraph.teams.message_sent",
+		ResourceType: "teams_chat", ResourceID: chatID,
+	})
+	return nil
 }
