@@ -4,9 +4,9 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  Mail, Calendar, MessageSquare, Wifi, WifiOff,
-  Loader2, Link2, Link2Off, ExternalLink,
+  Wifi, Loader2, Link2, Link2Off, ExternalLink,
 } from "lucide-react";
+import Image from "next/image";
 import { useToast } from "@/hooks/use-toast";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
@@ -64,15 +64,15 @@ function presenceColor(availability: string): string {
 
 // ── Panel shell ────────────────────────────────────────────────────────────────
 
-function Panel({ icon: Icon, title, children, loading }: {
-  icon: React.ElementType; title: string; children: React.ReactNode; loading?: boolean;
+function Panel({ logo, title, children, loading }: {
+  logo: string; title: string; children: React.ReactNode; loading?: boolean;
 }) {
   return (
     <div className="rounded-2xl overflow-hidden flex flex-col"
          style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}>
       <div className="flex items-center gap-2.5 px-5 py-3.5"
            style={{ borderBottom: "1px solid var(--pg-row-border)" }}>
-        <Icon className="w-4 h-4" style={{ color: "var(--pg-accent)" }} />
+        <Image src={logo} alt={title} width={18} height={18} />
         <span className="text-[13px] font-bold" style={{ color: "var(--pg-text-1)" }}>{title}</span>
         {loading && <Loader2 className="w-3.5 h-3.5 animate-spin ml-auto" style={{ color: "var(--pg-text-4)" }} />}
       </div>
@@ -106,7 +106,7 @@ function MailPanel() {
   const messages = data?.messages ?? [];
 
   return (
-    <Panel icon={Mail} title="Outlook Mail" loading={isLoading}>
+    <Panel logo="/outlook-logo.svg" title="Outlook Mail" loading={isLoading}>
       {messages.length === 0 && !isLoading
         ? <EmptyState text="No messages" />
         : messages.map(m => (
@@ -151,7 +151,7 @@ function CalendarPanel() {
   const events = data?.events ?? [];
 
   return (
-    <Panel icon={Calendar} title="Outlook Calendar" loading={isLoading}>
+    <Panel logo="/calendar-logo.svg" title="Outlook Calendar" loading={isLoading}>
       {events.length === 0 && !isLoading
         ? <EmptyState text="No upcoming events" />
         : events.map(e => (
@@ -197,7 +197,7 @@ function PresencePanel() {
   });
 
   return (
-    <Panel icon={Wifi} title="Teams Presence" loading={isLoading}>
+    <Panel logo="/teams-logo.svg" title="Teams Presence" loading={isLoading}>
       {data ? (
         <div className="flex flex-col items-center justify-center py-10 gap-3">
           <div className="w-5 h-5 rounded-full" style={{ background: presenceColor(data.availability) }} />
@@ -230,7 +230,7 @@ function TeamsPanel() {
   const chats = data?.chats ?? [];
 
   return (
-    <Panel icon={MessageSquare} title="Teams Chat" loading={isLoading}>
+    <Panel logo="/teams-logo.svg" title="Teams Chat" loading={isLoading}>
       {chats.length === 0 && !isLoading
         ? <EmptyState text="No recent chats" />
         : chats.map(c => (
@@ -260,10 +260,7 @@ function TeamsPanel() {
 function ConnectPrompt() {
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6">
-      <div className="w-16 h-16 rounded-2xl flex items-center justify-center"
-           style={{ background: "linear-gradient(135deg,#0078d4,#106ebe)" }}>
-        <Mail className="w-8 h-8 text-white" />
-      </div>
+      <Image src="/microsoft-logo.svg" alt="Microsoft 365" width={64} height={64} />
       <div className="text-center max-w-sm">
         <h2 className="text-[18px] font-bold mb-2" style={{ color: "var(--pg-text-1)" }}>
           Connect Microsoft 365
@@ -273,12 +270,13 @@ function ConnectPrompt() {
           and your presence status — all in one place.
         </p>
       </div>
+      {/* Connect button matches Microsoft brand guidelines */}
       <button
         onClick={() => { window.location.href = `${BASE}/api/v1/msgraph/connect`; }}
-        className="flex items-center gap-2 h-11 px-6 rounded-xl text-[13px] font-semibold text-white transition-opacity hover:opacity-90"
-        style={{ background: "linear-gradient(135deg,#0078d4,#106ebe)" }}>
-        <Link2 className="w-4 h-4" />
-        Connect Microsoft Account
+        className="flex items-center gap-3 h-11 px-5 rounded-lg text-[13px] font-semibold transition-opacity hover:opacity-90"
+        style={{ background: "#fff", border: "1px solid #8c8c8c", color: "#5e5e5e", boxShadow: "0 1px 2px rgba(0,0,0,0.1)" }}>
+        <Image src="/microsoft-logo.svg" alt="" width={18} height={18} />
+        Sign in with Microsoft
       </button>
     </div>
   );
@@ -349,13 +347,16 @@ export default function MicrosoftPage() {
     <div className="max-w-5xl mx-auto px-4 py-6 space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
+        <div className="flex items-center gap-3">
+          <Image src="/microsoft-logo.svg" alt="Microsoft 365" width={28} height={28} />
+          <div>
           <h1 className="text-[20px] font-bold" style={{ color: "var(--pg-text-1)" }}>Microsoft 365</h1>
           <p className="text-[12px] mt-0.5" style={{ color: "var(--pg-text-3)" }}>
             Connected as <span className="font-medium" style={{ color: "var(--pg-text-2)" }}>
               {statusData.microsoft_email}
             </span>
           </p>
+          </div>
         </div>
         <button
           onClick={() => disconnectMutation.mutate()}
