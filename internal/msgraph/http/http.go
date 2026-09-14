@@ -8,12 +8,14 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/pagegroup/pageos/internal/identity"
 	identityhttp "github.com/pagegroup/pageos/internal/identity/http"
 	"github.com/pagegroup/pageos/internal/msgraph"
 	"github.com/pagegroup/pageos/internal/platform/httpx"
 )
 
-const stateCookie = "pageos_ms_state"
+const stateCookie    = "pageos_ms_state"
+const ssoStateCookie = "pageos_ms_sso_state"
 
 type Handler struct{ svc *msgraph.Service }
 
@@ -168,4 +170,93 @@ func (h *Handler) presence(w http.ResponseWriter, r *http.Request) {
 	p, err := h.svc.GetPresence(r.Context(), id)
 	if err != nil { notConnected(w); return }
 	httpx.JSON(w, http.StatusOK, p)
+}
+
+// ── SSO (login via Microsoft) ──────────────────────────────────────────────────
+
+// SSORedirect initiates the Microsoft SSO login flow. No PageOS session required.
+// Generates a CSRF state token, stores it in a short-lived cookie, and redirects
+// the browser to Microsoft's authorization page.
+func (h *Handler) SSORedirect(w http.ResponseWriter, r *http.Request) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", "could not generate state")
+		return
+	}
+	state := base64.RawURLEncoding.EncodeToString(b)
+	http.SetCookie(w, &http.Cookie{
+		Name:     ssoStateCookie,
+		Value:    state,
+		Path:     "/",
+		MaxAge:   600,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   r.TLS != nil,
+	})
+	http.Redirect(w, r, h.svc.SSOAuthURL(state), http.StatusFound)
+}
+
+// SSOCallback handles Microsoft's redirect after the user authenticates.
+// It validates the CSRF state, exchanges the code for the user's email, looks up
+// the matching PageOS account, creates a session, and redirects to the dashboard.
+func (h *Handler) SSOCallback(identitySvc *identity.Service) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// CSRF check
+		stateCookie, err := r.Cookie(ssoStateCookie)
+		if err != nil || stateCookie.Value == "" || stateCookie.Value != r.URL.Query().Get("state") {
+			http.Redirect(w, r, "/login?error=sso_failed", http.StatusFound)
+			return
+		}
+		http.SetCookie(w, &http.Cookie{Name: ssoStateCookie, Value: "", Path: "/", MaxAge: -1})
+
+		if errParam := r.URL.Query().Get("error"); errParam != "" {
+			http.Redirect(w, r, "/login?error=sso_failed", http.StatusFound)
+			return
+		}
+
+		code := r.URL.Query().Get("code")
+		if code == "" {
+			http.Redirect(w, r, "/login?error=sso_failed", http.StatusFound)
+			return
+		}
+
+		// Exchange code → Microsoft email
+		msEmail, err := h.svc.ExchangeCodeForEmail(r.Context(), code)
+		if err != nil {
+			http.Redirect(w, r, "/login?error=sso_failed", http.StatusFound)
+			return
+		}
+
+		// Find the matching PageOS user by email
+		user, err := identitySvc.FindByEmail(r.Context(), msEmail)
+		if err != nil {
+			// No PageOS account for this Microsoft email
+			http.Redirect(w, r, "/login?error=no_account", http.StatusFound)
+			return
+		}
+
+		// Create PageOS session
+		token, expiresAt, err := identitySvc.CreateSession(r.Context(), user.ID)
+		if err != nil {
+			http.Redirect(w, r, "/login?error=sso_failed", http.StatusFound)
+			return
+		}
+
+		// Set session cookie (same settings as the regular login flow)
+		secure := r.TLS != nil
+		cookieSecure := secure
+		if v := r.Header.Get("X-Forwarded-Proto"); v == "https" {
+			cookieSecure = true
+		}
+		http.SetCookie(w, &http.Cookie{
+			Name:     "pageos_session",
+			Value:    token,
+			Path:     "/",
+			Expires:  expiresAt,
+			HttpOnly: true,
+			Secure:   cookieSecure,
+			SameSite: http.SameSiteStrictMode,
+		})
+		http.Redirect(w, r, "/dashboard", http.StatusFound)
+	}
 }

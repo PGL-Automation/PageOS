@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { Loader2, Briefcase, Shield, Zap, Building2, Lock } from "lucide-react";
+
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
 
 const FEATURES = [
   { icon: Building2, text: "One system across all subsidiaries — asset management, capital markets, and more" },
@@ -53,7 +55,8 @@ function Field({
 
 export default function LoginPage() {
   const { login, user, isLoading } = useAuth();
-  const router = useRouter();
+  const router       = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
   const [error, setError]       = useState("");
@@ -62,6 +65,16 @@ export default function LoginPage() {
   useEffect(() => {
     if (!isLoading && user) router.replace("/dashboard");
   }, [user, isLoading, router]);
+
+  // Handle SSO redirect errors
+  useEffect(() => {
+    const ssoError = searchParams.get("error");
+    if (ssoError === "no_account") {
+      setError("No PageOS account found for this Microsoft email. Contact HR to get access.");
+    } else if (ssoError === "sso_failed") {
+      setError("Microsoft sign-in failed. Please try again or use your email and password.");
+    }
+  }, [searchParams]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -229,6 +242,38 @@ export default function LoginPage() {
             </form>
           </div>
 
+          {/* Divider */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "16px 0" }}>
+            <div style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
+            <span style={{ fontSize: 11, color: "#94a3b8", whiteSpace: "nowrap" }}>or continue with</span>
+            <div style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
+          </div>
+
+          {/* Microsoft SSO button */}
+          <button
+            type="button"
+            onClick={() => { window.location.href = `${BASE}/api/v1/auth/microsoft`; }}
+            style={{
+              width: "100%", height: 40, borderRadius: 10,
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+              background: "#ffffff", border: "1px solid #d1d5db", cursor: "pointer",
+              fontSize: 13, fontWeight: 600, color: "#374151",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+              transition: "box-shadow 0.15s, border-color 0.15s",
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = "#9ca3af"; (e.currentTarget as HTMLElement).style.boxShadow = "0 2px 6px rgba(0,0,0,0.12)"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "#d1d5db"; (e.currentTarget as HTMLElement).style.boxShadow = "0 1px 3px rgba(0,0,0,0.08)"; }}
+          >
+            {/* Microsoft 4-square logo */}
+            <svg width="18" height="18" viewBox="0 0 23 23" xmlns="http://www.w3.org/2000/svg">
+              <rect x="1" y="1" width="10" height="10" fill="#f25022"/>
+              <rect x="12" y="1" width="10" height="10" fill="#7fba00"/>
+              <rect x="1" y="12" width="10" height="10" fill="#00a4ef"/>
+              <rect x="12" y="12" width="10" height="10" fill="#ffb900"/>
+            </svg>
+            Sign in with Microsoft
+          </button>
+
           {/* HR note */}
           <div style={{
             marginTop: 20,
@@ -239,7 +284,7 @@ export default function LoginPage() {
             <Lock style={{ width: 14, height: 14, color: "#FF6600", flexShrink: 0, marginTop: 2 }} />
             <p style={{ fontSize: 12, lineHeight: 1.6, color: "#475569", margin: 0 }}>
               Don&apos;t have an account? Your HR team will provision your access.
-              Contact <strong>hr@pagegroup.ng</strong> to get started.
+              Contact <strong>hr@pageaml.com</strong> to get started.
             </p>
           </div>
         </div>

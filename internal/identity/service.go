@@ -137,6 +137,22 @@ func (s *Service) ResolveSession(ctx context.Context, token string) (User, error
 	return toUser(row), nil
 }
 
+// FindByEmail looks up an active user by email. Used by Microsoft SSO to map
+// a Microsoft account to an existing PageOS user without verifying a password.
+func (s *Service) FindByEmail(ctx context.Context, email string) (User, error) {
+	row, err := s.store.GetUserByEmail(ctx, strings.TrimSpace(strings.ToLower(email)))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return User{}, ErrInvalidCredentials
+		}
+		return User{}, err
+	}
+	if row.Status != "active" {
+		return User{}, ErrInvalidCredentials
+	}
+	return toUser(row), nil
+}
+
 // RevokeSession invalidates a session token (logout).
 func (s *Service) RevokeSession(ctx context.Context, token string) error {
 	return s.store.RevokeSession(ctx, hashToken(token))

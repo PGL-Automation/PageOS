@@ -34,7 +34,8 @@ type Config struct {
 	MSGraphClientID     string
 	MSGraphClientSecret string
 	MSGraphTenantID     string
-	MSGraphRedirectURL  string
+	MSGraphRedirectURL  string // data-access OAuth callback (for Graph mail/calendar/teams)
+	MSGraphSSORedirectURL string // SSO login callback (for "Sign in with Microsoft")
 	MSGraphTokenKey     string // 64-char hex → 32-byte AES-GCM key; generate: openssl rand -hex 32
 }
 
@@ -59,11 +60,12 @@ func Load() (Config, error) {
 		SMTPPass: os.Getenv("PAGEOS_SMTP_PASS"),
 		SMTPFrom: getenv("PAGEOS_SMTP_FROM", "noreply@pagecapital.com"),
 
-		MSGraphClientID:     os.Getenv("PAGEOS_MSGRAPH_CLIENT_ID"),
-		MSGraphClientSecret: os.Getenv("PAGEOS_MSGRAPH_CLIENT_SECRET"),
-		MSGraphTenantID:     os.Getenv("PAGEOS_MSGRAPH_TENANT_ID"),
-		MSGraphRedirectURL:  os.Getenv("PAGEOS_MSGRAPH_REDIRECT_URL"),
-		MSGraphTokenKey:     os.Getenv("PAGEOS_MSGRAPH_TOKEN_KEY"),
+		MSGraphClientID:       os.Getenv("PAGEOS_MSGRAPH_CLIENT_ID"),
+		MSGraphClientSecret:   os.Getenv("PAGEOS_MSGRAPH_CLIENT_SECRET"),
+		MSGraphTenantID:       os.Getenv("PAGEOS_MSGRAPH_TENANT_ID"),
+		MSGraphRedirectURL:    os.Getenv("PAGEOS_MSGRAPH_REDIRECT_URL"),
+		MSGraphSSORedirectURL: os.Getenv("PAGEOS_MSGRAPH_SSO_REDIRECT_URL"),
+		MSGraphTokenKey:       os.Getenv("PAGEOS_MSGRAPH_TOKEN_KEY"),
 	}
 
 	if cfg.DatabaseURL == "" {

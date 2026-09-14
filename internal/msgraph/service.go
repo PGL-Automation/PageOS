@@ -22,11 +22,18 @@ const (
 
 // Config holds the Azure app registration credentials.
 type Config struct {
-	ClientID     string
-	ClientSecret string
-	TenantID     string
-	RedirectURL  string
-	TokenKey     []byte // 32 bytes, AES-256
+	ClientID        string
+	ClientSecret    string
+	TenantID        string
+	RedirectURL     string // used by Graph data-access OAuth
+	SSORedirectURL  string // used by the login SSO flow
+	TokenKey        []byte // 32 bytes, AES-256
+}
+
+// ssoScopes are the minimal scopes needed to authenticate a user via Microsoft
+// and retrieve their email address. These are used for the login SSO flow only.
+var ssoScopes = []string{
+	"openid", "email", "profile", "offline_access", "User.Read",
 }
 
 // Scopes requested during OAuth authorization.
@@ -178,6 +185,44 @@ func (s *Service) Status(ctx context.Context, userID uuid.UUID) (connected bool,
 		return false, "", nil
 	}
 	return true, rec.MicrosoftEmail, nil
+}
+
+// SSOAuthURL returns the Microsoft OAuth2 URL for the login SSO flow.
+// Uses minimal scopes (email + profile) — does NOT store tokens afterward.
+func (s *Service) SSOAuthURL(state string) string {
+	v := url.Values{}
+	v.Set("client_id", s.cfg.ClientID)
+	v.Set("response_type", "code")
+	v.Set("redirect_uri", s.cfg.SSORedirectURL)
+	v.Set("scope", strings.Join(ssoScopes, " "))
+	v.Set("state", state)
+	v.Set("response_mode", "query")
+	return fmt.Sprintf("https://login.microsoftonline.com/%s/oauth2/v2.0/authorize?%s",
+		s.cfg.TenantID, v.Encode())
+}
+
+// ExchangeCodeForEmail exchanges an SSO authorization code and returns the
+// Microsoft email address. Does NOT persist any tokens.
+func (s *Service) ExchangeCodeForEmail(ctx context.Context, code string) (string, error) {
+	params := url.Values{}
+	params.Set("client_id", s.cfg.ClientID)
+	params.Set("client_secret", s.cfg.ClientSecret)
+	params.Set("code", code)
+	params.Set("redirect_uri", s.cfg.SSORedirectURL)
+	params.Set("grant_type", "authorization_code")
+
+	tr, err := s.fetchToken(ctx, params)
+	if err != nil {
+		return "", err
+	}
+	msUser, err := s.fetchMe(ctx, tr.AccessToken)
+	if err != nil {
+		return "", fmt.Errorf("fetch microsoft profile: %w", err)
+	}
+	if msUser.Mail == "" {
+		return "", fmt.Errorf("microsoft account has no email address")
+	}
+	return msUser.Mail, nil
 }
 
 // accessToken returns a valid (auto-refreshed) plaintext access token.

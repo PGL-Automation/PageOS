@@ -184,11 +184,12 @@ func run() error {
 			return fmt.Errorf("PAGEOS_MSGRAPH_TOKEN_KEY: %w", keyErr)
 		}
 		msGraphSvc := msgraph.NewService(msgraph.Config{
-			ClientID:     cfg.MSGraphClientID,
-			ClientSecret: cfg.MSGraphClientSecret,
-			TenantID:     cfg.MSGraphTenantID,
-			RedirectURL:  cfg.MSGraphRedirectURL,
-			TokenKey:     tokenKey,
+			ClientID:       cfg.MSGraphClientID,
+			ClientSecret:   cfg.MSGraphClientSecret,
+			TenantID:       cfg.MSGraphTenantID,
+			RedirectURL:    cfg.MSGraphRedirectURL,
+			SSORedirectURL: cfg.MSGraphSSORedirectURL,
+			TokenKey:       tokenKey,
 		}, msgraphstore.New(pool), auditWriter)
 		msGraphH = msgraphhttp.New(msGraphSvc)
 		logger.Info("microsoft graph integration enabled")
@@ -232,6 +233,9 @@ func run() error {
 		api.Mount("/notifications", notifH.Routes(identityH.Authenticator))
 		if msGraphH != nil {
 			api.Mount("/msgraph", msGraphH.Routes(identityH.Authenticator))
+			// SSO login routes — no auth middleware (user is not yet logged in)
+			api.Get("/auth/microsoft",          msGraphH.SSORedirect)
+			api.Get("/auth/microsoft/callback", msGraphH.SSOCallback(identitySvc))
 		}
 		// Vault notes — private personal notes scoped to the caller.
 		api.With(identityH.Authenticator).Get("/vault/notes", vaultListNotes(pool))
@@ -298,7 +302,7 @@ func seedBootstrap(ctx context.Context, pool *pgxpool.Pool, identitySvc *identit
 	type seedUser struct{ email, password, displayName, positionCode string }
 	seeds := []seedUser{
 		{"admin@pagegroup.ng", "Admin@PageOS!2026", "System Administrator", "GROUP_ADMIN"},
-		{"hr@pagegroup.ng",    "HR@PageOS!2026",    "HR Manager",           "HR_MANAGER"},
+		{"hr@pageaml.com",     "HR@PageOS!2026",    "HR Manager",           "HR_MANAGER"},
 	}
 
 	for _, s := range seeds {
