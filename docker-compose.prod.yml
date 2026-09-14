@@ -1,7 +1,6 @@
 # Production stack for 187.124.112.25
-# Caddy (proxy-caddy-1 in /opt/proxy/) routes app.pageos.org → these containers.
-# Services join proxy_net so Caddy can reach them by container name.
-# No host port mappings needed — Caddy is the only ingress.
+# Nginx on the host proxies pageos.org → 127.0.0.1:8090 (API) and 127.0.0.1:3090 (web).
+# See nginx/pageos.org for the vhost config.
 
 services:
 
@@ -60,9 +59,15 @@ services:
       PAGEOS_SMTP_USER: ${SMTP_USER:-}
       PAGEOS_SMTP_PASS: ${SMTP_PASS:-}
       PAGEOS_SMTP_FROM: ${SMTP_FROM:-noreply@pageos.org}
+      PAGEOS_MSGRAPH_CLIENT_ID:     ${PAGEOS_MSGRAPH_CLIENT_ID:-}
+      PAGEOS_MSGRAPH_CLIENT_SECRET: ${PAGEOS_MSGRAPH_CLIENT_SECRET:-}
+      PAGEOS_MSGRAPH_TENANT_ID:     ${PAGEOS_MSGRAPH_TENANT_ID:-}
+      PAGEOS_MSGRAPH_REDIRECT_URL:  ${PAGEOS_MSGRAPH_REDIRECT_URL:-https://pageos.org/api/v1/msgraph/callback}
+      PAGEOS_MSGRAPH_TOKEN_KEY:     ${PAGEOS_MSGRAPH_TOKEN_KEY:-}
+    ports:
+      - "127.0.0.1:8090:8080"   # nginx proxies /api/ → 127.0.0.1:8090
     networks:
-      - default     # reach postgres + minio
-      - proxy_net   # reachable from Caddy as "pageos-api-1:8080"
+      - default
     depends_on:
       postgres:
         condition: service_healthy
@@ -75,18 +80,16 @@ services:
       dockerfile: Dockerfile
       args:
         # Baked in at Next.js build time — must be the live HTTPS URL.
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://app.pageos.org}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://pageos.org}
     restart: unless-stopped
     environment:
       API_URL:             http://api:8080   # server-side SSR calls (stays on Docker network)
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://app.pageos.org}
-      # Next.js standalone binds to process.env.HOSTNAME which Docker sets to the
-      # container short-ID. That resolves to only one network interface. Force 0.0.0.0
-      # so the server listens on ALL interfaces (including proxy_net for Caddy).
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://pageos.org}
       HOSTNAME: "0.0.0.0"
+    ports:
+      - "127.0.0.1:3090:3000"   # nginx proxies / → 127.0.0.1:3090
     networks:
-      - default     # reach api
-      - proxy_net   # reachable from Caddy as "pageos-web-1:3000"
+      - default
     depends_on:
       - api
 
@@ -96,5 +99,3 @@ volumes:
 
 networks:
   default: {}
-  proxy_net:
-    external: true

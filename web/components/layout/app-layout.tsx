@@ -56,6 +56,7 @@ const WM_NAV: NavGroup[] = [
     { href: "/my-documents",          label: "My Documents",     icon: FileText },
     { href: "/documents",             label: "Shared Documents", icon: FolderOpen },
     { href: "/vault",                 label: "My Vault",         icon: Lock },
+    { href: "/microsoft",             label: "Microsoft 365",    icon: Inbox },
   ]},
 ];
 
@@ -89,6 +90,7 @@ const PM_NAV: NavGroup[] = [
     { href: "/leave",          label: "My Leave",         icon: CalendarDays },
     { href: "/my-documents",   label: "My Documents",     icon: FileText },
     { href: "/vault",          label: "My Vault",         icon: Lock },
+    { href: "/microsoft",      label: "Microsoft 365",    icon: Inbox },
   ]},
 ];
 
@@ -112,6 +114,7 @@ const MD_NAV: NavGroup[] = [
     { href: "/my-documents",       label: "My Documents",      icon: FileText },
     { href: "/reports",               label: "Reports",           icon: FileBarChart },
     { href: "/vault",                 label: "My Vault",          icon: Lock },
+    { href: "/microsoft",             label: "Microsoft 365",     icon: Inbox },
   ]},
   { id: "portfolio", label: "Portfolio", items: [
     { href: "/wm/portfolio",          label: "Funds & Mandates",  icon: BarChart2 },
@@ -147,6 +150,7 @@ const COMPLIANCE_NAV: NavGroup[] = [
     { href: "/my-documents",       label: "My Documents",   icon: FileText },
     { href: "/documents",             label: "Documents",      icon: FolderOpen },
     { href: "/vault",                 label: "My Vault",       icon: Lock },
+    { href: "/microsoft",             label: "Microsoft 365",  icon: Inbox },
   ]},
 ];
 
@@ -171,6 +175,7 @@ const FINANCE_NAV: NavGroup[] = [
     { href: "/approval",              label: "Approvals",      icon: CheckSquare },
     { href: "/leave",                 label: "My Leave",       icon: CalendarDays },
     { href: "/vault",                 label: "My Vault",       icon: Lock },
+    { href: "/microsoft",             label: "Microsoft 365",  icon: Inbox },
   ]},
   { id: "reporting", label: "Reporting", items: [
     { href: "/finance/budget",                    label: "Budget vs Actual", icon: Target },
@@ -211,6 +216,7 @@ const HR_NAV: NavGroup[] = [
     { href: "/leave",                 label: "My Leave",        icon: CalendarDays },
     { href: "/my-documents",       label: "My Documents",    icon: FileText },
     { href: "/vault",                 label: "My Vault",        icon: Lock },
+    { href: "/microsoft",             label: "Microsoft 365",   icon: Inbox },
   ]},
 ];
 
@@ -245,6 +251,7 @@ const ADMIN_NAV: NavGroup[] = [
     { href: "/compliance",             label: "Compliance",       icon: Shield },
     { href: "/risk",                   label: "Risk",             icon: AlertTriangle },
     { href: "/vault",                  label: "My Vault",         icon: Lock },
+    { href: "/microsoft",              label: "Microsoft 365",    icon: Inbox },
   ]},
   { id: "ops", label: "Operations", items: [
     { href: "/investments/onboarding", label: "Onboarding",       icon: UserPlus },
@@ -273,6 +280,7 @@ const DEFAULT_NAV: NavGroup[] = [
     { href: "/leave",                 label: "My Leave",       icon: CalendarDays },
     { href: "/my-documents",       label: "My Documents",   icon: FileText },
     { href: "/vault",                 label: "My Vault",       icon: Lock },
+    { href: "/microsoft",             label: "Microsoft 365",  icon: Inbox },
   ]},
   { id: "finance", label: "Finance", items: [
     { href: "/finance",               label: "Overview",       icon: TrendingUp },
@@ -326,6 +334,7 @@ const ALL_CMDS: NavItem[] = [
   { href: "/approval",               label: "Approvals",           icon: CheckSquare },
   { href: "/reports",                label: "Reports",             icon: FileBarChart },
   { href: "/settings",               label: "Settings",            icon: Settings },
+  { href: "/microsoft",              label: "Microsoft 365",       icon: Inbox },
 ];
 
 function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }) {

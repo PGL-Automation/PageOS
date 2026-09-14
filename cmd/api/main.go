@@ -48,6 +48,9 @@ import (
 	"github.com/pagegroup/pageos/internal/notification"
 	notifhttp "github.com/pagegroup/pageos/internal/notification/http"
 	"github.com/pagegroup/pageos/internal/internalaudit"
+	"github.com/pagegroup/pageos/internal/msgraph"
+	msgraphhttp "github.com/pagegroup/pageos/internal/msgraph/http"
+	msgraphstore "github.com/pagegroup/pageos/internal/msgraph/store"
 	"github.com/pagegroup/pageos/internal/onboarding"
 	onboardinghttp "github.com/pagegroup/pageos/internal/onboarding/http"
 	"github.com/pagegroup/pageos/internal/organization"
@@ -173,6 +176,24 @@ func run() error {
 	internalAuditSvc := internalaudit.NewService(pool)
 	internalAuditH   := internalaudit.NewHandler(internalAuditSvc)
 
+	// --- Microsoft Graph integration (optional: only mounted when CLIENT_ID is set) ---
+	var msGraphH *msgraphhttp.Handler
+	if cfg.MSGraphClientID != "" {
+		tokenKey, keyErr := msgraph.ParseTokenKey(cfg.MSGraphTokenKey)
+		if keyErr != nil {
+			return fmt.Errorf("PAGEOS_MSGRAPH_TOKEN_KEY: %w", keyErr)
+		}
+		msGraphSvc := msgraph.NewService(msgraph.Config{
+			ClientID:     cfg.MSGraphClientID,
+			ClientSecret: cfg.MSGraphClientSecret,
+			TenantID:     cfg.MSGraphTenantID,
+			RedirectURL:  cfg.MSGraphRedirectURL,
+			TokenKey:     tokenKey,
+		}, msgraphstore.New(pool), auditWriter)
+		msGraphH = msgraphhttp.New(msGraphSvc)
+		logger.Info("microsoft graph integration enabled")
+	}
+
 	// --- Bootstrap: create super-admin and initial HR user if they don't exist ---
 	if err := seedBootstrap(ctx, pool, identitySvc, orgSvc, logger); err != nil {
 		logger.Warn("bootstrap seed failed (non-fatal)", "err", err)
@@ -209,6 +230,9 @@ func run() error {
 		api.Mount("/crm", crmH.Routes(identityH.Authenticator))
 		api.Mount("/internal-audit", internalAuditH.Routes(identityH.Authenticator))
 		api.Mount("/notifications", notifH.Routes(identityH.Authenticator))
+		if msGraphH != nil {
+			api.Mount("/msgraph", msGraphH.Routes(identityH.Authenticator))
+		}
 		// Vault notes — private personal notes scoped to the caller.
 		api.With(identityH.Authenticator).Get("/vault/notes", vaultListNotes(pool))
 		api.With(identityH.Authenticator).Post("/vault/notes", vaultCreateNote(pool))

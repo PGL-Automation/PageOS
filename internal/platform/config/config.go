@@ -29,6 +29,13 @@ type Config struct {
 	SMTPUser string
 	SMTPPass string
 	SMTPFrom string
+
+	// Microsoft Graph integration (optional: routes not mounted if ClientID is empty).
+	MSGraphClientID     string
+	MSGraphClientSecret string
+	MSGraphTenantID     string
+	MSGraphRedirectURL  string
+	MSGraphTokenKey     string // 64-char hex → 32-byte AES-GCM key; generate: openssl rand -hex 32
 }
 
 // Load reads configuration from the environment, applying sensible local defaults.
@@ -51,6 +58,12 @@ func Load() (Config, error) {
 		SMTPUser: os.Getenv("PAGEOS_SMTP_USER"),
 		SMTPPass: os.Getenv("PAGEOS_SMTP_PASS"),
 		SMTPFrom: getenv("PAGEOS_SMTP_FROM", "noreply@pagecapital.com"),
+
+		MSGraphClientID:     os.Getenv("PAGEOS_MSGRAPH_CLIENT_ID"),
+		MSGraphClientSecret: os.Getenv("PAGEOS_MSGRAPH_CLIENT_SECRET"),
+		MSGraphTenantID:     os.Getenv("PAGEOS_MSGRAPH_TENANT_ID"),
+		MSGraphRedirectURL:  os.Getenv("PAGEOS_MSGRAPH_REDIRECT_URL"),
+		MSGraphTokenKey:     os.Getenv("PAGEOS_MSGRAPH_TOKEN_KEY"),
 	}
 
 	if cfg.DatabaseURL == "" {
