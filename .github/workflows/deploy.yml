@@ -77,11 +77,16 @@ jobs:
 
       - name: Health check
         run: |
-          for i in $(seq 1 15); do
-            if curl -fsS --max-time 10 https://pageos.org/api/v1/healthz; then
-              echo; echo "healthy"; exit 0
+          # Check API health directly on the VPS (works even before DNS is set up)
+          for i in $(seq 1 10); do
+            if ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no \
+                root@${{ secrets.VPS_HOST }} \
+                'docker compose -f /opt/pageos/docker-compose.prod.yml exec -T api wget -qO- http://localhost:8080/api/v1/healthz' 2>/dev/null; then
+              echo; echo "API healthy"
+              echo "NOTE: Visit https://pageos.org once DNS A record pageos.org -> ${{ secrets.VPS_HOST }} is configured"
+              exit 0
             fi
-            echo "waiting for API (attempt $i)..."; sleep 15
+            echo "waiting for API (attempt $i)..."; sleep 10
           done
-          echo "API did not become healthy in time"
+          echo "API health check failed"
           exit 1
