@@ -75,29 +75,29 @@ jobs:
               root@${{ secrets.VPS_HOST }} '
             set -e
 
-            # Install/update vhost config (idempotent)
+            # Remove conflicting old configs that share port 443
+            rm -f /etc/nginx/sites-enabled/app.pageos.org
+
+            # Install/update vhost config (HTTP-only; certbot adds HTTPS blocks)
             cp /opt/pageos/nginx/pageos.org /etc/nginx/sites-available/pageos.org
             ln -sf /etc/nginx/sites-available/pageos.org /etc/nginx/sites-enabled/pageos.org
 
-            # Remove old app.pageos.org symlink if present (avoid conflicts)
-            rm -f /etc/nginx/sites-enabled/app.pageos.org
-
-            # Validate config before reloading
+            # Validate and reload nginx on the HTTP-only config
             nginx -t
-
-            # Issue or renew SSL cert if not yet obtained (requires DNS A record set first)
-            if [ ! -f /etc/letsencrypt/live/pageos.org/fullchain.pem ]; then
-              if certbot --nginx -d pageos.org -d www.pageos.org --non-interactive --agree-tos -m admin@pageos.org --redirect 2>&1; then
-                echo "SSL certificate issued ✓"
-              else
-                echo "WARNING: certbot failed — nginx running on HTTP only until DNS resolves and cert is issued"
-              fi
-            else
-              certbot renew --quiet
-            fi
-
             systemctl reload nginx
             echo "nginx reloaded ✓"
+
+            # Issue SSL cert (certbot modifies the config to add HTTPS + redirect).
+            # Skipped silently if DNS has not resolved yet — will succeed on next deploy.
+            if [ ! -f /etc/letsencrypt/live/pageos.org/fullchain.pem ]; then
+              certbot --nginx -d pageos.org -d www.pageos.org \
+                --non-interactive --agree-tos -m admin@pageos.org \
+                --redirect 2>&1 \
+                && echo "SSL certificate issued ✓" \
+                || echo "WARNING: certbot failed — will retry on next deploy once DNS resolves"
+            else
+              certbot renew --quiet && echo "SSL cert renewed ✓" || true
+            fi
           '
 
       - name: Health check
