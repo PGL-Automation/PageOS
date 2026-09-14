@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { Loader2, Briefcase, Shield, Zap, Building2, Lock } from "lucide-react";
@@ -53,7 +53,7 @@ function Field({
   );
 }
 
-export default function LoginPage() {
+function LoginPageInner() {
   const { login, user, isLoading } = useAuth();
   const router       = useRouter();
   const searchParams = useSearchParams();
@@ -290,5 +290,13 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginPageInner />
+    </Suspense>
   );
 }

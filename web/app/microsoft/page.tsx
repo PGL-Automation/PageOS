@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -564,7 +564,7 @@ function ConnectPrompt() {
 
 // ── Page ───────────────────────────────────────────────────────────────────────
 
-export default function MicrosoftPage() {
+function MicrosoftPageInner() {
   const { toast } = useToast();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
@@ -648,5 +648,13 @@ export default function MicrosoftPage() {
         <TeamsPanel />
       </div>
     </div>
+  );
+}
+
+export default function MicrosoftPage() {
+  return (
+    <Suspense>
+      <MicrosoftPageInner />
+    </Suspense>
   );
 }
