@@ -82,10 +82,11 @@ jobs:
             cp /opt/pageos/nginx/pageos.org /etc/nginx/sites-available/pageos.org
             ln -sf /etc/nginx/sites-available/pageos.org /etc/nginx/sites-enabled/pageos.org
 
-            # Validate and reload nginx on the HTTP-only config
+            # Validate then start/reload nginx
             nginx -t
-            systemctl reload nginx
-            echo "nginx reloaded ✓"
+            systemctl enable nginx
+            systemctl is-active nginx && systemctl reload nginx || systemctl start nginx
+            echo "nginx running ✓"
 
             # Issue SSL cert (certbot modifies the config to add HTTPS + redirect).
             # Skipped silently if DNS has not resolved yet — will succeed on next deploy.
