@@ -447,23 +447,13 @@ func isHROrAdmin(ctx context.Context, pool *pgxpool.Pool, callerID uuid.UUID) bo
 			                                  AND a.effective_from <= CURRENT_DATE
 			                                  AND (a.effective_to IS NULL OR a.effective_to >= CURRENT_DATE)
 			JOIN   organization.position  pos ON pos.id = a.position_id
-			LEFT   JOIN identity.users    u   ON u.id   = per.user_id
 			WHERE  per.user_id = $1
-			  AND (
-			        pos.code IN (
-			            'HEAD_HR', 'HEAD_HUMAN_CAPITAL',
-			            'HR_MANAGER', 'HR_OFFICER', 'HR_OPS_MANAGER', 'HR_ADMIN',
-			            'HC_OFFICER', 'HC_MANAGER',
-			            'GROUP_ADMIN'
-			        )
-			        OR u.role IN (
-			            'hr_admin',
-			            'group_admin',
-			            'admin',
-			            'hr_manager',
-			            'hr_officer'
-			        )
-			  )
+			  AND  pos.code IN (
+			           'HEAD_HR', 'HEAD_HUMAN_CAPITAL',
+			           'HR_MANAGER', 'HR_OFFICER', 'HR_OPS_MANAGER', 'HR_ADMIN',
+			           'HC_OFFICER', 'HC_MANAGER',
+			           'GROUP_ADMIN'
+			       )
 		)
 	`
 	var exists bool
