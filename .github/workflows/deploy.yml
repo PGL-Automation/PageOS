@@ -69,6 +69,37 @@ jobs:
             docker compose -f docker-compose.prod.yml ps
           '
 
+      - name: Configure nginx for pageos.org
+        run: |
+          ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=6 \
+              root@${{ secrets.VPS_HOST }} '
+            set -e
+
+            # Install/update vhost config (idempotent)
+            cp /opt/pageos/nginx/pageos.org /etc/nginx/sites-available/pageos.org
+            ln -sf /etc/nginx/sites-available/pageos.org /etc/nginx/sites-enabled/pageos.org
+
+            # Remove old app.pageos.org symlink if present (avoid conflicts)
+            rm -f /etc/nginx/sites-enabled/app.pageos.org
+
+            # Validate config before reloading
+            nginx -t
+
+            # Issue or renew SSL cert if not yet obtained (requires DNS A record set first)
+            if [ ! -f /etc/letsencrypt/live/pageos.org/fullchain.pem ]; then
+              if certbot --nginx -d pageos.org -d www.pageos.org --non-interactive --agree-tos -m admin@pageos.org --redirect 2>&1; then
+                echo "SSL certificate issued ✓"
+              else
+                echo "WARNING: certbot failed — nginx running on HTTP only until DNS resolves and cert is issued"
+              fi
+            else
+              certbot renew --quiet
+            fi
+
+            systemctl reload nginx
+            echo "nginx reloaded ✓"
+          '
+
       - name: Health check
         run: |
           for i in $(seq 1 15); do
