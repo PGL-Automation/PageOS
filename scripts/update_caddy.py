@@ -43,8 +43,9 @@ while lines and lines[-1].strip() == "":
 
 content = "".join(lines)
 
-# Remove any stale import lines (idempotent)
-content = content.replace(IMPORT_LINE, "")
+# Remove any stale pageos import lines (all variants, idempotent)
+import re
+content = re.sub(r"import\s+[^\n]*pageos[^\n]*\n?", "", content)
 content = content.rstrip()
 
 # Append the import directive
