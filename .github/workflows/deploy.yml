@@ -85,14 +85,15 @@ jobs:
             # Validate config
             nginx -t
 
-            # Show what is listening on 80/443 (diagnostic)
-            ss -tlnp | grep -E ':80|:443' || true
+            # Stop anything holding port 80 (Caddy, old nginx process, etc.)
+            systemctl stop caddy 2>/dev/null || true
+            systemctl stop nginx 2>/dev/null || true
+            pkill -f nginx 2>/dev/null || true
+            sleep 2
 
-            # Kill any stale nginx master process not under systemd, then (re)start
+            # Enable and start nginx
             systemctl enable nginx
-            systemctl stop nginx 2>/dev/null || nginx -s stop 2>/dev/null || true
-            sleep 1
-            systemctl start nginx || { journalctl -xeu nginx.service --no-pager -n 30; exit 1; }
+            systemctl start nginx
             echo "nginx running ✓"
 
             # Issue SSL cert (certbot modifies the config to add HTTPS + redirect).
