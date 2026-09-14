@@ -71,43 +71,45 @@ jobs:
 
       - name: Configure nginx for pageos.org
         run: |
-          ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=6 \
-              root@${{ secrets.VPS_HOST }} '
-            set -e
+          for i in $(seq 1 8); do
+            ssh -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=8 \
+                root@${{ secrets.VPS_HOST }} '
+              set -e
 
-            # Remove conflicting old configs that share port 443
-            rm -f /etc/nginx/sites-enabled/app.pageos.org
+              # Remove conflicting old configs that share port 443
+              rm -f /etc/nginx/sites-enabled/app.pageos.org
 
-            # Install/update vhost config (HTTP-only; certbot adds HTTPS blocks)
-            cp /opt/pageos/nginx/pageos.org /etc/nginx/sites-available/pageos.org
-            ln -sf /etc/nginx/sites-available/pageos.org /etc/nginx/sites-enabled/pageos.org
+              # Install/update vhost config (HTTP-only; certbot adds HTTPS blocks)
+              cp /opt/pageos/nginx/pageos.org /etc/nginx/sites-available/pageos.org
+              ln -sf /etc/nginx/sites-available/pageos.org /etc/nginx/sites-enabled/pageos.org
 
-            # Validate config
-            nginx -t
+              # Validate config
+              nginx -t
 
-            # Stop anything holding port 80 (Caddy, old nginx process, etc.)
-            systemctl stop caddy 2>/dev/null || true
-            systemctl stop nginx 2>/dev/null || true
-            pkill -f nginx 2>/dev/null || true
-            sleep 2
+              # Stop anything holding port 80 (Caddy, old nginx, etc.)
+              systemctl stop caddy 2>/dev/null || true
+              systemctl stop nginx 2>/dev/null || true
+              sleep 2
 
-            # Enable and start nginx
-            systemctl enable nginx
-            systemctl start nginx
-            echo "nginx running ✓"
+              # Enable and start nginx
+              systemctl enable nginx
+              systemctl start nginx
+              echo "nginx running"
 
-            # Issue SSL cert (certbot modifies the config to add HTTPS + redirect).
-            # Skipped silently if DNS has not resolved yet — will succeed on next deploy.
-            if [ ! -f /etc/letsencrypt/live/pageos.org/fullchain.pem ]; then
-              certbot --nginx -d pageos.org -d www.pageos.org \
-                --non-interactive --agree-tos -m admin@pageos.org \
-                --redirect 2>&1 \
-                && echo "SSL certificate issued ✓" \
-                || echo "WARNING: certbot failed — will retry on next deploy once DNS resolves"
-            else
-              certbot renew --quiet && echo "SSL cert renewed ✓" || true
-            fi
-          '
+              # Issue SSL cert if DNS resolves to this server
+              if [ ! -f /etc/letsencrypt/live/pageos.org/fullchain.pem ]; then
+                certbot --nginx -d pageos.org -d www.pageos.org \
+                  --non-interactive --agree-tos -m admin@pageos.org \
+                  --redirect 2>&1 \
+                  && echo "SSL certificate issued" \
+                  || echo "WARNING: certbot failed - retry on next deploy once DNS resolves"
+              else
+                certbot renew --quiet && echo "SSL cert renewed" || true
+              fi
+            ' && exit 0
+            echo "nginx setup attempt $i failed, retrying in 15s..."; sleep 15
+          done
+          exit 1
 
       - name: Health check
         run: |
