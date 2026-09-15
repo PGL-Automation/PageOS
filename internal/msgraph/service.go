@@ -1275,16 +1275,130 @@ func (s *Service) DeleteTeamsMessage(ctx context.Context, userID uuid.UUID, chat
 	return nil
 }
 
-// ReactToMessage adds an emoji reaction. Uses /me/chats/ — consistent with read path.
+// ReactToMessage stores a reaction locally (Graph API doesn't support reactions
+// for all Teams chat types, e.g. @unq.gbl.spaces). Reactions are scoped to PageOS.
 func (s *Service) ReactToMessage(ctx context.Context, userID uuid.UUID, chatID, messageID, reactionType string) error {
-	path := fmt.Sprintf("/me/chats/%s/messages/%s/setReaction", url.PathEscape(chatID), url.PathEscape(messageID))
-	return s.graphPOST(ctx, userID, path, map[string]string{"reactionType": reactionType}, nil)
+	// Get the user's MS info for display
+	rec, _ := s.store.Get(ctx, userID)
+	msUserID, displayName := "", ""
+	if rec != nil {
+		msUserID = rec.MicrosoftUserID
+		displayName = rec.MicrosoftEmail
+	}
+	_, err := s.store.DB().Exec(ctx, `
+		INSERT INTO msgraph.chat_reaction (user_id, ms_user_id, display_name, chat_id, message_id, reaction_type)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		ON CONFLICT (user_id, chat_id, message_id, reaction_type) DO NOTHING
+	`, userID, msUserID, displayName, chatID, messageID, reactionType)
+	return err
 }
 
-// UnreactToMessage removes a reaction. Uses /me/chats/ — consistent with read path.
+// UnreactToMessage removes a locally stored reaction.
 func (s *Service) UnreactToMessage(ctx context.Context, userID uuid.UUID, chatID, messageID, reactionType string) error {
-	path := fmt.Sprintf("/me/chats/%s/messages/%s/unsetReaction", url.PathEscape(chatID), url.PathEscape(messageID))
-	return s.graphPOST(ctx, userID, path, map[string]string{"reactionType": reactionType}, nil)
+	_, err := s.store.DB().Exec(ctx, `
+		DELETE FROM msgraph.chat_reaction
+		WHERE user_id = $1 AND chat_id = $2 AND message_id = $3 AND reaction_type = $4
+	`, userID, chatID, messageID, reactionType)
+	return err
+}
+
+// GetAllLocalReactions returns all local reactions for an entire chat, keyed by messageID.
+// More efficient than per-message queries when rendering a full thread.
+func (s *Service) GetAllLocalReactions(ctx context.Context, chatID string) (map[string][]MessageReaction, error) {
+	rows, err := s.store.DB().Query(ctx, `
+		SELECT message_id, reaction_type, display_name, ms_user_id
+		FROM msgraph.chat_reaction
+		WHERE chat_id = $1
+	`, chatID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[string][]MessageReaction)
+	for rows.Next() {
+		var msgID string
+		var r MessageReaction
+		if err := rows.Scan(&msgID, &r.ReactionType, &r.SenderName, &r.SenderMSID); err == nil {
+			out[msgID] = append(out[msgID], r)
+		}
+	}
+	return out, rows.Err()
+}
+
+// GetLocalReactions returns all PageOS reactions for a specific message.
+func (s *Service) GetLocalReactions(ctx context.Context, chatID, messageID string) ([]MessageReaction, error) {
+	rows, err := s.store.DB().Query(ctx, `
+		SELECT reaction_type, display_name, ms_user_id
+		FROM msgraph.chat_reaction
+		WHERE chat_id = $1 AND message_id = $2
+	`, chatID, messageID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []MessageReaction
+	for rows.Next() {
+		var r MessageReaction
+		if err := rows.Scan(&r.ReactionType, &r.SenderName, &r.SenderMSID); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// LocalReadEntry is one user's read status from our local DB.
+type LocalReadEntry struct {
+	UserID           string `json:"userId"`
+	DisplayName      string `json:"displayName"`
+	LastReadDateTime string `json:"lastReadDateTime"`
+}
+
+// GetLocalReadStatus returns read timestamps for all OTHER users who have
+// opened this chat in PageOS. Used instead of the Graph API members endpoint
+// which doesn't reliably support lastMessageReadDateTime for all chat types.
+func (s *Service) GetLocalReadStatus(ctx context.Context, callerID uuid.UUID, chatID string) ([]LocalReadEntry, error) {
+	rows, err := s.store.DB().Query(ctx, `
+		SELECT ms_user_id, display_name, last_read_at
+		FROM msgraph.chat_read
+		WHERE chat_id = $1 AND user_id != $2
+	`, chatID, callerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []LocalReadEntry
+	for rows.Next() {
+		var e LocalReadEntry
+		var ts interface{}
+		if err := rows.Scan(&e.UserID, &e.DisplayName, &ts); err == nil {
+			if t, ok := ts.(interface{ Format(string) string }); ok {
+				e.LastReadDateTime = t.Format("2006-01-02T15:04:05Z07:00")
+			}
+			out = append(out, e)
+		}
+	}
+	if out == nil {
+		out = []LocalReadEntry{}
+	}
+	return out, rows.Err()
+}
+
+// MarkChatRead records the current user's last-read timestamp for a chat.
+// Called when the user opens or focuses a chat in PageOS.
+func (s *Service) MarkChatRead(ctx context.Context, userID uuid.UUID, chatID string) error {
+	rec, _ := s.store.Get(ctx, userID)
+	msUserID, displayName := "", ""
+	if rec != nil {
+		msUserID = rec.MicrosoftUserID
+		displayName = rec.MicrosoftEmail
+	}
+	_, err := s.store.DB().Exec(ctx, `
+		INSERT INTO msgraph.chat_read (user_id, ms_user_id, display_name, chat_id, last_read_at)
+		VALUES ($1, $2, $3, $4, now())
+		ON CONFLICT (user_id, chat_id) DO UPDATE SET last_read_at = now(), ms_user_id = EXCLUDED.ms_user_id
+	`, userID, msUserID, displayName, chatID)
+	return err
 }
 
 // GetChatReadStatus returns each member's last-read datetime for the chat.

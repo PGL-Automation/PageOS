@@ -26,6 +26,9 @@ type Store struct{ db *pgxpool.Pool }
 
 func New(db *pgxpool.Pool) *Store { return &Store{db: db} }
 
+// DB exposes the underlying pool for ad-hoc queries (local reactions, read tracking).
+func (s *Store) DB() *pgxpool.Pool { return s.db }
+
 // Upsert inserts or updates the token row for the given user.
 func (s *Store) Upsert(ctx context.Context, r TokenRecord) error {
 	const q = `

@@ -134,6 +134,13 @@ function TeamsPageInner() {
     staleTime: 30_000,
   });
 
+  // Mark chat as read when opened — enables read receipts for the other person
+  useEffect(() => {
+    if (!selectedChat) return;
+    msApi(`/teams/${encodeId(selectedChat.id)}/mark-read`, { method: "POST" }).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedChat?.id]);
+
   // Other user's presence (shown in chat thread header)
   const { data: otherPresence } = useQuery({
     queryKey: ["msgraph-other-presence", selectedChat?.withMsId],
@@ -141,6 +148,15 @@ function TeamsPageInner() {
     enabled: !!selectedChat?.withMsId,
     staleTime: 30_000,
     refetchInterval: 60_000,
+  });
+
+  // Local reactions (stored in our DB) — merged with Graph reactions
+  const { data: localReactionsData, refetch: refetchReactions } = useQuery({
+    queryKey: ["msgraph-local-reactions", selectedChat?.id],
+    queryFn: () => msApi(`/teams/${encodeId(selectedChat!.id)}/reactions`) as Promise<Record<string, Array<{ reactionType: string; senderName: string; senderMsId: string }>>>,
+    enabled: !!selectedChat,
+    staleTime: 5_000,
+    refetchInterval: 5_000,
   });
 
   // Read receipts — fetch when thread is open to show eye icon on read messages
@@ -300,13 +316,15 @@ function TeamsPageInner() {
   }
 
   async function toggleReact(msg: TeamsMessage, rt: string) {
-    const iMine = (msg.reactions ?? []).some(r => r.reactionType === rt && r.senderName === user?.DisplayName);
+    // Check local reactions (our DB) — the source of truth
+    const localForMsg = localReactionsData?.[msg.id] ?? [];
+    const iMine = localForMsg.some(r => r.reactionType === rt && r.senderName === user?.DisplayName);
     try {
       await msApi(`/teams/${encodeId(msg.chatId)}/messages/${encodeId(msg.id)}/${iMine ? "unreact" : "react"}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reactionType: rt }),
       });
-      queryClient.invalidateQueries({ queryKey: ["msgraph-chat-page-full", selectedChat?.id] });
+      refetchReactions(); // refresh local reaction counts immediately
     } catch (e) { toast({ title: "Reaction failed", description: (e as Error).message, variant: "destructive" }); }
   }
 
@@ -542,17 +560,22 @@ function TeamsPageInner() {
                   </div>
                 : currentMessages.map((msg, msgIdx) => {
                     const isMe = msg.senderName === user?.DisplayName;
-                    const isOptimistic = msg.id.startsWith("opt-"); // pending — not yet confirmed by Graph
+                    const isOptimistic = msg.id.startsWith("opt-");
                     const text = stripHtml(msg.body);
-                    // Read receipt: show eye on the last sent message if other user has read past it
                     const isLastSent = isMe && !isOptimistic && msgIdx === currentMessages.map((m, i) => m.senderName === user?.DisplayName ? i : -1).filter(i => i >= 0).pop();
-                    const otherMemberRead = readStatusData?.members?.find(m => m.userId === selectedChat?.withMsId);
+                    const otherMemberRead = readStatusData?.members?.find((m: any) => m.userId === selectedChat?.withMsId);
                     const isRead = isLastSent && otherMemberRead?.lastReadDateTime
                       ? new Date(otherMemberRead.lastReadDateTime) >= new Date(msg.sentAt)
                       : false;
                     const isDeleted = text === "" && (msg.attachments ?? []).length === 0;
+
+                    // Merge Graph reactions (from message) + local reactions (from our DB)
                     const reactionMap: Record<string, { count: number; iMine: boolean }> = {};
-                    (msg.reactions ?? []).forEach(r => {
+                    const allReactions = [
+                      ...(msg.reactions ?? []),
+                      ...(localReactionsData?.[msg.id] ?? []),
+                    ];
+                    allReactions.forEach(r => {
                       if (!reactionMap[r.reactionType]) reactionMap[r.reactionType] = { count: 0, iMine: false };
                       reactionMap[r.reactionType].count++;
                       if (r.senderName === user?.DisplayName) reactionMap[r.reactionType].iMine = true;

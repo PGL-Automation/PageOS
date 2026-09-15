@@ -50,6 +50,9 @@ func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	r.Post("/teams/{chatId}/messages/{messageId}/react",           h.reactMessage)
 	r.Post("/teams/{chatId}/messages/{messageId}/unreact",         h.unreactMessage)
 	r.Get("/teams/{chatId}/read-status",                           h.chatReadStatus)
+	r.Post("/teams/{chatId}/mark-read",                            h.markChatRead)
+	r.Get("/teams/{chatId}/messages/{messageId}/reactions",        h.localReactions)
+	r.Get("/teams/{chatId}/reactions",                             h.allLocalReactions)
 	r.Get("/presence/user/{msId}",                                 h.otherUserPresence)
 	r.Get("/users/search",                  h.searchUsers)
 	r.Get("/users/{msId}/profile",          h.userProfile)
@@ -488,9 +491,35 @@ func (h *Handler) sendTeamsMessage(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) chatReadStatus(w http.ResponseWriter, r *http.Request) {
 	id, ok := callerID(r)
 	if !ok { httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated"); return }
-	status, err := h.svc.GetChatReadStatus(r.Context(), id, chi.URLParam(r, "chatId"))
+	members, err := h.svc.GetLocalReadStatus(r.Context(), id, chi.URLParam(r, "chatId"))
 	if err != nil { httpx.Error(w, http.StatusInternalServerError, "internal", err.Error()); return }
-	httpx.JSON(w, http.StatusOK, map[string]any{"members": status})
+	httpx.JSON(w, http.StatusOK, map[string]any{"members": members})
+}
+
+func (h *Handler) markChatRead(w http.ResponseWriter, r *http.Request) {
+	id, ok := callerID(r)
+	if !ok { httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated"); return }
+	if err := h.svc.MarkChatRead(r.Context(), id, chi.URLParam(r, "chatId")); err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error()); return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (h *Handler) allLocalReactions(w http.ResponseWriter, r *http.Request) {
+	_, ok := callerID(r)
+	if !ok { httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated"); return }
+	all, err := h.svc.GetAllLocalReactions(r.Context(), chi.URLParam(r, "chatId"))
+	if err != nil { httpx.Error(w, http.StatusInternalServerError, "internal", err.Error()); return }
+	httpx.JSON(w, http.StatusOK, all)
+}
+
+func (h *Handler) localReactions(w http.ResponseWriter, r *http.Request) {
+	id, ok := callerID(r)
+	if !ok { httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated"); return }
+	_ = id // authenticated user context — reactions are readable by any chat participant
+	reactions, err := h.svc.GetLocalReactions(r.Context(), chi.URLParam(r, "chatId"), chi.URLParam(r, "messageId"))
+	if err != nil { httpx.Error(w, http.StatusInternalServerError, "internal", err.Error()); return }
+	httpx.JSON(w, http.StatusOK, map[string]any{"reactions": reactions})
 }
 
 func (h *Handler) otherUserPresence(w http.ResponseWriter, r *http.Request) {
