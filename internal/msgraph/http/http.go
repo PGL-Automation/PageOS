@@ -311,6 +311,13 @@ func (h *Handler) SSORedirect(w http.ResponseWriter, r *http.Request) {
 // the matching PageOS account, creates a session, and redirects to the dashboard.
 func (h *Handler) SSOCallback(identitySvc *identity.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Admin consent callback — Microsoft redirects here with admin_consent=True (no code).
+		// Just redirect to login with a success flag so the admin sees a friendly message.
+		if r.URL.Query().Get("admin_consent") == "True" {
+			http.Redirect(w, r, "/login?admin_consent=1", http.StatusFound)
+			return
+		}
+
 		// CSRF check
 		stateCookie, err := r.Cookie(ssoStateCookie)
 		if err != nil || stateCookie.Value == "" || stateCookie.Value != r.URL.Query().Get("state") {

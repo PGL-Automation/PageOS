@@ -66,9 +66,14 @@ function LoginPageInner() {
     if (!isLoading && user) router.replace("/dashboard");
   }, [user, isLoading, router]);
 
-  // Handle SSO redirect errors
+  // Handle SSO redirect errors and admin consent success
   useEffect(() => {
     const ssoError = searchParams.get("error");
+    const adminConsent = searchParams.get("admin_consent");
+    if (adminConsent === "1") {
+      // Admin consent granted — show success, don't set error
+      return;
+    }
     if (ssoError === "no_account") {
       setError("No PageOS account found for this Microsoft email. Contact HR to get access.");
     } else if (ssoError === "sso_failed") {
@@ -200,6 +205,12 @@ function LoginPageInner() {
             border: "1px solid #e8edf3",
             boxShadow: "0 2px 8px rgba(15,23,42,0.05)",
           }}>
+            {searchParams.get("admin_consent") === "1" && (
+              <div style={{ borderRadius: 8, padding: "10px 12px", fontSize: 13, marginBottom: 4,
+                background: "#f0fdf4", border: "1px solid #bbf7d0", color: "#15803d" }}>
+                ✓ Admin consent granted. All employees can now sign in with Microsoft.
+              </div>
+            )}
             <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <Field
                 id="email" label="Email" type="email"
