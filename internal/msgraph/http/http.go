@@ -35,6 +35,7 @@ func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	r.Get("/mail/{messageId}",              h.mailBody)
 	r.Post("/mail/{messageId}/reply",       h.replyEmail)
 	r.Post("/mail/{messageId}/reply-all",   h.replyAllEmail)
+	r.Post("/mail/{messageId}/forward",     h.forwardEmail)
 	r.Post("/mail/compose",                 h.composeEmail)
 	// Calendar — read + write
 	r.Get("/calendar",                      h.calendar)
@@ -52,6 +53,7 @@ func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	r.Get("/presence/user/{msId}",                                 h.otherUserPresence)
 	r.Get("/users/search",                  h.searchUsers)
 	r.Post("/teams/new-chat",               h.newChat)
+	r.Post("/teams/new-group",              h.newGroupChat)
 	r.Get("/mail/thread/{conversationId}",  h.emailThread)
 	r.Get("/unread-count",                  h.unreadCount)
 	// Presence — read only
@@ -213,6 +215,39 @@ func (h *Handler) searchUsers(w http.ResponseWriter, r *http.Request) {
 	users, err := h.svc.SearchUsers(r.Context(), id, q)
 	if err != nil { httpx.Error(w, http.StatusInternalServerError, "internal", err.Error()); return }
 	httpx.JSON(w, http.StatusOK, map[string]any{"users": users})
+}
+
+func (h *Handler) forwardEmail(w http.ResponseWriter, r *http.Request) {
+	id, ok := callerID(r)
+	if !ok { httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated"); return }
+	var in struct {
+		To      []string `json:"to"`
+		Comment string   `json:"comment"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || len(in.To) == 0 {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "to (array) is required"); return
+	}
+	if err := h.svc.ForwardEmail(r.Context(), id, chi.URLParam(r, "messageId"), in.Comment, in.To); err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error()); return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (h *Handler) newGroupChat(w http.ResponseWriter, r *http.Request) {
+	id, ok := callerID(r)
+	if !ok { httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated"); return }
+	var in struct {
+		Topic      string   `json:"topic"`
+		MemberIDs  []string `json:"member_ms_ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || len(in.MemberIDs) < 2 {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "at least 2 member_ms_ids required"); return
+	}
+	chatID, err := h.svc.CreateGroupChat(r.Context(), id, in.Topic, in.MemberIDs)
+	if err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error()); return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]string{"chat_id": chatID})
 }
 
 func (h *Handler) newChat(w http.ResponseWriter, r *http.Request) {

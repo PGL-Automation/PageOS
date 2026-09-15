@@ -6,6 +6,7 @@ import { Loader2, Send, Plus, ChevronLeft, ChevronRight, Link2Off } from "lucide
 import Image from "next/image";
 import { useToast } from "@/hooks/use-toast";
 import { msApi, relativeTime, stripHtml, MailMessage } from "../components";
+import { PeoplePicker } from "../PeoplePicker";
 
 function MailPageInner() {
   const { toast } = useToast();
@@ -22,8 +23,9 @@ function MailPageInner() {
   });
   const [folder, setFolder] = useState<"inbox" | "sent" | "drafts" | "junk">("inbox");
   const [selected, setSelected] = useState<MailMessage | null>(null);
-  const [replyMode, setReplyMode] = useState<"reply" | "replyAll" | null>(null);
+  const [replyMode, setReplyMode] = useState<"reply" | "replyAll" | "forward" | null>(null);
   const [replyText, setReplyText] = useState("");
+  const [forwardTo, setForwardTo] = useState("");
   const [composing, setComposing] = useState(false);
   const [compose, setCompose] = useState({ to: "", cc: "", bcc: "", showCcBcc: false, subject: "", body: "" });
   const [sending, setSending] = useState(false);
@@ -54,7 +56,8 @@ function MailPageInner() {
     if (!selected || !replyText.trim()) return;
     setSending(true);
     try {
-      await msApi(`/mail/${selected.id}/${replyMode === "replyAll" ? "reply-all" : "reply"}`, {
+      const endpoint = replyMode === "replyAll" ? "reply-all" : "reply";
+      await msApi(`/mail/${selected.id}/${endpoint}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ comment: replyText }),
       });
@@ -63,6 +66,23 @@ function MailPageInner() {
       queryClient.invalidateQueries({ queryKey: ["msgraph-thread", selected.conversationId] });
     } catch (e) {
       toast({ title: "Failed", description: (e as Error).message, variant: "destructive" });
+    } finally { setSending(false); }
+  }
+
+  async function sendForward() {
+    if (!selected || !forwardTo.trim()) return;
+    const toList = forwardTo.split(/[,;]/).map(s => s.trim()).filter(Boolean);
+    if (toList.length === 0) return;
+    setSending(true);
+    try {
+      await msApi(`/mail/${selected.id}/forward`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to: toList, comment: replyText }),
+      });
+      toast({ title: "Email forwarded" });
+      setForwardTo(""); setReplyText(""); setReplyMode(null);
+    } catch (e) {
+      toast({ title: "Failed to forward", description: (e as Error).message, variant: "destructive" });
     } finally { setSending(false); }
   }
 
@@ -185,28 +205,19 @@ function MailPageInner() {
               <h2 className="text-[16px] font-bold flex-1" style={{ color: "var(--pg-text-1)" }}>New Email</h2>
               <button onClick={() => setComposing(false)} className="text-[12px]" style={{ color: "var(--pg-text-3)" }}>Cancel</button>
             </div>
-            {/* To — multiple recipients comma-separated */}
-            <div className="relative">
-              <input value={compose.to} onChange={e => setCompose(p => ({ ...p, to: e.target.value }))}
-                     placeholder="To (comma-separate multiple: a@co.com, b@co.com)"
-                     className="w-full px-4 py-2.5 text-[13px] rounded-xl outline-none pr-20"
-                     style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)", color: "var(--pg-text-1)" }} />
+            {/* To with autocomplete */}
+            <PeoplePicker value={compose.to} onChange={v => setCompose(p => ({ ...p, to: v }))} placeholder="To — search or type email" />
+            {/* CC / BCC toggle */}
+            <div className="flex justify-end -mt-1">
               <button onClick={() => setCompose(p => ({ ...p, showCcBcc: !p.showCcBcc }))}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-medium"
-                      style={{ color: "#0078d4" }}>
-                CC / BCC
+                      className="text-[11px] font-medium" style={{ color: "#0078d4" }}>
+                {compose.showCcBcc ? "Hide CC / BCC" : "Add CC / BCC"}
               </button>
             </div>
             {compose.showCcBcc && (
               <>
-                <input value={compose.cc} onChange={e => setCompose(p => ({ ...p, cc: e.target.value }))}
-                       placeholder="CC (comma-separated)"
-                       className="w-full px-4 py-2.5 text-[13px] rounded-xl outline-none"
-                       style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)", color: "var(--pg-text-1)" }} />
-                <input value={compose.bcc} onChange={e => setCompose(p => ({ ...p, bcc: e.target.value }))}
-                       placeholder="BCC (comma-separated)"
-                       className="w-full px-4 py-2.5 text-[13px] rounded-xl outline-none"
-                       style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)", color: "var(--pg-text-1)" }} />
+                <PeoplePicker value={compose.cc} onChange={v => setCompose(p => ({ ...p, cc: v }))} placeholder="CC" />
+                <PeoplePicker value={compose.bcc} onChange={v => setCompose(p => ({ ...p, bcc: v }))} placeholder="BCC" />
               </>
             )}
             <input value={compose.subject} onChange={e => setCompose(p => ({ ...p, subject: e.target.value }))}
@@ -253,27 +264,49 @@ function MailPageInner() {
             {/* Reply area */}
             <div className="shrink-0 rounded-2xl overflow-hidden" style={{ border: "1px solid var(--pg-card-border)", background: "var(--pg-card)" }}>
               {!replyMode
-                ? <div className="flex gap-2 p-3">
+                ? <div className="flex gap-2 p-3 flex-wrap">
                     <button onClick={() => setReplyMode("reply")} className="h-8 px-4 rounded-lg text-[12px] font-medium text-white" style={{ background: "#0078d4" }}>Reply</button>
                     <button onClick={() => setReplyMode("replyAll")} className="h-8 px-4 rounded-lg text-[12px] font-medium" style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}>Reply All</button>
+                    <button onClick={() => { setReplyMode("forward"); setForwardTo(""); setReplyText(""); }}
+                            className="h-8 px-4 rounded-lg text-[12px] font-medium" style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}>Forward</button>
                   </div>
-                : <div className="p-3 space-y-2">
-                    <textarea value={replyText} onChange={e => setReplyText(e.target.value)}
-                              placeholder={replyMode === "replyAll" ? "Reply to all…" : "Write your reply…"}
-                              rows={4} className="w-full px-4 py-2.5 text-[13px] rounded-xl outline-none resize-none"
-                              style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)", color: "var(--pg-text-1)" }} />
-                    <div className="flex gap-2">
-                      <button onClick={sendReply} disabled={sending || !replyText.trim()}
-                              className="flex items-center gap-2 h-8 px-4 rounded-lg text-[12px] font-semibold text-white"
-                              style={{ background: "#0078d4", opacity: (sending || !replyText.trim()) ? 0.6 : 1 }}>
-                        {sending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />} Send
-                      </button>
-                      <button onClick={() => { setReplyMode(null); setReplyText(""); }}
-                              className="h-8 px-3 rounded-lg text-[12px]" style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}>
-                        Cancel
-                      </button>
+                : replyMode === "forward"
+                  ? <div className="p-3 space-y-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--pg-text-3)" }}>Forward to</p>
+                      <PeoplePicker value={forwardTo} onChange={setForwardTo} placeholder="Search or type email addresses" />
+                      <textarea value={replyText} onChange={e => setReplyText(e.target.value)}
+                                placeholder="Add a message (optional)…"
+                                rows={3} className="w-full px-4 py-2.5 text-[13px] rounded-xl outline-none resize-none"
+                                style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)", color: "var(--pg-text-1)" }} />
+                      <div className="flex gap-2">
+                        <button onClick={sendForward} disabled={sending || !forwardTo.trim()}
+                                className="flex items-center gap-2 h-8 px-4 rounded-lg text-[12px] font-semibold text-white"
+                                style={{ background: "#0078d4", opacity: (sending || !forwardTo.trim()) ? 0.6 : 1 }}>
+                          {sending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />} Forward
+                        </button>
+                        <button onClick={() => { setReplyMode(null); setForwardTo(""); setReplyText(""); }}
+                                className="h-8 px-3 rounded-lg text-[12px]" style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}>
+                          Cancel
+                        </button>
+                      </div>
                     </div>
-                  </div>
+                  : <div className="p-3 space-y-2">
+                      <textarea value={replyText} onChange={e => setReplyText(e.target.value)}
+                                placeholder={replyMode === "replyAll" ? "Reply to all…" : "Write your reply…"}
+                                rows={4} className="w-full px-4 py-2.5 text-[13px] rounded-xl outline-none resize-none"
+                                style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)", color: "var(--pg-text-1)" }} />
+                      <div className="flex gap-2">
+                        <button onClick={sendReply} disabled={sending || !replyText.trim()}
+                                className="flex items-center gap-2 h-8 px-4 rounded-lg text-[12px] font-semibold text-white"
+                                style={{ background: "#0078d4", opacity: (sending || !replyText.trim()) ? 0.6 : 1 }}>
+                          {sending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />} Send
+                        </button>
+                        <button onClick={() => { setReplyMode(null); setReplyText(""); }}
+                                className="h-8 px-3 rounded-lg text-[12px]" style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}>
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
               }
             </div>
           </div>

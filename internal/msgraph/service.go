@@ -507,6 +507,25 @@ func (s *Service) GetEmailBody(ctx context.Context, userID uuid.UUID, messageID 
 	return raw.Body.Content, nil
 }
 
+// ForwardEmail forwards a message to one or more recipients with an optional comment.
+func (s *Service) ForwardEmail(ctx context.Context, userID uuid.UUID, messageID, comment string, to []string) error {
+	payload := map[string]any{
+		"comment":      comment,
+		"toRecipients": makeRecipients(to),
+	}
+	path := fmt.Sprintf("/me/messages/%s/forward", url.PathEscape(messageID))
+	if err := s.graphPOST(ctx, userID, path, payload, nil); err != nil {
+		return err
+	}
+	_ = s.auditWriter.Write(ctx, audit.Entry{
+		Actor:        audit.Actor{Type: "user", ID: userID.String()},
+		Action:       "msgraph.email.forwarded",
+		ResourceType: "email", ResourceID: messageID,
+		Context: map[string]any{"to": to},
+	})
+	return nil
+}
+
 // ReplyToEmail sends a reply to the sender of a message.
 func (s *Service) ReplyToEmail(ctx context.Context, userID uuid.UUID, messageID, comment string) error {
 	path := fmt.Sprintf("/me/messages/%s/reply", url.PathEscape(messageID))
@@ -806,31 +825,39 @@ func (s *Service) SearchUsers(ctx context.Context, userID uuid.UUID, query strin
 }
 
 // CreateOneOnOneChat creates (or retrieves existing) 1:1 Teams chat with a recipient.
-// Returns the chatID which can then be used to send messages.
 func (s *Service) CreateOneOnOneChat(ctx context.Context, userID uuid.UUID, recipientMSID string) (string, error) {
-	// Need the current user's Microsoft ID to add them as a member.
+	return s.createChat(ctx, userID, "oneOnOne", "", []string{recipientMSID})
+}
+
+// CreateGroupChat creates a new Teams group chat with multiple recipients and an optional topic.
+func (s *Service) CreateGroupChat(ctx context.Context, userID uuid.UUID, topic string, memberMSIDs []string) (string, error) {
+	return s.createChat(ctx, userID, "group", topic, memberMSIDs)
+}
+
+func (s *Service) createChat(ctx context.Context, userID uuid.UUID, chatType, topic string, memberMSIDs []string) (string, error) {
 	rec, err := s.store.Get(ctx, userID)
 	if err != nil || rec == nil {
 		return "", fmt.Errorf("microsoft account not connected")
 	}
-	payload := map[string]any{
-		"chatType": "oneOnOne",
-		"members": []map[string]any{
-			{
-				"@odata.type":      "#microsoft.graph.aadUserConversationMember",
-				"roles":            []string{"owner"},
-				"user@odata.bind":  fmt.Sprintf("https://graph.microsoft.com/v1.0/users/%s", rec.MicrosoftUserID),
-			},
-			{
-				"@odata.type":      "#microsoft.graph.aadUserConversationMember",
-				"roles":            []string{"owner"},
-				"user@odata.bind":  fmt.Sprintf("https://graph.microsoft.com/v1.0/users/%s", recipientMSID),
-			},
+	members := []map[string]any{
+		{
+			"@odata.type":     "#microsoft.graph.aadUserConversationMember",
+			"roles":           []string{"owner"},
+			"user@odata.bind": fmt.Sprintf("https://graph.microsoft.com/v1.0/users/%s", rec.MicrosoftUserID),
 		},
 	}
-	var result struct {
-		ID string `json:"id"`
+	for _, id := range memberMSIDs {
+		members = append(members, map[string]any{
+			"@odata.type":     "#microsoft.graph.aadUserConversationMember",
+			"roles":           []string{"owner"},
+			"user@odata.bind": fmt.Sprintf("https://graph.microsoft.com/v1.0/users/%s", id),
+		})
 	}
+	payload := map[string]any{"chatType": chatType, "members": members}
+	if topic != "" {
+		payload["topic"] = topic
+	}
+	var result struct{ ID string `json:"id"` }
 	if err := s.graphPOST(ctx, userID, "/chats", payload, &result); err != nil {
 		return "", err
 	}
@@ -916,17 +943,30 @@ func (s *Service) GetChatSummaries(ctx context.Context, userID uuid.UUID, limit 
 
 	out := make([]ChatSummary, 0, len(raw.Value))
 	for _, chat := range raw.Value {
-		// For 1:1 chats, find the OTHER person (not the current user).
-		var withName, withEmail string
-		for _, m := range chat.Members {
-			if m.UserID != myMSID {
-				withName = m.DisplayName
-				withEmail = m.Email
-				break
+		var withName, withEmail, withMSID string
+		if chat.ChatType == "group" {
+			// Group chat: use topic or list all other member names
+			if chat.Topic != "" {
+				withName = chat.Topic
+			} else {
+				var names []string
+				for _, m := range chat.Members {
+					if m.UserID != myMSID && m.DisplayName != "" {
+						names = append(names, m.DisplayName)
+					}
+				}
+				withName = strings.Join(names, ", ")
 			}
-		}
-		if withName == "" && chat.Topic != "" {
-			withName = chat.Topic // group chat fallback
+		} else {
+			// 1:1 chat: find the other person
+			for _, m := range chat.Members {
+				if m.UserID != myMSID {
+					withName = m.DisplayName
+					withEmail = m.Email
+					withMSID = m.UserID
+					break
+				}
+			}
 		}
 
 		// Fetch the last message preview.
@@ -954,14 +994,6 @@ func (s *Service) GetChatSummaries(ctx context.Context, userID uuid.UUID, limit 
 			}
 		}
 
-		// Find the other person's MS user ID (for presence lookups)
-		var withMSID string
-		for _, m := range chat.Members {
-			if m.UserID != myMSID {
-				withMSID = m.UserID
-				break
-			}
-		}
 		out = append(out, ChatSummary{
 			ID: chat.ID, ChatType: chat.ChatType, Topic: chat.Topic,
 			WithName: withName, WithEmail: withEmail, WithMSID: withMSID, LastMessage: last,

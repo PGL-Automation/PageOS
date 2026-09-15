@@ -11,6 +11,7 @@ import {
   msApi, relativeTime, stripHtml, presenceColor,
   ChatSummary, ChatPage, TeamsMessage, Presence, OrgUser, REACTION_EMOJIS,
 } from "../components";
+import { PeoplePicker } from "../PeoplePicker";
 
 // Encode chatId and messageId — Teams IDs contain ':', '@', spaces
 function encodeId(id: string) { return encodeURIComponent(id); }
@@ -45,6 +46,10 @@ function TeamsPageInner() {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [startingChat, setStartingChat] = useState<string | null>(null);
+  const [groupMode, setGroupMode] = useState(false);
+  const [groupMembers, setGroupMembers] = useState("");
+  const [groupTopic, setGroupTopic] = useState("");
+  const [creatingGroup, setCreatingGroup] = useState(false);
   const [settingPresence, setSettingPresence] = useState(false);
   const prevLastMsgRef = useRef<Map<string, string>>(new Map());
 
@@ -208,6 +213,27 @@ function TeamsPageInner() {
     finally { setStartingChat(null); }
   }
 
+  async function createGroupChat() {
+    const memberIds = groupMembers.split(/[,;]/).map(s => s.trim()).filter(Boolean);
+    if (memberIds.length < 2) {
+      toast({ title: "Add at least 2 people to create a group chat", variant: "destructive" });
+      return;
+    }
+    setCreatingGroup(true);
+    try {
+      const { chat_id } = await msApi("/teams/new-group", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ topic: groupTopic, member_ms_ids: memberIds }),
+      }) as { chat_id: string };
+      setGroupMode(false); setGroupMembers(""); setGroupTopic("");
+      setSelectedChat({ id: chat_id, chatType: "group", topic: groupTopic || "Group Chat",
+        withName: groupTopic || "Group Chat", withEmail: "", withMsId: "",
+        lastMessage: { id: "", chatId: chat_id, body: "", sentAt: "", senderName: "", senderMsId: "" } });
+      queryClient.invalidateQueries({ queryKey: ["msgraph-teams-full"] });
+    } catch (e) { toast({ title: "Could not create group chat", description: (e as Error).message, variant: "destructive" }); }
+    finally { setCreatingGroup(false); }
+  }
+
   async function toggleReact(msg: TeamsMessage, rt: string) {
     const iMine = (msg.reactions ?? []).some(r => r.reactionType === rt && r.senderName === user?.DisplayName);
     try {
@@ -281,13 +307,41 @@ function TeamsPageInner() {
               </div>
             )}
           </div>
-          <div className="relative flex items-center">
-            <Search className="absolute left-2.5 w-3.5 h-3.5" style={{ color: "var(--pg-text-4)" }} />
-            <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-                   placeholder="Search people…" className="w-full pl-8 pr-3 py-1.5 text-[12px] rounded-lg outline-none"
-                   style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)", color: "var(--pg-text-1)" }} />
+          {/* Search + New Group toggle */}
+          <div className="flex gap-1.5 mb-2">
+            <div className="relative flex-1 flex items-center">
+              <Search className="absolute left-2.5 w-3.5 h-3.5" style={{ color: "var(--pg-text-4)" }} />
+              <input value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setGroupMode(false); }}
+                     placeholder="Search people to message…" className="w-full pl-8 pr-3 py-1.5 text-[12px] rounded-lg outline-none"
+                     style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)", color: "var(--pg-text-1)" }} />
+            </div>
+            <button onClick={() => { setGroupMode(v => !v); setSearchQuery(""); }}
+                    className="flex items-center gap-1 h-7 px-2 rounded-lg text-[11px] font-semibold shrink-0"
+                    style={{ background: groupMode ? "#5059C9" : "var(--pg-muted-bg)", color: groupMode ? "white" : "var(--pg-text-2)", border: "1px solid var(--pg-card-border)" }}>
+              <Plus className="w-3 h-3" /> Group
+            </button>
           </div>
-          {debouncedQuery.length >= 2 && (
+
+          {/* Group chat creation panel */}
+          {groupMode && (
+            <div className="space-y-2 p-2 rounded-xl mb-2" style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)" }}>
+              <p className="text-[11px] font-semibold" style={{ color: "var(--pg-text-3)" }}>NEW GROUP CHAT</p>
+              <input value={groupTopic} onChange={e => setGroupTopic(e.target.value)}
+                     placeholder="Group name (optional)"
+                     className="w-full px-3 py-1.5 text-[12px] rounded-lg outline-none"
+                     style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)", color: "var(--pg-text-1)" }} />
+              <PeoplePicker value={groupMembers} onChange={setGroupMembers} placeholder="Add members (search by name)" />
+              <button onClick={createGroupChat} disabled={creatingGroup}
+                      className="w-full h-7 rounded-lg text-[12px] font-semibold text-white flex items-center justify-center gap-1.5"
+                      style={{ background: "#5059C9", opacity: creatingGroup ? 0.6 : 1 }}>
+                {creatingGroup ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                Create Group Chat
+              </button>
+            </div>
+          )}
+
+          {/* 1:1 search results */}
+          {debouncedQuery.length >= 2 && !groupMode && (
             <div className="mt-1 rounded-lg overflow-hidden" style={{ border: "1px solid var(--pg-card-border)", background: "var(--pg-card)" }}>
               {searchResults.length === 0
                 ? <p className="px-3 py-2 text-[11px]" style={{ color: "var(--pg-text-3)" }}>No people found</p>
@@ -323,8 +377,8 @@ function TeamsPageInner() {
                  onMouseEnter={e => { if (selectedChat?.id !== chat.id) (e.currentTarget as HTMLElement).style.background = "var(--pg-hover)"; }}
                  onMouseLeave={e => { if (selectedChat?.id !== chat.id) (e.currentTarget as HTMLElement).style.background = ""; }}>
               <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-[13px] font-bold text-white"
-                   style={{ background: "#5059C9" }}>
-                {(chat.withName || chat.topic || "?").charAt(0).toUpperCase()}
+                   style={{ background: chat.chatType === "group" ? "#7b5ea7" : "#5059C9" }}>
+                {chat.chatType === "group" ? "G" : (chat.withName || chat.topic || "?").charAt(0).toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-1">
