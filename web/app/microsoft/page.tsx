@@ -418,17 +418,38 @@ function PresencePanel() {
 
 // ── Teams Chat panel ───────────────────────────────────────────────────────────
 
+type OrgUser = { id: string; displayName: string; mail: string };
+
 function TeamsPanel() {
   const { toast } = useToast();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [expandedChat, setExpandedChat] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
+  const [chatLimit, setChatLimit] = useState(20);
+  // Search state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [startingChat, setStartingChat] = useState<string | null>(null);
+
+  // Debounce search input
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(searchQuery), 350);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
 
   const { data: chatsData, isLoading } = useQuery({
-    queryKey: ["msgraph-teams"],
-    queryFn: () => api("/teams") as Promise<{ chats: TeamsMessage[] }>,
+    queryKey: ["msgraph-teams", chatLimit],
+    queryFn: () => api(`/teams?top=${chatLimit}`) as Promise<{ chats: TeamsMessage[] }>,
     staleTime: 60_000, refetchInterval: 120_000,
+  });
+
+  const { data: searchData, isLoading: searching } = useQuery({
+    queryKey: ["msgraph-user-search", debouncedQuery],
+    queryFn: () => api(`/users/search?q=${encodeURIComponent(debouncedQuery)}`) as Promise<{ users: OrgUser[] }>,
+    enabled: debouncedQuery.length >= 2,
+    staleTime: 30_000,
   });
 
   const { data: messagesData, isLoading: messagesLoading, refetch: refetchMessages } = useQuery({
@@ -454,87 +475,162 @@ function TeamsPanel() {
     } finally { setSending(false); }
   }
 
+  async function startChat(person: OrgUser) {
+    setStartingChat(person.id);
+    try {
+      const { chat_id } = await api("/teams/new-chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recipient_ms_id: person.id }),
+      }) as { chat_id: string };
+      setSearchQuery("");
+      setDebouncedQuery("");
+      setExpandedChat(chat_id);
+      queryClient.invalidateQueries({ queryKey: ["msgraph-teams"] });
+    } catch (e) {
+      toast({ title: "Could not start chat", description: (e as Error).message, variant: "destructive" });
+    } finally { setStartingChat(null); }
+  }
+
   const chats = chatsData?.chats ?? [];
+  const searchResults = searchData?.users ?? [];
   const messages = messagesData?.messages ?? [];
 
-  // Strip HTML tags from Teams message body
   function stripHtml(html: string) {
     return html.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim();
   }
 
-  return (
-    <Panel logo="/teams-logo.svg" title="Teams Chat" loading={isLoading}>
-      {chats.length === 0 && !isLoading
-        ? <EmptyState text="No recent chats" />
-        : chats.map(chat => (
-          <div key={chat.id}>
-            {/* Chat row */}
-            <div className="px-5 py-3 cursor-pointer transition-colors"
-                 style={{ borderBottom: "1px solid var(--pg-row-border)" }}
-                 onClick={() => setExpandedChat(expandedChat === chat.chatId ? null : chat.chatId)}
-                 onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--pg-hover)"}
-                 onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[12px] font-semibold truncate" style={{ color: "var(--pg-text-1)" }}>
-                  {chat.senderName || "Unknown"}
-                </span>
-                <span className="text-[10px] shrink-0 flex items-center gap-1" style={{ color: "var(--pg-text-3)" }}>
-                  {relativeTime(chat.sentAt)}
-                  {expandedChat === chat.chatId ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                </span>
-              </div>
-              {expandedChat !== chat.chatId && (
-                <p className="text-[11px] truncate mt-0.5" style={{ color: "var(--pg-text-2)" }}>
-                  {stripHtml(chat.body).slice(0, 80)}
-                </p>
-              )}
-            </div>
+  const newChatBtn = (
+    <button onClick={() => { setSearchQuery(searchQuery ? "" : " "); setTimeout(() => setSearchQuery(""), 0); }}
+            className="flex items-center gap-1 h-6 px-2 rounded-lg text-[11px] font-semibold"
+            style={{ background: "var(--pg-accent)", color: "white" }}>
+      <Plus className="w-3 h-3" /> New Chat
+    </button>
+  );
 
-            {/* Expanded chat thread */}
-            {expandedChat === chat.chatId && (
-              <div className="flex flex-col" style={{ background: "var(--pg-muted-bg)", borderBottom: "1px solid var(--pg-row-border)" }}>
-                {/* Messages */}
-                <div className="px-4 py-3 space-y-2 max-h-52 overflow-y-auto">
-                  {messagesLoading
-                    ? <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--pg-text-4)" }} /></div>
-                    : messages.length === 0
-                      ? <EmptyState text="No messages" />
-                      : messages.map(msg => {
-                          const isMe = msg.senderName === user?.DisplayName;
-                          return (
-                            <div key={msg.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}>
-                              <span className="text-[10px] mb-0.5" style={{ color: "var(--pg-text-3)" }}>
-                                {isMe ? "You" : msg.senderName}
-                              </span>
-                              <div className="max-w-[80%] px-3 py-2 rounded-xl text-[12px]"
-                                   style={{
-                                     background: isMe ? "#0078d4" : "var(--pg-card)",
-                                     color: isMe ? "white" : "var(--pg-text-1)",
-                                     border: isMe ? "none" : "1px solid var(--pg-card-border)",
-                                   }}>
-                                {stripHtml(msg.body)}
-                              </div>
-                            </div>
-                          );
-                        })
-                  }
-                </div>
-                {/* Message input */}
-                <div className="flex items-center gap-2 px-4 py-3" style={{ borderTop: "1px solid var(--pg-row-border)" }}>
-                  <input value={message} onChange={e => setMessage(e.target.value)}
-                         onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
-                         placeholder="Type a message…" className="flex-1 px-3 py-1.5 text-[12px] rounded-lg outline-none"
-                         style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)", color: "var(--pg-text-1)" }} />
-                  <button onClick={sendMessage} disabled={sending || !message.trim()}
-                          className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-                          style={{ background: "#5059C9", opacity: (sending || !message.trim()) ? 0.5 : 1 }}>
-                    {sending ? <Loader2 className="w-3.5 h-3.5 text-white animate-spin" /> : <Send className="w-3.5 h-3.5 text-white" />}
+  return (
+    <Panel logo="/teams-logo.svg" title="Teams Chat" loading={isLoading} action={newChatBtn}>
+      {/* Search bar */}
+      <div className="px-4 pt-3 pb-2" style={{ borderBottom: "1px solid var(--pg-row-border)" }}>
+        <div className="relative">
+          <input
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Search people to message…"
+            className="w-full px-3 py-1.5 text-[12px] rounded-lg outline-none pr-8"
+            style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)", color: "var(--pg-text-1)" }}
+          />
+          {searching && <Loader2 className="absolute right-2 top-2 w-3.5 h-3.5 animate-spin" style={{ color: "var(--pg-text-4)" }} />}
+        </div>
+
+        {/* Search results */}
+        {debouncedQuery.length >= 2 && (
+          <div className="mt-1 rounded-lg overflow-hidden" style={{ border: "1px solid var(--pg-card-border)", background: "var(--pg-card)" }}>
+            {searchResults.length === 0 && !searching
+              ? <p className="px-3 py-2 text-[11px]" style={{ color: "var(--pg-text-3)" }}>No people found</p>
+              : searchResults.map(person => (
+                <div key={person.id} className="flex items-center justify-between px-3 py-2 gap-2"
+                     style={{ borderBottom: "1px solid var(--pg-row-border)" }}>
+                  <div>
+                    <p className="text-[12px] font-medium" style={{ color: "var(--pg-text-1)" }}>{person.displayName}</p>
+                    <p className="text-[11px]" style={{ color: "var(--pg-text-3)" }}>{person.mail}</p>
+                  </div>
+                  <button
+                    onClick={() => startChat(person)}
+                    disabled={startingChat === person.id}
+                    className="flex items-center gap-1 h-6 px-2.5 rounded-lg text-[11px] font-semibold shrink-0"
+                    style={{ background: "#5059C9", color: "white", opacity: startingChat === person.id ? 0.6 : 1 }}>
+                    {startingChat === person.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+                    Message
                   </button>
                 </div>
-              </div>
-            )}
+              ))
+            }
           </div>
-        ))}
+        )}
+      </div>
+
+      {/* Chat list */}
+      {chats.length === 0 && !isLoading
+        ? <EmptyState text="No recent chats" />
+        : <>
+          {chats.map(chat => (
+            <div key={chat.id}>
+              <div className="px-5 py-3 cursor-pointer transition-colors"
+                   style={{ borderBottom: "1px solid var(--pg-row-border)" }}
+                   onClick={() => setExpandedChat(expandedChat === chat.chatId ? null : chat.chatId)}
+                   onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--pg-hover)"}
+                   onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[12px] font-semibold truncate" style={{ color: "var(--pg-text-1)" }}>
+                    {chat.senderName || "Unknown"}
+                  </span>
+                  <span className="text-[10px] shrink-0 flex items-center gap-1" style={{ color: "var(--pg-text-3)" }}>
+                    {relativeTime(chat.sentAt)}
+                    {expandedChat === chat.chatId ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                  </span>
+                </div>
+                {expandedChat !== chat.chatId && (
+                  <p className="text-[11px] truncate mt-0.5" style={{ color: "var(--pg-text-2)" }}>
+                    {stripHtml(chat.body).slice(0, 80)}
+                  </p>
+                )}
+              </div>
+
+              {expandedChat === chat.chatId && (
+                <div className="flex flex-col" style={{ background: "var(--pg-muted-bg)", borderBottom: "1px solid var(--pg-row-border)" }}>
+                  <div className="px-4 py-3 space-y-2 max-h-52 overflow-y-auto">
+                    {messagesLoading
+                      ? <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--pg-text-4)" }} /></div>
+                      : messages.length === 0
+                        ? <EmptyState text="No messages" />
+                        : messages.map(msg => {
+                            const isMe = msg.senderName === user?.DisplayName;
+                            return (
+                              <div key={msg.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}>
+                                <span className="text-[10px] mb-0.5" style={{ color: "var(--pg-text-3)" }}>
+                                  {isMe ? "You" : msg.senderName}
+                                </span>
+                                <div className="max-w-[80%] px-3 py-2 rounded-xl text-[12px]"
+                                     style={{
+                                       background: isMe ? "#5059C9" : "var(--pg-card)",
+                                       color: isMe ? "white" : "var(--pg-text-1)",
+                                       border: isMe ? "none" : "1px solid var(--pg-card-border)",
+                                     }}>
+                                  {stripHtml(msg.body)}
+                                </div>
+                              </div>
+                            );
+                          })
+                    }
+                  </div>
+                  <div className="flex items-center gap-2 px-4 py-3" style={{ borderTop: "1px solid var(--pg-row-border)" }}>
+                    <input value={message} onChange={e => setMessage(e.target.value)}
+                           onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
+                           placeholder="Type a message…" className="flex-1 px-3 py-1.5 text-[12px] rounded-lg outline-none"
+                           style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)", color: "var(--pg-text-1)" }} />
+                    <button onClick={sendMessage} disabled={sending || !message.trim()}
+                            className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                            style={{ background: "#5059C9", opacity: (sending || !message.trim()) ? 0.5 : 1 }}>
+                      {sending ? <Loader2 className="w-3.5 h-3.5 text-white animate-spin" /> : <Send className="w-3.5 h-3.5 text-white" />}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+          {/* Load more */}
+          {chats.length >= chatLimit && (
+            <button onClick={() => setChatLimit(l => l + 20)}
+                    className="w-full py-2.5 text-[12px] font-medium transition-colors"
+                    style={{ color: "var(--pg-text-3)", borderTop: "1px solid var(--pg-row-border)" }}
+                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--pg-hover)"}
+                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
+              Load more chats
+            </button>
+          )}
+        </>
+      }
     </Panel>
   );
 }

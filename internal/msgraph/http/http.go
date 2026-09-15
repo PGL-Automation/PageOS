@@ -43,6 +43,8 @@ func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	r.Get("/teams",                         h.teams)
 	r.Get("/teams/{chatId}/messages",       h.chatMessages)
 	r.Post("/teams/{chatId}/send",          h.sendTeamsMessage)
+	r.Get("/users/search",                  h.searchUsers)
+	r.Post("/teams/new-chat",               h.newChat)
 	// Presence — read only
 	r.Get("/presence",                      h.presence)
 	return r
@@ -177,9 +179,40 @@ func (h *Handler) calendar(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) teams(w http.ResponseWriter, r *http.Request) {
 	id, ok := callerID(r)
 	if !ok { httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated"); return }
-	chats, err := h.svc.GetTeamsChats(r.Context(), id)
+	limit := 20
+	if t := r.URL.Query().Get("top"); t != "" {
+		if n := 0; strings.Contains("0123456789", t[:1]) {
+			for _, c := range t { n = n*10 + int(c-'0') }
+			if n > 0 && n <= 50 { limit = n }
+		}
+	}
+	chats, err := h.svc.GetTeamsChats(r.Context(), id, limit)
 	if err != nil { notConnected(w); return }
 	httpx.JSON(w, http.StatusOK, map[string]any{"chats": chats})
+}
+
+func (h *Handler) searchUsers(w http.ResponseWriter, r *http.Request) {
+	id, ok := callerID(r)
+	if !ok { httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated"); return }
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	if q == "" {
+		httpx.JSON(w, http.StatusOK, map[string]any{"users": []any{}}); return
+	}
+	users, err := h.svc.SearchUsers(r.Context(), id, q)
+	if err != nil { httpx.Error(w, http.StatusInternalServerError, "internal", err.Error()); return }
+	httpx.JSON(w, http.StatusOK, map[string]any{"users": users})
+}
+
+func (h *Handler) newChat(w http.ResponseWriter, r *http.Request) {
+	id, ok := callerID(r)
+	if !ok { httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated"); return }
+	var in struct{ RecipientID string `json:"recipient_ms_id"` }
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.RecipientID == "" {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "recipient_ms_id is required"); return
+	}
+	chatID, err := h.svc.CreateOneOnOneChat(r.Context(), id, in.RecipientID)
+	if err != nil { httpx.Error(w, http.StatusInternalServerError, "internal", err.Error()); return }
+	httpx.JSON(w, http.StatusOK, map[string]string{"chat_id": chatID})
 }
 
 func (h *Handler) presence(w http.ResponseWriter, r *http.Request) {

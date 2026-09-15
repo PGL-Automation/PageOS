@@ -49,6 +49,7 @@ var oauthScopes = []string{
 	"Presence.Read",
 	"offline_access",
 	"User.Read",
+	"User.ReadBasic.All", // search for colleagues by name
 }
 
 // Service handles Microsoft OAuth and Graph API proxying.
@@ -648,14 +649,84 @@ type TeamsMessage struct {
 	SenderName string `json:"senderName"`
 }
 
-func (s *Service) GetTeamsChats(ctx context.Context, userID uuid.UUID) ([]TeamsMessage, error) {
-	// Fetch the 5 most recent chats.
+// OrgUser is a colleague returned by a people search.
+type OrgUser struct {
+	ID          string `json:"id"`
+	DisplayName string `json:"displayName"`
+	Mail        string `json:"mail"`
+}
+
+// SearchUsers searches the organisation directory for users matching query.
+func (s *Service) SearchUsers(ctx context.Context, userID uuid.UUID, query string) ([]OrgUser, error) {
+	token, err := s.accessToken(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	path := fmt.Sprintf("%s/users?$filter=startsWith(displayName,'%s')&$select=id,displayName,mail&$top=10",
+		graphBase, url.QueryEscape(query))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/json")
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var raw struct {
+		Value []OrgUser `json:"value"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return nil, err
+	}
+	return raw.Value, nil
+}
+
+// CreateOneOnOneChat creates (or retrieves existing) 1:1 Teams chat with a recipient.
+// Returns the chatID which can then be used to send messages.
+func (s *Service) CreateOneOnOneChat(ctx context.Context, userID uuid.UUID, recipientMSID string) (string, error) {
+	// Need the current user's Microsoft ID to add them as a member.
+	rec, err := s.store.Get(ctx, userID)
+	if err != nil || rec == nil {
+		return "", fmt.Errorf("microsoft account not connected")
+	}
+	payload := map[string]any{
+		"chatType": "oneOnOne",
+		"members": []map[string]any{
+			{
+				"@odata.type":      "#microsoft.graph.aadUserConversationMember",
+				"roles":            []string{"owner"},
+				"user@odata.bind":  fmt.Sprintf("https://graph.microsoft.com/v1.0/users/%s", rec.MicrosoftUserID),
+			},
+			{
+				"@odata.type":      "#microsoft.graph.aadUserConversationMember",
+				"roles":            []string{"owner"},
+				"user@odata.bind":  fmt.Sprintf("https://graph.microsoft.com/v1.0/users/%s", recipientMSID),
+			},
+		},
+	}
+	var result struct {
+		ID string `json:"id"`
+	}
+	if err := s.graphPOST(ctx, userID, "/chats", payload, &result); err != nil {
+		return "", err
+	}
+	return result.ID, nil
+}
+
+func (s *Service) GetTeamsChats(ctx context.Context, userID uuid.UUID, limit int) ([]TeamsMessage, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	// Fetch the most recent chats.
 	var chats struct {
 		Value []struct {
 			ID string `json:"id"`
 		} `json:"value"`
 	}
-	if err := s.graphGET(ctx, userID, "/me/chats?$top=5", &chats); err != nil {
+	if err := s.graphGET(ctx, userID, fmt.Sprintf("/me/chats?$top=%d", limit), &chats); err != nil {
 		return nil, err
 	}
 
