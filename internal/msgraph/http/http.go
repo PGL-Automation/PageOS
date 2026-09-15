@@ -48,6 +48,8 @@ func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	r.Delete("/teams/{chatId}/messages/{messageId}",               h.deleteMessage)
 	r.Post("/teams/{chatId}/messages/{messageId}/react",           h.reactMessage)
 	r.Post("/teams/{chatId}/messages/{messageId}/unreact",         h.unreactMessage)
+	r.Get("/teams/{chatId}/read-status",                           h.chatReadStatus)
+	r.Get("/presence/user/{msId}",                                 h.otherUserPresence)
 	r.Get("/users/search",                  h.searchUsers)
 	r.Post("/teams/new-chat",               h.newChat)
 	r.Get("/mail/thread/{conversationId}",  h.emailThread)
@@ -419,6 +421,22 @@ func (h *Handler) sendTeamsMessage(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error()); return
 	}
 	httpx.JSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (h *Handler) chatReadStatus(w http.ResponseWriter, r *http.Request) {
+	id, ok := callerID(r)
+	if !ok { httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated"); return }
+	status, err := h.svc.GetChatReadStatus(r.Context(), id, chi.URLParam(r, "chatId"))
+	if err != nil { httpx.Error(w, http.StatusInternalServerError, "internal", err.Error()); return }
+	httpx.JSON(w, http.StatusOK, map[string]any{"members": status})
+}
+
+func (h *Handler) otherUserPresence(w http.ResponseWriter, r *http.Request) {
+	id, ok := callerID(r)
+	if !ok { httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated"); return }
+	p, err := h.svc.GetOtherUserPresence(r.Context(), id, chi.URLParam(r, "msId"))
+	if err != nil { httpx.JSON(w, http.StatusOK, map[string]string{"availability": "Unknown", "activity": ""}); return }
+	httpx.JSON(w, http.StatusOK, p)
 }
 
 // ── SSO (login via Microsoft) ──────────────────────────────────────────────────

@@ -11,7 +11,7 @@ export type TeamsMessage   = {
 };
 export type ChatSummary = {
   id: string; chatType: string; topic: string;
-  withName: string; withEmail: string; lastMessage: TeamsMessage;
+  withName: string; withEmail: string; withMsId: string; lastMessage: TeamsMessage;
 };
 export type ChatPage    = { messages: TeamsMessage[]; nextLink: string };
 export type MailMessage = {

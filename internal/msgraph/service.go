@@ -47,7 +47,8 @@ var oauthScopes = []string{
 	"Chat.Read",
 	"Chat.ReadWrite",
 	"Presence.Read",
-	"Presence.ReadWrite", // set own availability
+	"Presence.ReadWrite",  // set own availability
+	"Presence.Read.All",   // read other users' presence
 	"offline_access",
 	"User.Read",
 	"User.ReadBasic.All", // search for colleagues by name
@@ -687,9 +688,17 @@ type ChatSummary struct {
 	ID          string       `json:"id"`
 	ChatType    string       `json:"chatType"` // "oneOnOne" | "group"
 	Topic       string       `json:"topic"`
-	WithName    string       `json:"withName"`  // other person's display name
-	WithEmail   string       `json:"withEmail"` // other person's email
+	WithName    string       `json:"withName"`   // other person's display name
+	WithEmail   string       `json:"withEmail"`  // other person's email
+	WithMSID    string       `json:"withMsId"`   // other person's Microsoft user ID (for presence)
 	LastMessage TeamsMessage `json:"lastMessage"`
+}
+
+// ChatReadStatus holds each member's last-read timestamp in a chat.
+type ChatReadStatus struct {
+	UserID           string `json:"userId"`
+	DisplayName      string `json:"displayName"`
+	LastReadDateTime string `json:"lastReadDateTime"` // ISO 8601, empty = never read
 }
 
 // ChatPage is a paginated page of chat messages.
@@ -882,9 +891,17 @@ func (s *Service) GetChatSummaries(ctx context.Context, userID uuid.UUID, limit 
 			}
 		}
 
+		// Find the other person's MS user ID (for presence lookups)
+		var withMSID string
+		for _, m := range chat.Members {
+			if m.UserID != myMSID {
+				withMSID = m.UserID
+				break
+			}
+		}
 		out = append(out, ChatSummary{
 			ID: chat.ID, ChatType: chat.ChatType, Topic: chat.Topic,
-			WithName: withName, WithEmail: withEmail, LastMessage: last,
+			WithName: withName, WithEmail: withEmail, WithMSID: withMSID, LastMessage: last,
 		})
 	}
 	return out, nil
@@ -1061,12 +1078,13 @@ func (s *Service) GetChatMessages(ctx context.Context, userID uuid.UUID, chatID 
 }
 
 // DeleteTeamsMessage soft-deletes a message (shows "This message was deleted" to participants).
+// Graph requires /chats/{id}/... not /me/chats/{id}/... for write operations.
 func (s *Service) DeleteTeamsMessage(ctx context.Context, userID uuid.UUID, chatID, messageID string) error {
 	token, err := s.accessToken(ctx, userID)
 	if err != nil {
 		return err
 	}
-	path := fmt.Sprintf("%s/me/chats/%s/messages/%s", graphBase, url.PathEscape(chatID), url.PathEscape(messageID))
+	path := fmt.Sprintf("%s/chats/%s/messages/%s", graphBase, url.PathEscape(chatID), url.PathEscape(messageID))
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, path, nil)
 	if err != nil {
 		return err
@@ -1089,16 +1107,52 @@ func (s *Service) DeleteTeamsMessage(ctx context.Context, userID uuid.UUID, chat
 	return nil
 }
 
-// ReactToMessage adds an emoji reaction to a Teams message.
+// ReactToMessage adds an emoji reaction. Uses /chats/ (not /me/chats/) — required by Graph for write ops.
 func (s *Service) ReactToMessage(ctx context.Context, userID uuid.UUID, chatID, messageID, reactionType string) error {
-	path := fmt.Sprintf("/me/chats/%s/messages/%s/setReaction", url.PathEscape(chatID), url.PathEscape(messageID))
+	path := fmt.Sprintf("/chats/%s/messages/%s/setReaction", url.PathEscape(chatID), url.PathEscape(messageID))
 	return s.graphPOST(ctx, userID, path, map[string]string{"reactionType": reactionType}, nil)
 }
 
-// UnreactToMessage removes a reaction from a Teams message.
+// UnreactToMessage removes a reaction. Uses /chats/ (not /me/chats/).
 func (s *Service) UnreactToMessage(ctx context.Context, userID uuid.UUID, chatID, messageID, reactionType string) error {
-	path := fmt.Sprintf("/me/chats/%s/messages/%s/unsetReaction", url.PathEscape(chatID), url.PathEscape(messageID))
+	path := fmt.Sprintf("/chats/%s/messages/%s/unsetReaction", url.PathEscape(chatID), url.PathEscape(messageID))
 	return s.graphPOST(ctx, userID, path, map[string]string{"reactionType": reactionType}, nil)
+}
+
+// GetChatReadStatus returns each member's last-read datetime for the chat.
+// This lets the frontend show an eye icon on messages the other person has read.
+func (s *Service) GetChatReadStatus(ctx context.Context, userID uuid.UUID, chatID string) ([]ChatReadStatus, error) {
+	var raw struct {
+		Value []struct {
+			UserID               string `json:"userId"`
+			DisplayName          string `json:"displayName"`
+			LastMessageReadDateTime string `json:"lastMessageReadDateTime"`
+		} `json:"value"`
+	}
+	path := fmt.Sprintf("/chats/%s/members?$select=userId,displayName,lastMessageReadDateTime", url.PathEscape(chatID))
+	if err := s.graphGET(ctx, userID, path, &raw); err != nil {
+		return nil, err
+	}
+	out := make([]ChatReadStatus, 0, len(raw.Value))
+	for _, m := range raw.Value {
+		out = append(out, ChatReadStatus{
+			UserID:           m.UserID,
+			DisplayName:      m.DisplayName,
+			LastReadDateTime: m.LastMessageReadDateTime,
+		})
+	}
+	return out, nil
+}
+
+// GetOtherUserPresence fetches the presence of another user by their Microsoft user ID.
+// Requires Presence.Read.All scope (admin consent needed).
+func (s *Service) GetOtherUserPresence(ctx context.Context, userID uuid.UUID, targetMSID string) (*Presence, error) {
+	var p Presence
+	path := fmt.Sprintf("/users/%s/presence", url.PathEscape(targetMSID))
+	if err := s.graphGET(ctx, userID, path, &p); err != nil {
+		return nil, err
+	}
+	return &p, nil
 }
 
 // SendTeamsMessage sends a message to an existing chat.

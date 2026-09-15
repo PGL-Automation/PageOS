@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Send, Plus, Search, ArrowUp, ExternalLink, ChevronDown } from "lucide-react";
+import { Loader2, Send, Plus, Search, ArrowUp, ExternalLink, ChevronDown, Phone, Video, Eye } from "lucide-react";
 import Image from "next/image";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
@@ -13,6 +13,20 @@ import {
 
 // Encode chatId and messageId — Teams IDs contain ':', '@', spaces
 function encodeId(id: string) { return encodeURIComponent(id); }
+
+// Play a short notification beep using Web Audio API (no file needed)
+function playBeep() {
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = "sine"; osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.25, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.35);
+  } catch {}
+}
 
 function TeamsPageInner() {
   const { toast } = useToast();
@@ -31,7 +45,8 @@ function TeamsPageInner() {
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [startingChat, setStartingChat] = useState<string | null>(null);
   const [settingPresence, setSettingPresence] = useState(false);
-  const prevChatIdsRef = useRef<Set<string>>(new Set());
+  // Track last message ID per chat to detect new incoming messages
+  const prevLastMsgRef = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(searchQuery), 350);
@@ -71,6 +86,24 @@ function TeamsPageInner() {
     staleTime: 30_000,
   });
 
+  // Other user's presence (shown in chat thread header)
+  const { data: otherPresence } = useQuery({
+    queryKey: ["msgraph-other-presence", selectedChat?.withMsId],
+    queryFn: () => msApi(`/presence/user/${encodeId(selectedChat!.withMsId)}`) as Promise<Presence>,
+    enabled: !!selectedChat?.withMsId,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+
+  // Read receipts — fetch when thread is open to show eye icon on read messages
+  const { data: readStatusData } = useQuery({
+    queryKey: ["msgraph-read-status", selectedChat?.id],
+    queryFn: () => msApi(`/teams/${encodeId(selectedChat!.id)}/read-status`) as Promise<{ members: Array<{ userId: string; displayName: string; lastReadDateTime: string }> }>,
+    enabled: !!selectedChat,
+    staleTime: 10_000,
+    refetchInterval: 15_000,
+  });
+
   // Browser notification permission
   useEffect(() => {
     if (typeof Notification !== "undefined" && Notification.permission === "default") {
@@ -78,22 +111,33 @@ function TeamsPageInner() {
     }
   }, []);
 
-  // Notify when new chats appear
+  // Detect NEW messages in any chat (not just new chats) and fire browser notification + beep
   useEffect(() => {
     const chats = chatsData?.chats ?? [];
-    const ids = new Set(chats.map(c => c.id));
-    if (prevChatIdsRef.current.size > 0) {
-      chats.filter(c => !prevChatIdsRef.current.has(c.id)).forEach(c => {
-        if (Notification.permission === "granted") {
-          new Notification(`New message from ${c.lastMessage?.senderName || c.withName}`, {
-            body: stripHtml(c.lastMessage?.body || "").slice(0, 80),
-            icon: "/teams-logo.svg",
-          });
+    const prev = prevLastMsgRef.current;
+    if (prev.size > 0) {
+      chats.forEach(c => {
+        const lastMsg = c.lastMessage;
+        if (!lastMsg?.id) return;
+        const prevId = prev.get(c.id);
+        // New message if ID changed AND sender is not the current user
+        if (prevId && prevId !== lastMsg.id && lastMsg.senderName !== user?.DisplayName) {
+          const sender = lastMsg.senderName || c.withName || "Someone";
+          const body = stripHtml(lastMsg.body || "").slice(0, 80) || "Sent you a message";
+          playBeep();
+          if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+            const n = new Notification(`New message from ${sender}`, { body, icon: "/teams-logo.svg" });
+            // Click notification → focus window
+            n.onclick = () => { window.focus(); setSelectedChat(c); };
+          }
         }
       });
     }
-    prevChatIdsRef.current = ids;
-  }, [chatsData]);
+    // Update the map with current last message IDs
+    const updated = new Map<string, string>();
+    chats.forEach(c => { if (c.lastMessage?.id) updated.set(c.id, c.lastMessage.id); });
+    prevLastMsgRef.current = updated;
+  }, [chatsData, user?.DisplayName]);
 
   useEffect(() => {
     if (pageData) setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
@@ -147,7 +191,7 @@ function TeamsPageInner() {
       setSearchQuery(""); setDebouncedQuery("");
       // Use the returned chat_id directly — encoding happens in API calls, not in state
       setSelectedChat({ id: chat_id, chatType: "oneOnOne", topic: "",
-        withName: person.displayName, withEmail: person.mail,
+        withName: person.displayName, withEmail: person.mail, withMsId: person.id,
         lastMessage: { id: "", chatId: chat_id, body: "", sentAt: "", senderName: "", senderMsId: "" } });
       queryClient.invalidateQueries({ queryKey: ["msgraph-teams-full"] });
     } catch (e) { toast({ title: "Could not start chat", description: (e as Error).message, variant: "destructive" }); }
@@ -293,14 +337,45 @@ function TeamsPageInner() {
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Thread header */}
           <div className="flex items-center gap-3 px-5 py-3 shrink-0" style={{ borderBottom: "1px solid var(--pg-row-border)", background: "var(--pg-card)" }}>
-            <div className="w-8 h-8 rounded-full flex items-center justify-center text-[13px] font-bold text-white shrink-0"
-                 style={{ background: "#5059C9" }}>
-              {(selectedChat.withName || "?").charAt(0).toUpperCase()}
+            {/* Avatar with presence dot */}
+            <div className="relative shrink-0">
+              <div className="w-9 h-9 rounded-full flex items-center justify-center text-[13px] font-bold text-white"
+                   style={{ background: "#5059C9" }}>
+                {(selectedChat.withName || "?").charAt(0).toUpperCase()}
+              </div>
+              {otherPresence && (
+                <div className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2"
+                     style={{ background: presenceColor(otherPresence.availability), borderColor: "var(--pg-card)" }} />
+              )}
             </div>
-            <div>
-              <p className="text-[14px] font-bold" style={{ color: "var(--pg-text-1)" }}>{selectedChat.withName || selectedChat.topic}</p>
-              {selectedChat.withEmail && <p className="text-[11px]" style={{ color: "var(--pg-text-3)" }}>{selectedChat.withEmail}</p>}
+            <div className="flex-1 min-w-0">
+              <p className="text-[14px] font-bold truncate" style={{ color: "var(--pg-text-1)" }}>{selectedChat.withName || selectedChat.topic}</p>
+              <p className="text-[11px]" style={{ color: presenceColor(otherPresence?.availability ?? "Unknown") }}>
+                {otherPresence?.availability ?? (selectedChat.withEmail || "")}
+                {otherPresence?.activity && otherPresence.activity !== otherPresence.availability && ` · ${otherPresence.activity}`}
+              </p>
             </div>
+            {/* Voice + Video call buttons */}
+            {selectedChat.withEmail && (
+              <div className="flex items-center gap-1.5">
+                <a href={`https://teams.microsoft.com/l/call/0/0?users=${encodeURIComponent(selectedChat.withEmail)}&withVideo=false`}
+                   target="_blank" rel="noreferrer" title="Voice call"
+                   className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+                   style={{ color: "var(--pg-text-2)" }}
+                   onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--pg-hover)"}
+                   onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
+                  <Phone className="w-4 h-4" />
+                </a>
+                <a href={`https://teams.microsoft.com/l/call/0/0?users=${encodeURIComponent(selectedChat.withEmail)}&withVideo=true`}
+                   target="_blank" rel="noreferrer" title="Video call"
+                   className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+                   style={{ color: "var(--pg-text-2)" }}
+                   onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--pg-hover)"}
+                   onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
+                  <Video className="w-4 h-4" />
+                </a>
+              </div>
+            )}
           </div>
 
           {/* Messages */}
@@ -319,9 +394,15 @@ function TeamsPageInner() {
                 ? <div className="flex flex-col items-center justify-center h-full gap-2 py-10">
                     <p className="text-[13px]" style={{ color: "var(--pg-text-3)" }}>No messages yet. Say hello!</p>
                   </div>
-                : currentMessages.map(msg => {
+                : currentMessages.map((msg, msgIdx) => {
                     const isMe = msg.senderName === user?.DisplayName;
                     const text = stripHtml(msg.body);
+                    // Read receipt: show eye on the last sent message if other user has read past it
+                    const isLastSent = isMe && msgIdx === currentMessages.map((m, i) => m.senderName === user?.DisplayName ? i : -1).filter(i => i >= 0).pop();
+                    const otherMemberRead = readStatusData?.members?.find(m => m.userId === selectedChat?.withMsId);
+                    const isRead = isLastSent && otherMemberRead?.lastReadDateTime
+                      ? new Date(otherMemberRead.lastReadDateTime) >= new Date(msg.sentAt)
+                      : false;
                     const isDeleted = text === "" && (msg.attachments ?? []).length === 0;
                     const reactionMap: Record<string, { count: number; iMine: boolean }> = {};
                     (msg.reactions ?? []).forEach(r => {
@@ -391,9 +472,16 @@ function TeamsPageInner() {
                             ))}
                           </div>
                         )}
-                        <span className="text-[10px] mt-1 mx-1" style={{ color: "var(--pg-text-4)" }}>
-                          {relativeTime(msg.sentAt)}
-                        </span>
+                        <div className={`flex items-center gap-1 mt-1 mx-1 ${isMe ? "justify-end" : "justify-start"}`}>
+                          <span className="text-[10px]" style={{ color: "var(--pg-text-4)" }}>
+                            {relativeTime(msg.sentAt)}
+                          </span>
+                          {isRead && (
+                            <span title="Seen">
+                              <Eye className="w-3 h-3" style={{ color: "#5059C9" }} />
+                            </span>
+                          )}
+                        </div>
                       </div>
                     );
                   })
