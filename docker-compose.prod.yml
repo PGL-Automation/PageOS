@@ -59,11 +59,12 @@ services:
       PAGEOS_SMTP_USER: ${SMTP_USER:-}
       PAGEOS_SMTP_PASS: ${SMTP_PASS:-}
       PAGEOS_SMTP_FROM: ${SMTP_FROM:-noreply@pageos.org}
-      PAGEOS_MSGRAPH_CLIENT_ID:     ${PAGEOS_MSGRAPH_CLIENT_ID:-}
-      PAGEOS_MSGRAPH_CLIENT_SECRET: ${PAGEOS_MSGRAPH_CLIENT_SECRET:-}
-      PAGEOS_MSGRAPH_TENANT_ID:     ${PAGEOS_MSGRAPH_TENANT_ID:-}
-      PAGEOS_MSGRAPH_REDIRECT_URL:  ${PAGEOS_MSGRAPH_REDIRECT_URL:-https://pageos.org/api/v1/msgraph/callback}
-      PAGEOS_MSGRAPH_TOKEN_KEY:     ${PAGEOS_MSGRAPH_TOKEN_KEY:-}
+      PAGEOS_MSGRAPH_CLIENT_ID:       ${PAGEOS_MSGRAPH_CLIENT_ID:-}
+      PAGEOS_MSGRAPH_CLIENT_SECRET:   ${PAGEOS_MSGRAPH_CLIENT_SECRET:-}
+      PAGEOS_MSGRAPH_TENANT_ID:       ${PAGEOS_MSGRAPH_TENANT_ID:-}
+      PAGEOS_MSGRAPH_REDIRECT_URL:    ${PAGEOS_MSGRAPH_REDIRECT_URL:-https://pageos.org/api/v1/msgraph/callback}
+      PAGEOS_MSGRAPH_SSO_REDIRECT_URL: ${PAGEOS_MSGRAPH_SSO_REDIRECT_URL:-https://pageos.org/api/v1/auth/microsoft/callback}
+      PAGEOS_MSGRAPH_TOKEN_KEY:       ${PAGEOS_MSGRAPH_TOKEN_KEY:-}
     networks:
       - default     # reach postgres + minio
       - proxy_net   # reachable from Caddy as "pageos-api-1:8080"
