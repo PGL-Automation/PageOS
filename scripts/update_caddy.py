@@ -24,12 +24,7 @@ pageos.org {
 }
 
 app.pageos.org {
-\thandle /api/* {
-\t\treverse_proxy pageos-api-1:8080
-\t}
-\thandle {
-\t\treverse_proxy pageos-web-1:3000
-\t}
+\tredir https://pageos.org{uri} permanent
 }
 """
 

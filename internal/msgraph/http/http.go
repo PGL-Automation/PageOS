@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -492,7 +491,6 @@ func (h *Handler) SSOCallback(identitySvc *identity.Service) http.HandlerFunc {
 			Name:     "pageos_session",
 			Value:    token,
 			Path:     "/",
-			Domain:   os.Getenv("PAGEOS_COOKIE_DOMAIN"),
 			Expires:  expiresAt,
 			HttpOnly: true,
 			Secure:   cookieSecure,
