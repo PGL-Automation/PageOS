@@ -72,6 +72,8 @@ function stripHtml(html: string) {
   return html.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").replace(/&#\d+;/g, "").trim();
 }
 
+function encodeId(id: string) { return encodeURIComponent(id); }
+
 async function api(path: string, opts?: RequestInit) {
   const res = await fetch(`${BASE}/api/v1/msgraph${path}`, { credentials: "include", ...opts });
   if (!res.ok) {
@@ -538,7 +540,7 @@ function TeamsPanel() {
   const { data: pageData, isLoading: pageLoading } = useQuery({
     queryKey: ["msgraph-chat-page", selectedChat?.id],
     queryFn: async () => {
-      const page = await api(`/teams/${selectedChat!.id}/page?top=50`) as ChatPage;
+      const page = await api(`/teams/${encodeId(selectedChat!.id)}/page?top=50`) as ChatPage;
       setOlderNextLink(page.nextLink || null);
       setOlderMessages([]);
       return page;
@@ -565,7 +567,7 @@ function TeamsPanel() {
     if (!selectedChat || !olderNextLink) return;
     setLoadingOlder(true);
     try {
-      const page = await api(`/teams/${selectedChat.id}/page?nextLink=${encodeURIComponent(olderNextLink)}`) as ChatPage;
+      const page = await api(`/teams/${encodeId(selectedChat.id)}/page?nextLink=${encodeURIComponent(olderNextLink)}`) as ChatPage;
       setOlderMessages(prev => [...page.messages, ...prev]);
       setOlderNextLink(page.nextLink || null);
     } catch (e) {
@@ -577,7 +579,7 @@ function TeamsPanel() {
     if (!selectedChat || !message.trim()) return;
     setSending(true);
     try {
-      await api(`/teams/${selectedChat.id}/send`, {
+      await api(`/teams/${encodeId(selectedChat.id)}/send`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: message }),
       });
@@ -698,7 +700,7 @@ function TeamsPanel() {
                             {/* Reaction picker */}
                             {["like","heart","laugh","surprised","sad","angry"].map(rt => (
                               <button key={rt} title={rt}
-                                      onClick={() => api(`/teams/${msg.chatId}/messages/${msg.id}/${reactionMap[rt]?.iMine ? "unreact" : "react"}`, {
+                                      onClick={() => api(`/teams/${encodeId(msg.chatId)}/messages/${encodeId(msg.id)}/${reactionMap[rt]?.iMine ? "unreact" : "react"}`, {
                                         method: "POST", headers: { "Content-Type": "application/json" },
                                         body: JSON.stringify({ reactionType: rt }),
                                       }).then(() => queryClient.invalidateQueries({ queryKey: ["msgraph-chat-page", selectedChat?.id] }))
@@ -711,7 +713,7 @@ function TeamsPanel() {
                             {/* Delete (own messages only) */}
                             {isMe && (
                               <button title="Delete message"
-                                      onClick={() => api(`/teams/${msg.chatId}/messages/${msg.id}`, { method: "DELETE" })
+                                      onClick={() => api(`/teams/${encodeId(msg.chatId)}/messages/${encodeId(msg.id)}`, { method: "DELETE" })
                                         .then(() => queryClient.invalidateQueries({ queryKey: ["msgraph-chat-page", selectedChat?.id] }))
                                         .catch(() => {})}
                                       className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] transition-transform hover:scale-110"
@@ -728,7 +730,7 @@ function TeamsPanel() {
                         <div className="flex items-center gap-1 mt-0.5 mx-1 flex-wrap">
                           {Object.entries(reactionMap).map(([rt, { count, iMine }]) => (
                             <button key={rt}
-                                    onClick={() => api(`/teams/${msg.chatId}/messages/${msg.id}/${iMine ? "unreact" : "react"}`, {
+                                    onClick={() => api(`/teams/${encodeId(msg.chatId)}/messages/${encodeId(msg.id)}/${iMine ? "unreact" : "react"}`, {
                                       method: "POST", headers: { "Content-Type": "application/json" },
                                       body: JSON.stringify({ reactionType: rt }),
                                     }).then(() => queryClient.invalidateQueries({ queryKey: ["msgraph-chat-page", selectedChat?.id] }))

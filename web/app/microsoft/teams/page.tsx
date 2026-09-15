@@ -2,14 +2,17 @@
 
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Send, Plus, Search, ArrowUp, ExternalLink } from "lucide-react";
+import { Loader2, Send, Plus, Search, ArrowUp, ExternalLink, ChevronDown } from "lucide-react";
 import Image from "next/image";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import {
-  msApi, relativeTime, stripHtml,
-  ChatSummary, ChatPage, TeamsMessage, OrgUser, REACTION_EMOJIS,
+  msApi, relativeTime, stripHtml, presenceColor,
+  ChatSummary, ChatPage, TeamsMessage, Presence, OrgUser, REACTION_EMOJIS,
 } from "../components";
+
+// Encode chatId and messageId — Teams IDs contain ':', '@', spaces
+function encodeId(id: string) { return encodeURIComponent(id); }
 
 function TeamsPageInner() {
   const { toast } = useToast();
@@ -27,28 +30,38 @@ function TeamsPageInner() {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [startingChat, setStartingChat] = useState<string | null>(null);
+  const [settingPresence, setSettingPresence] = useState(false);
+  const prevChatIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(searchQuery), 350);
     return () => clearTimeout(t);
   }, [searchQuery]);
 
+  const { data: presenceData, refetch: refetchPresence } = useQuery({
+    queryKey: ["msgraph-presence-full"],
+    queryFn: () => msApi("/presence") as Promise<Presence>,
+    staleTime: 30_000, refetchInterval: 60_000,
+  });
+
   const { data: chatsData, isLoading } = useQuery({
     queryKey: ["msgraph-teams-full", chatLimit],
     queryFn: () => msApi(`/teams/chats?top=${chatLimit}`) as Promise<{ chats: ChatSummary[] }>,
-    staleTime: 60_000, refetchInterval: 120_000,
+    staleTime: 60_000, refetchInterval: 60_000,
   });
 
   const { data: pageData, isLoading: pageLoading } = useQuery({
     queryKey: ["msgraph-chat-page-full", selectedChat?.id],
     queryFn: async () => {
-      const p = await msApi(`/teams/${selectedChat!.id}/page?top=50`) as ChatPage;
+      // Teams chat IDs contain ':' and '@' — must encode for URL routing
+      const p = await msApi(`/teams/${encodeId(selectedChat!.id)}/page?top=50`) as ChatPage;
       setOlderNextLink(p.nextLink || null);
       setOlderMessages([]);
       return p;
     },
     enabled: !!selectedChat,
     staleTime: 30_000,
+    refetchInterval: 10_000, // poll for new messages
   });
 
   const { data: searchData } = useQuery({
@@ -58,6 +71,30 @@ function TeamsPageInner() {
     staleTime: 30_000,
   });
 
+  // Browser notification permission
+  useEffect(() => {
+    if (typeof Notification !== "undefined" && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  }, []);
+
+  // Notify when new chats appear
+  useEffect(() => {
+    const chats = chatsData?.chats ?? [];
+    const ids = new Set(chats.map(c => c.id));
+    if (prevChatIdsRef.current.size > 0) {
+      chats.filter(c => !prevChatIdsRef.current.has(c.id)).forEach(c => {
+        if (Notification.permission === "granted") {
+          new Notification(`New message from ${c.lastMessage?.senderName || c.withName}`, {
+            body: stripHtml(c.lastMessage?.body || "").slice(0, 80),
+            icon: "/teams-logo.svg",
+          });
+        }
+      });
+    }
+    prevChatIdsRef.current = ids;
+  }, [chatsData]);
+
   useEffect(() => {
     if (pageData) setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
   }, [pageData]);
@@ -66,7 +103,7 @@ function TeamsPageInner() {
     if (!selectedChat || !olderNextLink) return;
     setLoadingOlder(true);
     try {
-      const p = await msApi(`/teams/${selectedChat.id}/page?nextLink=${encodeURIComponent(olderNextLink)}`) as ChatPage;
+      const p = await msApi(`/teams/${encodeId(selectedChat.id)}/page?nextLink=${encodeURIComponent(olderNextLink)}`) as ChatPage;
       setOlderMessages(prev => [...p.messages, ...prev]);
       setOlderNextLink(p.nextLink || null);
     } catch { toast({ title: "Could not load older messages", variant: "destructive" }); }
@@ -77,7 +114,7 @@ function TeamsPageInner() {
     if (!selectedChat || !message.trim()) return;
     setSending(true);
     try {
-      await msApi(`/teams/${selectedChat.id}/send`, {
+      await msApi(`/teams/${encodeId(selectedChat.id)}/send`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: message }),
       });
@@ -85,6 +122,19 @@ function TeamsPageInner() {
       queryClient.invalidateQueries({ queryKey: ["msgraph-chat-page-full", selectedChat.id] });
     } catch (e) { toast({ title: "Failed to send", description: (e as Error).message, variant: "destructive" }); }
     finally { setSending(false); }
+  }
+
+  async function updatePresence(availability: string) {
+    setSettingPresence(true);
+    try {
+      await msApi("/presence", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ availability, expirationDuration: "PT4H" }),
+      });
+      refetchPresence();
+      toast({ title: "Availability updated", description: availability });
+    } catch (e) { toast({ title: "Failed to update availability", description: (e as Error).message, variant: "destructive" }); }
+    finally { setSettingPresence(false); }
   }
 
   async function startChat(person: OrgUser) {
@@ -95,6 +145,7 @@ function TeamsPageInner() {
         body: JSON.stringify({ recipient_ms_id: person.id }),
       }) as { chat_id: string };
       setSearchQuery(""); setDebouncedQuery("");
+      // Use the returned chat_id directly — encoding happens in API calls, not in state
       setSelectedChat({ id: chat_id, chatType: "oneOnOne", topic: "",
         withName: person.displayName, withEmail: person.mail,
         lastMessage: { id: "", chatId: chat_id, body: "", sentAt: "", senderName: "", senderMsId: "" } });
@@ -106,17 +157,17 @@ function TeamsPageInner() {
   async function toggleReact(msg: TeamsMessage, rt: string) {
     const iMine = (msg.reactions ?? []).some(r => r.reactionType === rt && r.senderName === user?.DisplayName);
     try {
-      await msApi(`/teams/${msg.chatId}/messages/${msg.id}/${iMine ? "unreact" : "react"}`, {
+      await msApi(`/teams/${encodeId(msg.chatId)}/messages/${encodeId(msg.id)}/${iMine ? "unreact" : "react"}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reactionType: rt }),
       });
       queryClient.invalidateQueries({ queryKey: ["msgraph-chat-page-full", selectedChat?.id] });
-    } catch {}
+    } catch (e) { toast({ title: "Reaction failed", description: (e as Error).message, variant: "destructive" }); }
   }
 
   async function deleteMsg(msg: TeamsMessage) {
     try {
-      await msApi(`/teams/${msg.chatId}/messages/${msg.id}`, { method: "DELETE" });
+      await msApi(`/teams/${encodeId(msg.chatId)}/messages/${encodeId(msg.id)}`, { method: "DELETE" });
       queryClient.invalidateQueries({ queryKey: ["msgraph-chat-page-full", selectedChat?.id] });
     } catch { toast({ title: "Could not delete message", variant: "destructive" }); }
   }
@@ -134,6 +185,39 @@ function TeamsPageInner() {
             <Image src="/teams-logo.svg" alt="Teams" width={20} height={20} />
             <span className="text-[14px] font-bold flex-1" style={{ color: "var(--pg-text-1)" }}>Teams Chat</span>
             {isLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: "var(--pg-text-4)" }} />}
+            {/* My presence indicator + setter */}
+            {presenceData && (
+              <div className="relative group/presence">
+                <button className="flex items-center gap-1.5 h-6 px-2 rounded-lg text-[11px] font-medium"
+                        style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)" }}>
+                  <div className="w-2 h-2 rounded-full" style={{ background: presenceColor(presenceData.availability) }} />
+                  <span style={{ color: "var(--pg-text-2)" }}>{presenceData.availability}</span>
+                  <ChevronDown className="w-3 h-3" style={{ color: "var(--pg-text-4)" }} />
+                </button>
+                {/* Dropdown */}
+                <div className="absolute right-0 top-8 z-50 hidden group-hover/presence:block rounded-xl overflow-hidden shadow-lg"
+                     style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)", minWidth: 160 }}>
+                  {[
+                    { a: "Available", label: "Available" },
+                    { a: "Busy", label: "Busy" },
+                    { a: "DoNotDisturb", label: "Do Not Disturb" },
+                    { a: "BeRightBack", label: "Be Right Back" },
+                    { a: "Away", label: "Away" },
+                    { a: "Offline", label: "Appear Offline" },
+                  ].map(({ a, label }) => (
+                    <button key={a} onClick={() => updatePresence(a)} disabled={settingPresence}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-left transition-colors"
+                            style={{ color: "var(--pg-text-1)" }}
+                            onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--pg-hover)"}
+                            onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
+                      <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: presenceColor(a) }} />
+                      {label}
+                      {presenceData.availability === a && <span className="ml-auto text-[10px]" style={{ color: "var(--pg-text-3)" }}>✓</span>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
           <div className="relative flex items-center">
             <Search className="absolute left-2.5 w-3.5 h-3.5" style={{ color: "var(--pg-text-4)" }} />

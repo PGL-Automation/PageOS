@@ -54,6 +54,7 @@ func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	r.Get("/unread-count",                  h.unreadCount)
 	// Presence — read only
 	r.Get("/presence",                      h.presence)
+	r.Post("/presence",                     h.setPresence)
 	return r
 }
 
@@ -228,6 +229,22 @@ func (h *Handler) presence(w http.ResponseWriter, r *http.Request) {
 	p, err := h.svc.GetPresence(r.Context(), id)
 	if err != nil { notConnected(w); return }
 	httpx.JSON(w, http.StatusOK, p)
+}
+
+func (h *Handler) setPresence(w http.ResponseWriter, r *http.Request) {
+	id, ok := callerID(r)
+	if !ok { httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated"); return }
+	var in struct {
+		Availability       string `json:"availability"`
+		ExpirationDuration string `json:"expirationDuration"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.Availability == "" {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "availability is required"); return
+	}
+	if err := h.svc.SetPresence(r.Context(), id, in.Availability, in.ExpirationDuration); err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error()); return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 // ── Mail write handlers ────────────────────────────────────────────────────────

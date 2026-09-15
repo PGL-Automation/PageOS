@@ -1,6 +1,6 @@
-import { AppLayout } from "@/components/layout/app-layout";
 import { ReactNode } from "react";
 
+// Parent /microsoft/layout.tsx already wraps in AppLayout — no double-wrap here.
 export default function Layout({ children }: { children: ReactNode }) {
-  return <AppLayout>{children}</AppLayout>;
+  return <>{children}</>;
 }

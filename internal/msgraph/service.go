@@ -47,6 +47,7 @@ var oauthScopes = []string{
 	"Chat.Read",
 	"Chat.ReadWrite",
 	"Presence.Read",
+	"Presence.ReadWrite", // set own availability
 	"offline_access",
 	"User.Read",
 	"User.ReadBasic.All", // search for colleagues by name
@@ -622,6 +623,20 @@ func (s *Service) CreateCalendarEvent(ctx context.Context, userID uuid.UUID, req
 		IsOnline: raw.IsOnline, JoinURL: raw.JoinURL,
 	}
 	return ev, nil
+}
+
+// SetPresence sets the signed-in user's preferred Teams presence/availability.
+// availability: Available | Busy | DoNotDisturb | BeRightBack | Away | Offline
+// expirationDuration: ISO 8601 duration e.g. "PT1H" (1 hour), "" = session.
+func (s *Service) SetPresence(ctx context.Context, userID uuid.UUID, availability, expirationDuration string) error {
+	body := map[string]string{
+		"availability": availability,
+		"activity":     availability,
+	}
+	if expirationDuration != "" {
+		body["expirationDuration"] = expirationDuration
+	}
+	return s.graphPOST(ctx, userID, "/me/presence/setUserPreferredPresence", body, nil)
 }
 
 // ── Teams Presence ────────────────────────────────────────────────────────────
