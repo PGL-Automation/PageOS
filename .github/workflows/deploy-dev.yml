@@ -1,4 +1,4 @@
-name: Deploy to Dev
+name: Deploy to Dev (app.pageos.org)
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
 
 concurrency:
   group: deploy-dev
-  cancel-in-progress: true   # cancel in-progress dev deploys when a new one arrives
+  cancel-in-progress: true
 
 jobs:
   deploy:
@@ -16,59 +16,87 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Verify dev secrets are set
+      - name: Verify secrets are set
         run: |
           missing=""
-          [ -z "${{ secrets.DEV_VPS_HOST }}" ]        && missing="$missing DEV_VPS_HOST"
-          [ -z "${{ secrets.DEV_VPS_SSH_KEY }}" ]      && missing="$missing DEV_VPS_SSH_KEY"
-          [ -z "${{ secrets.DEV_VPS_KNOWN_HOSTS }}" ]  && missing="$missing DEV_VPS_KNOWN_HOSTS"
+          [ -z "${{ secrets.VPS_HOST }}" ]       && missing="$missing VPS_HOST"
+          [ -z "${{ secrets.VPS_SSH_KEY }}" ]     && missing="$missing VPS_SSH_KEY"
+          [ -z "${{ secrets.VPS_KNOWN_HOSTS }}" ] && missing="$missing VPS_KNOWN_HOSTS"
           if [ -n "$missing" ]; then
-            echo "ERROR: Missing GitHub secrets:$missing"
-            echo "Add these in: Settings -> Secrets -> Actions"
-            echo "  DEV_VPS_HOST        = IP or hostname of dev server"
-            echo "  DEV_VPS_SSH_KEY     = SSH private key for dev server"
-            echo "  DEV_VPS_KNOWN_HOSTS = ssh-keyscan <dev-host> output"
-            exit 1
+            echo "ERROR: Missing GitHub secrets:$missing"; exit 1
           fi
 
       - name: Set up SSH
         run: |
           mkdir -p ~/.ssh
-          printf '%s\n' "${{ secrets.DEV_VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          printf '%s\n' "${{ secrets.DEV_VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          printf '%s\n' "${{ secrets.VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
 
-      - name: Sync code to dev server
+      - name: Sync code to /opt/pageos-dev/
         run: |
-          for i in $(seq 1 6); do
+          for i in $(seq 1 12); do
             rsync -az --delete \
               -e "ssh -o ConnectTimeout=15 -o ConnectionAttempts=1" \
               --exclude '.git' --exclude '.env' --exclude '.env.prod' \
               --exclude 'node_modules' --exclude '.next' --exclude 'bin' \
-              ./ root@${{ secrets.DEV_VPS_HOST }}:/opt/pageos-dev/ && exit 0
-            echo "rsync attempt $i failed; retrying in 15s..."; sleep 15
+              ./ root@${{ secrets.VPS_HOST }}:/opt/pageos-dev/ && exit 0
+            echo "rsync attempt $i failed; retrying in 20s..."; sleep 20
           done
           exit 1
+
+      - name: Ensure /opt/pageos-dev/.env exists
+        run: |
+          ssh -o ConnectTimeout=20 root@${{ secrets.VPS_HOST }} '
+            if [ ! -f /opt/pageos-dev/.env ]; then
+              echo "Creating dev .env from production template..."
+              # Copy prod .env but override DB and disable Microsoft
+              cat /opt/pageos/.env | \
+                sed "s/POSTGRES_DB=pageos/POSTGRES_DB=pageos_dev/" | \
+                sed "s/NEXT_PUBLIC_API_URL=.*/NEXT_PUBLIC_API_URL=https:\/\/app.pageos.org/" | \
+                grep -v "MSGRAPH" > /opt/pageos-dev/.env
+              echo "" >> /opt/pageos-dev/.env
+              echo "# Microsoft disabled on dev" >> /opt/pageos-dev/.env
+              echo "PAGEOS_MSGRAPH_CLIENT_ID=" >> /opt/pageos-dev/.env
+              echo "Created /opt/pageos-dev/.env"
+            fi
+            echo "--- Dev .env (no secrets shown) ---"
+            grep -v "PASSWORD\|SECRET\|KEY\|PASS" /opt/pageos-dev/.env
+          '
 
       - name: Build and restart dev services
         run: |
           ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=6 \
-              root@${{ secrets.DEV_VPS_HOST }} \
-              'set -e
-               cd /opt/pageos-dev
-               test -f .env || { echo "FATAL: /opt/pageos-dev/.env missing"; exit 1; }
-               docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
-               docker compose -f docker-compose.prod.yml ps'
+              root@${{ secrets.VPS_HOST }} '
+            set -e
+            cd /opt/pageos-dev
+            docker compose -p pageos-dev -f docker-compose.dev.yml up -d --build --remove-orphans
+            docker compose -p pageos-dev -f docker-compose.dev.yml ps
+          '
+
+      - name: Update Caddy to proxy app.pageos.org to dev containers
+        run: |
+          for i in $(seq 1 6); do
+            ssh -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=8 \
+                root@${{ secrets.VPS_HOST }} '
+              set -e
+              python3 /opt/pageos-dev/scripts/update_caddy_dev.py
+              docker compose -f /opt/proxy/docker-compose.yml exec -T caddy \
+                caddy reload --config /etc/caddy/Caddyfile
+              echo "Caddy reloaded — app.pageos.org → dev containers"
+            ' && exit 0
+            echo "Caddy update attempt $i failed, retrying in 15s..."; sleep 15
+          done
+          exit 1
 
       - name: Health check
         run: |
-          sleep 8
+          sleep 10
           for i in $(seq 1 8); do
-            if ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no \
-              root@${{ secrets.DEV_VPS_HOST }} \
+            if ssh -o ConnectTimeout=10 root@${{ secrets.VPS_HOST }} \
               'docker run --rm --network pageos-dev_default curlimages/curl:latest \
                 -fsS --max-time 5 http://pageos-dev-api-1:8080/healthz' 2>/dev/null; then
-              echo "Dev API healthy"
+              echo "Dev API healthy — https://app.pageos.org"
               exit 0
             fi
             echo "waiting for dev API (attempt $i)..."; sleep 10

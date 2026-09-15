@@ -306,8 +306,10 @@ const DEFAULT_NAV: NavGroup[] = [
   ]},
 ];
 
+const IS_DEV = process.env.NEXT_PUBLIC_APP_ENV === "dev";
+
 // navForFamily maps a server-authoritative family string to the correct nav tree.
-// MICROSOFT_GROUP is appended to every nav so all roles can access Outlook/Teams/Calendar.
+// MICROSOFT_GROUP is appended to every nav on production only.
 function navForFamily(family: string): NavGroup[] {
   let base: NavGroup[];
   switch (family) {
@@ -319,7 +321,7 @@ function navForFamily(family: string): NavGroup[] {
     case "compliance": base = COMPLIANCE_NAV; break;
     default:           base = DEFAULT_NAV;    break;
   }
-  return [...base, MICROSOFT_GROUP];
+  return IS_DEV ? base : [...base, MICROSOFT_GROUP];
 }
 
 // ── Command palette ────────────────────────────────────────────────────────────

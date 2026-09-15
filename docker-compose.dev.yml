@@ -1,0 +1,97 @@
+# Dev environment — served at app.pageos.org on the same VPS as production.
+# Deploy from the 'develop' branch via deploy-dev.yml.
+# Microsoft Graph is intentionally DISABLED (no CLIENT_ID) so users must
+# use email + password only on dev.
+
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     ${POSTGRES_USER:-pageos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB:       ${POSTGRES_DB:-pageos_dev}
+    volumes:
+      - pgdata_dev:/var/lib/postgresql/data
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pageos}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER:     ${MINIO_ROOT_USER:-pageos}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+    volumes:
+      - miniodata_dev:/data
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      PAGEOS_ENV:          dev
+      PAGEOS_HTTP_ADDR:    ":8080"
+      PAGEOS_LOG_LEVEL:    debug
+      PAGEOS_DATABASE_URL: "postgres://${POSTGRES_USER:-pageos}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-pageos_dev}?sslmode=disable"
+      PAGEOS_S3_ENDPOINT:          http://minio:9000
+      PAGEOS_S3_BUCKET:            ${S3_BUCKET:-pageos-docs-dev}
+      PAGEOS_S3_REGION:            us-east-1
+      PAGEOS_S3_ACCESS_KEY_ID:     ${MINIO_ROOT_USER:-pageos}
+      PAGEOS_S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      PAGEOS_S3_FORCE_PATH_STYLE:  "true"
+      PAGEOS_ALLOWED_ORIGINS:      https://app.pageos.org
+      PAGEOS_SMTP_FROM:            noreply@pageos.org
+      # Microsoft intentionally empty — disables all /msgraph and SSO routes
+      PAGEOS_MSGRAPH_CLIENT_ID:    ""
+    networks:
+      - default
+      - proxy_net   # Caddy routes app.pageos.org/api/* → this container
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://app.pageos.org}
+        NEXT_PUBLIC_APP_ENV: dev
+    restart: unless-stopped
+    environment:
+      API_URL:             http://api:8080
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://app.pageos.org}
+      NEXT_PUBLIC_APP_ENV: dev
+      HOSTNAME:            "0.0.0.0"
+    networks:
+      - default
+      - proxy_net   # Caddy routes app.pageos.org → this container
+    depends_on:
+      - api
+
+volumes:
+  pgdata_dev:
+  miniodata_dev:
+
+networks:
+  default: {}
+  proxy_net:
+    external: true

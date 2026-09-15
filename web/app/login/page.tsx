@@ -253,37 +253,38 @@ function LoginPageInner() {
             </form>
           </div>
 
-          {/* Divider */}
-          <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "16px 0" }}>
-            <div style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
-            <span style={{ fontSize: 11, color: "#94a3b8", whiteSpace: "nowrap" }}>or continue with</span>
-            <div style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
-          </div>
-
-          {/* Microsoft SSO button */}
-          <button
-            type="button"
-            onClick={() => { window.location.href = `${BASE}/api/v1/auth/microsoft`; }}
-            style={{
-              width: "100%", height: 40, borderRadius: 10,
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
-              background: "#ffffff", border: "1px solid #d1d5db", cursor: "pointer",
-              fontSize: 13, fontWeight: 600, color: "#374151",
-              boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
-              transition: "box-shadow 0.15s, border-color 0.15s",
-            }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = "#9ca3af"; (e.currentTarget as HTMLElement).style.boxShadow = "0 2px 6px rgba(0,0,0,0.12)"; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "#d1d5db"; (e.currentTarget as HTMLElement).style.boxShadow = "0 1px 3px rgba(0,0,0,0.08)"; }}
-          >
-            {/* Microsoft 4-square logo */}
-            <svg width="18" height="18" viewBox="0 0 23 23" xmlns="http://www.w3.org/2000/svg">
-              <rect x="1" y="1" width="10" height="10" fill="#f25022"/>
-              <rect x="12" y="1" width="10" height="10" fill="#7fba00"/>
-              <rect x="1" y="12" width="10" height="10" fill="#00a4ef"/>
-              <rect x="12" y="12" width="10" height="10" fill="#ffb900"/>
-            </svg>
-            Sign in with Microsoft
-          </button>
+          {/* Microsoft SSO — hidden on dev environment */}
+          {process.env.NEXT_PUBLIC_APP_ENV !== "dev" && (
+            <>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "16px 0" }}>
+                <div style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
+                <span style={{ fontSize: 11, color: "#94a3b8", whiteSpace: "nowrap" }}>or continue with</span>
+                <div style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
+              </div>
+              <button
+                type="button"
+                onClick={() => { window.location.href = `${BASE}/api/v1/auth/microsoft`; }}
+                style={{
+                  width: "100%", height: 40, borderRadius: 10,
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+                  background: "#ffffff", border: "1px solid #d1d5db", cursor: "pointer",
+                  fontSize: 13, fontWeight: 600, color: "#374151",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+                  transition: "box-shadow 0.15s, border-color 0.15s",
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = "#9ca3af"; (e.currentTarget as HTMLElement).style.boxShadow = "0 2px 6px rgba(0,0,0,0.12)"; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "#d1d5db"; (e.currentTarget as HTMLElement).style.boxShadow = "0 1px 3px rgba(0,0,0,0.08)"; }}
+              >
+                <svg width="18" height="18" viewBox="0 0 23 23" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="1" y="1" width="10" height="10" fill="#f25022"/>
+                  <rect x="12" y="1" width="10" height="10" fill="#7fba00"/>
+                  <rect x="1" y="12" width="10" height="10" fill="#00a4ef"/>
+                  <rect x="12" y="12" width="10" height="10" fill="#ffb900"/>
+                </svg>
+                Sign in with Microsoft
+              </button>
+            </>
+          )}
 
           {/* HR note */}
           <div style={{
