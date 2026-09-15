@@ -43,9 +43,12 @@ func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	// Teams — read + write
 	r.Get("/teams",                         h.teams)
 	r.Get("/teams/chats",                   h.chatSummaries)
-	r.Get("/teams/{chatId}/messages",       h.chatMessages)
-	r.Get("/teams/{chatId}/page",           h.chatPage)
-	r.Post("/teams/{chatId}/send",          h.sendTeamsMessage)
+	r.Get("/teams/{chatId}/messages",                              h.chatMessages)
+	r.Get("/teams/{chatId}/page",                                  h.chatPage)
+	r.Post("/teams/{chatId}/send",                                 h.sendTeamsMessage)
+	r.Delete("/teams/{chatId}/messages/{messageId}",               h.deleteMessage)
+	r.Post("/teams/{chatId}/messages/{messageId}/react",           h.reactMessage)
+	r.Post("/teams/{chatId}/messages/{messageId}/unreact",         h.unreactMessage)
 	r.Get("/users/search",                  h.searchUsers)
 	r.Post("/teams/new-chat",               h.newChat)
 	r.Get("/mail/thread/{conversationId}",  h.emailThread)
@@ -352,6 +355,41 @@ func (h *Handler) chatMessages(w http.ResponseWriter, r *http.Request) {
 	msgs, err := h.svc.GetChatMessages(r.Context(), id, chi.URLParam(r, "chatId"))
 	if err != nil { notConnected(w); return }
 	httpx.JSON(w, http.StatusOK, map[string]any{"messages": msgs})
+}
+
+func (h *Handler) deleteMessage(w http.ResponseWriter, r *http.Request) {
+	id, ok := callerID(r)
+	if !ok { httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated"); return }
+	if err := h.svc.DeleteTeamsMessage(r.Context(), id, chi.URLParam(r, "chatId"), chi.URLParam(r, "messageId")); err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error()); return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (h *Handler) reactMessage(w http.ResponseWriter, r *http.Request) {
+	id, ok := callerID(r)
+	if !ok { httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated"); return }
+	var in struct{ ReactionType string `json:"reactionType"` }
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.ReactionType == "" {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "reactionType is required"); return
+	}
+	if err := h.svc.ReactToMessage(r.Context(), id, chi.URLParam(r, "chatId"), chi.URLParam(r, "messageId"), in.ReactionType); err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error()); return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (h *Handler) unreactMessage(w http.ResponseWriter, r *http.Request) {
+	id, ok := callerID(r)
+	if !ok { httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated"); return }
+	var in struct{ ReactionType string `json:"reactionType"` }
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.ReactionType == "" {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "reactionType is required"); return
+	}
+	if err := h.svc.UnreactToMessage(r.Context(), id, chi.URLParam(r, "chatId"), chi.URLParam(r, "messageId"), in.ReactionType); err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error()); return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 func (h *Handler) sendTeamsMessage(w http.ResponseWriter, r *http.Request) {

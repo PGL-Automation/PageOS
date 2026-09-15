@@ -24,7 +24,12 @@ type CalendarEvent = {
   id: string; subject: string; start: string; end: string;
   location: string; isOnlineMeeting: boolean; onlineMeetingUrl: string;
 };
-type TeamsMessage = { id: string; chatId: string; body: string; sentAt: string; senderName: string };
+type TeamsAttachment = { id: string; contentType: string; contentUrl: string; name: string };
+type TeamsReaction = { reactionType: string; senderName: string; senderMsId: string };
+type TeamsMessage = {
+  id: string; chatId: string; body: string; sentAt: string; senderName: string; senderMsId: string;
+  attachments?: TeamsAttachment[]; reactions?: TeamsReaction[];
+};
 type ChatSummary = {
   id: string; chatType: string; topic: string;
   withName: string; withEmail: string; lastMessage: TeamsMessage;
@@ -594,7 +599,7 @@ function TeamsPanel() {
       const newChat: ChatSummary = {
         id: chat_id, chatType: "oneOnOne", topic: "",
         withName: person.displayName, withEmail: person.mail,
-        lastMessage: { id: "", chatId: chat_id, body: "", sentAt: "", senderName: "" },
+        lastMessage: { id: "", chatId: chat_id, body: "", sentAt: "", senderName: "", senderMsId: "" },
       };
       setSelectedChat(newChat);
       queryClient.invalidateQueries({ queryKey: ["msgraph-teams"] });
@@ -634,26 +639,112 @@ function TeamsPanel() {
         )}
 
         {/* Messages area */}
-        <div className="flex-1 overflow-y-auto px-4 py-2 space-y-2">
+        <div className="flex-1 overflow-y-auto px-4 py-2 space-y-3">
           {pageLoading && currentMessages.length === 0
             ? <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin" style={{ color: "var(--pg-text-4)" }} /></div>
             : currentMessages.length === 0
               ? <EmptyState text="No messages yet. Say hello!" />
               : currentMessages.map(msg => {
                   const isMe = msg.senderName === user?.DisplayName;
+                  const text = stripHtml(msg.body);
+                  const isDeleted = text === "" && (msg.attachments ?? []).length === 0;
+                  // Group reactions by type
+                  const reactionMap: Record<string, { count: number; iMine: boolean }> = {};
+                  (msg.reactions ?? []).forEach(r => {
+                    if (!reactionMap[r.reactionType]) reactionMap[r.reactionType] = { count: 0, iMine: false };
+                    reactionMap[r.reactionType].count++;
+                    if (r.senderName === user?.DisplayName) reactionMap[r.reactionType].iMine = true;
+                  });
+                  const REACTION_EMOJIS: Record<string, string> = {
+                    like: "👍", heart: "❤️", laugh: "😂", surprised: "😮", sad: "😢", angry: "😠",
+                  };
                   return (
-                    <div key={msg.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}>
+                    <div key={msg.id} className={`flex flex-col group ${isMe ? "items-end" : "items-start"}`}>
                       {!isMe && <span className="text-[10px] mb-0.5 ml-1" style={{ color: "var(--pg-text-3)" }}>{msg.senderName}</span>}
-                      <div className="max-w-[78%] px-3 py-2 rounded-2xl text-[12px] leading-relaxed"
-                           style={{
-                             background: isMe ? "#5059C9" : "var(--pg-card)",
-                             color: isMe ? "white" : "var(--pg-text-1)",
-                             border: isMe ? "none" : "1px solid var(--pg-card-border)",
-                             borderBottomRightRadius: isMe ? 4 : undefined,
-                             borderBottomLeftRadius: isMe ? undefined : 4,
-                           }}>
-                        {stripHtml(msg.body) || <em style={{ opacity: 0.5 }}>Media or attachment</em>}
+
+                      {/* Bubble + action row */}
+                      <div className={`flex items-end gap-1.5 ${isMe ? "flex-row-reverse" : "flex-row"}`}>
+                        {/* Message bubble */}
+                        <div className="max-w-[72%] rounded-2xl text-[12px] leading-relaxed overflow-hidden"
+                             style={{
+                               background: isDeleted ? "transparent" : isMe ? "#5059C9" : "var(--pg-card)",
+                               color: isDeleted ? "var(--pg-text-4)" : isMe ? "white" : "var(--pg-text-1)",
+                               border: isDeleted ? "1px dashed var(--pg-card-border)" : isMe ? "none" : "1px solid var(--pg-card-border)",
+                               borderBottomRightRadius: isMe ? 4 : undefined,
+                               borderBottomLeftRadius: isMe ? undefined : 4,
+                             }}>
+                          {isDeleted
+                            ? <p className="px-3 py-2 italic text-[11px]">This message was deleted</p>
+                            : <>
+                                {text && <p className="px-3 py-2 whitespace-pre-wrap">{text}</p>}
+                                {/* Attachments */}
+                                {(msg.attachments ?? []).filter(a => a.name && a.contentUrl).map(att => (
+                                  <a key={att.id} href={att.contentUrl} target="_blank" rel="noreferrer"
+                                     className="flex items-center gap-2 px-3 py-2 text-[11px] hover:opacity-80 transition-opacity"
+                                     style={{ borderTop: text ? "1px solid rgba(255,255,255,0.15)" : "none",
+                                              color: isMe ? "rgba(255,255,255,0.9)" : "var(--pg-accent)" }}>
+                                    <span>📎</span>
+                                    <span className="truncate max-w-[160px]">{att.name}</span>
+                                    <ExternalLink className="w-3 h-3 shrink-0" />
+                                  </a>
+                                ))}
+                              </>
+                          }
+                        </div>
+
+                        {/* Hover actions */}
+                        {!isDeleted && (
+                          <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5 mb-1">
+                            {/* Reaction picker */}
+                            {["like","heart","laugh","surprised","sad","angry"].map(rt => (
+                              <button key={rt} title={rt}
+                                      onClick={() => api(`/teams/${msg.chatId}/messages/${msg.id}/${reactionMap[rt]?.iMine ? "unreact" : "react"}`, {
+                                        method: "POST", headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({ reactionType: rt }),
+                                      }).then(() => queryClient.invalidateQueries({ queryKey: ["msgraph-chat-page", selectedChat?.id] }))
+                                        .catch(() => {})}
+                                      className="w-6 h-6 rounded-full flex items-center justify-center text-[12px] transition-transform hover:scale-125"
+                                      style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)" }}>
+                                {REACTION_EMOJIS[rt]}
+                              </button>
+                            ))}
+                            {/* Delete (own messages only) */}
+                            {isMe && (
+                              <button title="Delete message"
+                                      onClick={() => api(`/teams/${msg.chatId}/messages/${msg.id}`, { method: "DELETE" })
+                                        .then(() => queryClient.invalidateQueries({ queryKey: ["msgraph-chat-page", selectedChat?.id] }))
+                                        .catch(() => {})}
+                                      className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] transition-transform hover:scale-110"
+                                      style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)", color: "#ef4444" }}>
+                                🗑
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
+
+                      {/* Reaction counts below bubble */}
+                      {Object.keys(reactionMap).length > 0 && (
+                        <div className="flex items-center gap-1 mt-0.5 mx-1 flex-wrap">
+                          {Object.entries(reactionMap).map(([rt, { count, iMine }]) => (
+                            <button key={rt}
+                                    onClick={() => api(`/teams/${msg.chatId}/messages/${msg.id}/${iMine ? "unreact" : "react"}`, {
+                                      method: "POST", headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({ reactionType: rt }),
+                                    }).then(() => queryClient.invalidateQueries({ queryKey: ["msgraph-chat-page", selectedChat?.id] }))
+                                      .catch(() => {})}
+                                    className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[11px]"
+                                    style={{
+                                      background: iMine ? "rgba(80,89,201,0.15)" : "var(--pg-muted-bg)",
+                                      border: `1px solid ${iMine ? "#5059C9" : "var(--pg-card-border)"}`,
+                                    }}>
+                              <span>{REACTION_EMOJIS[rt]}</span>
+                              <span style={{ color: "var(--pg-text-2)" }}>{count}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
                       <span className="text-[9px] mt-0.5 mx-1" style={{ color: "var(--pg-text-4)" }}>
                         {relativeTime(msg.sentAt)}
                       </span>

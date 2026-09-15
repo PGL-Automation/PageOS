@@ -642,11 +642,29 @@ func (s *Service) GetPresence(ctx context.Context, userID uuid.UUID) (*Presence,
 // ── Teams Chat ────────────────────────────────────────────────────────────────
 
 type TeamsMessage struct {
-	ID         string `json:"id"`
-	ChatID     string `json:"chatId"`
-	Body       string `json:"body"`
-	SentAt     string `json:"sentAt"`
-	SenderName string `json:"senderName"`
+	ID          string            `json:"id"`
+	ChatID      string            `json:"chatId"`
+	Body        string            `json:"body"`
+	SentAt      string            `json:"sentAt"`
+	SenderName  string            `json:"senderName"`
+	SenderMSID  string            `json:"senderMsId"`
+	Attachments []Attachment      `json:"attachments"`
+	Reactions   []MessageReaction `json:"reactions"`
+}
+
+// Attachment represents a file or media attached to a Teams message.
+type Attachment struct {
+	ID          string `json:"id"`
+	ContentType string `json:"contentType"`
+	ContentURL  string `json:"contentUrl"`
+	Name        string `json:"name"`
+}
+
+// MessageReaction is a single emoji reaction on a message.
+type MessageReaction struct {
+	ReactionType string `json:"reactionType"` // like|heart|laugh|surprised|sad|angry
+	SenderName   string `json:"senderName"`
+	SenderMSID   string `json:"senderMsId"`
 }
 
 // ChatSummary is a chat with proper participant name and last message preview.
@@ -892,12 +910,28 @@ func (s *Service) GetChatPage(ctx context.Context, userID uuid.UUID, chatID stri
 	var raw struct {
 		NextLink string `json:"@odata.nextLink"`
 		Value    []struct {
-			ID   string `json:"id"`
-			Body struct{ Content string `json:"content"` } `json:"body"`
+			ID        string `json:"id"`
+			Body      struct{ Content string `json:"content"` } `json:"body"`
 			CreatedAt string `json:"createdDateTime"`
-			From struct {
-				User struct{ DisplayName string `json:"displayName"` } `json:"user"`
+			From      struct {
+				User struct {
+					DisplayName string `json:"displayName"`
+					ID          string `json:"id"`
+				} `json:"user"`
 			} `json:"from"`
+			Attachments []struct {
+				ID          string `json:"id"`
+				ContentType string `json:"contentType"`
+				ContentURL  string `json:"contentUrl"`
+				Name        string `json:"name"`
+			} `json:"attachments"`
+			Reactions []struct {
+				ReactionType string `json:"reactionType"`
+				User         struct {
+					DisplayName string `json:"displayName"`
+					ID          string `json:"id"`
+				} `json:"user"`
+			} `json:"reactions"`
 		} `json:"value"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
@@ -908,12 +942,29 @@ func (s *Service) GetChatPage(ctx context.Context, userID uuid.UUID, chatID stri
 	msgs := make([]TeamsMessage, 0, len(raw.Value))
 	for i := len(raw.Value) - 1; i >= 0; i-- {
 		m := raw.Value[i]
+		attachments := make([]Attachment, 0, len(m.Attachments))
+		for _, a := range m.Attachments {
+			attachments = append(attachments, Attachment{
+				ID: a.ID, ContentType: a.ContentType, ContentURL: a.ContentURL, Name: a.Name,
+			})
+		}
+		reactions := make([]MessageReaction, 0, len(m.Reactions))
+		for _, r := range m.Reactions {
+			reactions = append(reactions, MessageReaction{
+				ReactionType: r.ReactionType,
+				SenderName:   r.User.DisplayName,
+				SenderMSID:   r.User.ID,
+			})
+		}
 		msgs = append(msgs, TeamsMessage{
-			ID:         m.ID,
-			ChatID:     chatID,
-			Body:       m.Body.Content,
-			SentAt:     m.CreatedAt,
-			SenderName: m.From.User.DisplayName,
+			ID:          m.ID,
+			ChatID:      chatID,
+			Body:        m.Body.Content,
+			SentAt:      m.CreatedAt,
+			SenderName:  m.From.User.DisplayName,
+			SenderMSID:  m.From.User.ID,
+			Attachments: attachments,
+			Reactions:   reactions,
 		})
 	}
 	return &ChatPage{Messages: msgs, NextLink: raw.NextLink}, nil
@@ -992,6 +1043,47 @@ func (s *Service) GetChatMessages(ctx context.Context, userID uuid.UUID, chatID 
 		})
 	}
 	return out, nil
+}
+
+// DeleteTeamsMessage soft-deletes a message (shows "This message was deleted" to participants).
+func (s *Service) DeleteTeamsMessage(ctx context.Context, userID uuid.UUID, chatID, messageID string) error {
+	token, err := s.accessToken(ctx, userID)
+	if err != nil {
+		return err
+	}
+	path := fmt.Sprintf("%s/me/chats/%s/messages/%s", graphBase, url.PathEscape(chatID), url.PathEscape(messageID))
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, path, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("graph DELETE message: %d %s", resp.StatusCode, string(b))
+	}
+	_ = s.auditWriter.Write(ctx, audit.Entry{
+		Actor:        audit.Actor{Type: "user", ID: userID.String()},
+		Action:       "msgraph.teams.message_deleted",
+		ResourceType: "teams_message", ResourceID: messageID,
+	})
+	return nil
+}
+
+// ReactToMessage adds an emoji reaction to a Teams message.
+func (s *Service) ReactToMessage(ctx context.Context, userID uuid.UUID, chatID, messageID, reactionType string) error {
+	path := fmt.Sprintf("/me/chats/%s/messages/%s/setReaction", url.PathEscape(chatID), url.PathEscape(messageID))
+	return s.graphPOST(ctx, userID, path, map[string]string{"reactionType": reactionType}, nil)
+}
+
+// UnreactToMessage removes a reaction from a Teams message.
+func (s *Service) UnreactToMessage(ctx context.Context, userID uuid.UUID, chatID, messageID, reactionType string) error {
+	path := fmt.Sprintf("/me/chats/%s/messages/%s/unsetReaction", url.PathEscape(chatID), url.PathEscape(messageID))
+	return s.graphPOST(ctx, userID, path, map[string]string{"reactionType": reactionType}, nil)
 }
 
 // SendTeamsMessage sends a message to an existing chat.
