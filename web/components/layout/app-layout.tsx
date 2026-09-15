@@ -25,6 +25,16 @@ import { usePosition } from "@/lib/position";
 type NavItem  = { href: string; label: string; icon: React.ElementType; badge?: string };
 type NavGroup = { id: string; label?: string; items: NavItem[] };
 
+const MICROSOFT_GROUP: NavGroup = {
+  id: "microsoft365",
+  label: "Microsoft 365",
+  items: [
+    { href: "/microsoft/mail",     label: "Outlook Mail",  icon: Inbox },
+    { href: "/microsoft/calendar", label: "Calendar",      icon: CalendarDays },
+    { href: "/microsoft/teams",    label: "Teams Chat",    icon: MessageSquare },
+  ],
+};
+
 const WM_NAV: NavGroup[] = [
   { id: "core", items: [
     { href: "/wm/dashboard",          label: "My Dashboard",    icon: LayoutDashboard },
@@ -56,7 +66,6 @@ const WM_NAV: NavGroup[] = [
     { href: "/my-documents",          label: "My Documents",     icon: FileText },
     { href: "/documents",             label: "Shared Documents", icon: FolderOpen },
     { href: "/vault",                 label: "My Vault",         icon: Lock },
-    { href: "/microsoft",             label: "Microsoft 365",    icon: Inbox },
   ]},
 ];
 
@@ -90,7 +99,6 @@ const PM_NAV: NavGroup[] = [
     { href: "/leave",          label: "My Leave",         icon: CalendarDays },
     { href: "/my-documents",   label: "My Documents",     icon: FileText },
     { href: "/vault",          label: "My Vault",         icon: Lock },
-    { href: "/microsoft",      label: "Microsoft 365",    icon: Inbox },
   ]},
 ];
 
@@ -114,7 +122,6 @@ const MD_NAV: NavGroup[] = [
     { href: "/my-documents",       label: "My Documents",      icon: FileText },
     { href: "/reports",               label: "Reports",           icon: FileBarChart },
     { href: "/vault",                 label: "My Vault",          icon: Lock },
-    { href: "/microsoft",             label: "Microsoft 365",     icon: Inbox },
   ]},
   { id: "portfolio", label: "Portfolio", items: [
     { href: "/wm/portfolio",          label: "Funds & Mandates",  icon: BarChart2 },
@@ -150,7 +157,6 @@ const COMPLIANCE_NAV: NavGroup[] = [
     { href: "/my-documents",       label: "My Documents",   icon: FileText },
     { href: "/documents",             label: "Documents",      icon: FolderOpen },
     { href: "/vault",                 label: "My Vault",       icon: Lock },
-    { href: "/microsoft",             label: "Microsoft 365",  icon: Inbox },
   ]},
 ];
 
@@ -175,7 +181,6 @@ const FINANCE_NAV: NavGroup[] = [
     { href: "/approval",              label: "Approvals",      icon: CheckSquare },
     { href: "/leave",                 label: "My Leave",       icon: CalendarDays },
     { href: "/vault",                 label: "My Vault",       icon: Lock },
-    { href: "/microsoft",             label: "Microsoft 365",  icon: Inbox },
   ]},
   { id: "reporting", label: "Reporting", items: [
     { href: "/finance/budget",                    label: "Budget vs Actual", icon: Target },
@@ -216,7 +221,6 @@ const HR_NAV: NavGroup[] = [
     { href: "/leave",                 label: "My Leave",        icon: CalendarDays },
     { href: "/my-documents",       label: "My Documents",    icon: FileText },
     { href: "/vault",                 label: "My Vault",        icon: Lock },
-    { href: "/microsoft",             label: "Microsoft 365",   icon: Inbox },
   ]},
 ];
 
@@ -251,7 +255,6 @@ const ADMIN_NAV: NavGroup[] = [
     { href: "/compliance",             label: "Compliance",       icon: Shield },
     { href: "/risk",                   label: "Risk",             icon: AlertTriangle },
     { href: "/vault",                  label: "My Vault",         icon: Lock },
-    { href: "/microsoft",              label: "Microsoft 365",    icon: Inbox },
   ]},
   { id: "ops", label: "Operations", items: [
     { href: "/investments/onboarding", label: "Onboarding",       icon: UserPlus },
@@ -280,7 +283,6 @@ const DEFAULT_NAV: NavGroup[] = [
     { href: "/leave",                 label: "My Leave",       icon: CalendarDays },
     { href: "/my-documents",       label: "My Documents",   icon: FileText },
     { href: "/vault",                 label: "My Vault",       icon: Lock },
-    { href: "/microsoft",             label: "Microsoft 365",  icon: Inbox },
   ]},
   { id: "finance", label: "Finance", items: [
     { href: "/finance",               label: "Overview",       icon: TrendingUp },
@@ -305,16 +307,19 @@ const DEFAULT_NAV: NavGroup[] = [
 ];
 
 // navForFamily maps a server-authoritative family string to the correct nav tree.
+// MICROSOFT_GROUP is appended to every nav so all roles can access Outlook/Teams/Calendar.
 function navForFamily(family: string): NavGroup[] {
+  let base: NavGroup[];
   switch (family) {
-    case "pm":         return PM_NAV;
-    case "wm":         return WM_NAV;
-    case "md":         return MD_NAV;
-    case "hr":         return HR_NAV;
-    case "finance":    return FINANCE_NAV;
-    case "compliance": return COMPLIANCE_NAV;
-    default:           return DEFAULT_NAV;
+    case "pm":         base = PM_NAV;         break;
+    case "wm":         base = WM_NAV;         break;
+    case "md":         base = MD_NAV;         break;
+    case "hr":         base = HR_NAV;         break;
+    case "finance":    base = FINANCE_NAV;    break;
+    case "compliance": base = COMPLIANCE_NAV; break;
+    default:           base = DEFAULT_NAV;    break;
   }
+  return [...base, MICROSOFT_GROUP];
 }
 
 // ── Command palette ────────────────────────────────────────────────────────────
@@ -334,7 +339,9 @@ const ALL_CMDS: NavItem[] = [
   { href: "/approval",               label: "Approvals",           icon: CheckSquare },
   { href: "/reports",                label: "Reports",             icon: FileBarChart },
   { href: "/settings",               label: "Settings",            icon: Settings },
-  { href: "/microsoft",              label: "Microsoft 365",       icon: Inbox },
+  { href: "/microsoft/mail",         label: "Outlook Mail",        icon: Inbox },
+  { href: "/microsoft/calendar",     label: "Outlook Calendar",    icon: CalendarDays },
+  { href: "/microsoft/teams",        label: "Teams Chat",          icon: MessageSquare },
 ];
 
 function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
