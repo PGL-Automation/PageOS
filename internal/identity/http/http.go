@@ -222,11 +222,17 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, user)
 }
 
+// cookieDomain returns the domain for session cookies.
+// When PAGEOS_COOKIE_DOMAIN is set (e.g. ".pageos.org"), the cookie is valid
+// on all subdomains — needed when app.pageos.org and pageos.org share a session.
+func cookieDomain() string { return os.Getenv("PAGEOS_COOKIE_DOMAIN") }
+
 func setSessionCookie(w http.ResponseWriter, token string, expiresAt time.Time) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
 		Value:    token,
 		Path:     "/",
+		Domain:   cookieDomain(),
 		Expires:  expiresAt,
 		HttpOnly: true,
 		Secure:   cookieSecure(),
@@ -239,6 +245,7 @@ func clearSessionCookie(w http.ResponseWriter) {
 		Name:     sessionCookie,
 		Value:    "",
 		Path:     "/",
+		Domain:   cookieDomain(),
 		MaxAge:   -1,
 		HttpOnly: true,
 		Secure:   cookieSecure(),
