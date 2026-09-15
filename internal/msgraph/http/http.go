@@ -41,10 +41,14 @@ func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	r.Post("/calendar/events",              h.createEvent)
 	// Teams — read + write
 	r.Get("/teams",                         h.teams)
+	r.Get("/teams/chats",                   h.chatSummaries)
 	r.Get("/teams/{chatId}/messages",       h.chatMessages)
+	r.Get("/teams/{chatId}/page",           h.chatPage)
 	r.Post("/teams/{chatId}/send",          h.sendTeamsMessage)
 	r.Get("/users/search",                  h.searchUsers)
 	r.Post("/teams/new-chat",               h.newChat)
+	r.Get("/mail/thread/{conversationId}",  h.emailThread)
+	r.Get("/unread-count",                  h.unreadCount)
 	// Presence — read only
 	r.Get("/presence",                      h.presence)
 	return r
@@ -293,6 +297,53 @@ func (h *Handler) createEvent(w http.ResponseWriter, r *http.Request) {
 }
 
 // ── Teams write handlers ───────────────────────────────────────────────────────
+
+func (h *Handler) chatSummaries(w http.ResponseWriter, r *http.Request) {
+	id, ok := callerID(r)
+	if !ok { httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated"); return }
+	limit := 20
+	if t := r.URL.Query().Get("top"); t != "" {
+		if n := 0; strings.Contains("0123456789", t[:1]) {
+			for _, c := range t { n = n*10 + int(c-'0') }
+			if n > 0 && n <= 50 { limit = n }
+		}
+	}
+	chats, err := h.svc.GetChatSummaries(r.Context(), id, limit)
+	if err != nil { notConnected(w); return }
+	httpx.JSON(w, http.StatusOK, map[string]any{"chats": chats})
+}
+
+func (h *Handler) chatPage(w http.ResponseWriter, r *http.Request) {
+	id, ok := callerID(r)
+	if !ok { httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated"); return }
+	top := 50
+	if t := r.URL.Query().Get("top"); t != "" {
+		if n := 0; strings.Contains("0123456789", t[:1]) {
+			for _, c := range t { n = n*10 + int(c-'0') }
+			if n > 0 && n <= 100 { top = n }
+		}
+	}
+	nextLink := r.URL.Query().Get("nextLink")
+	page, err := h.svc.GetChatPage(r.Context(), id, chi.URLParam(r, "chatId"), top, nextLink)
+	if err != nil { notConnected(w); return }
+	httpx.JSON(w, http.StatusOK, page)
+}
+
+func (h *Handler) emailThread(w http.ResponseWriter, r *http.Request) {
+	id, ok := callerID(r)
+	if !ok { httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated"); return }
+	msgs, err := h.svc.GetEmailThread(r.Context(), id, chi.URLParam(r, "conversationId"))
+	if err != nil { notConnected(w); return }
+	httpx.JSON(w, http.StatusOK, map[string]any{"messages": msgs})
+}
+
+func (h *Handler) unreadCount(w http.ResponseWriter, r *http.Request) {
+	id, ok := callerID(r)
+	if !ok { httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated"); return }
+	count, err := h.svc.GetInboxUnreadCount(r.Context(), id)
+	if err != nil { httpx.JSON(w, http.StatusOK, map[string]int{"emails": 0}); return }
+	httpx.JSON(w, http.StatusOK, map[string]int{"emails": count})
+}
 
 func (h *Handler) chatMessages(w http.ResponseWriter, r *http.Request) {
 	id, ok := callerID(r)

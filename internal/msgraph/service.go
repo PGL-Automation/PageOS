@@ -649,6 +649,22 @@ type TeamsMessage struct {
 	SenderName string `json:"senderName"`
 }
 
+// ChatSummary is a chat with proper participant name and last message preview.
+type ChatSummary struct {
+	ID          string       `json:"id"`
+	ChatType    string       `json:"chatType"` // "oneOnOne" | "group"
+	Topic       string       `json:"topic"`
+	WithName    string       `json:"withName"`  // other person's display name
+	WithEmail   string       `json:"withEmail"` // other person's email
+	LastMessage TeamsMessage `json:"lastMessage"`
+}
+
+// ChatPage is a paginated page of chat messages.
+type ChatPage struct {
+	Messages []TeamsMessage `json:"messages"`
+	NextLink string         `json:"nextLink"` // empty string when no more pages
+}
+
 // OrgUser is a colleague returned by a people search.
 type OrgUser struct {
 	ID          string `json:"id"`
@@ -761,6 +777,190 @@ func (s *Service) GetTeamsChats(ctx context.Context, userID uuid.UUID, limit int
 		})
 	}
 	return out, nil
+}
+
+// GetChatSummaries fetches chats with member info so the correct person's name is shown.
+func (s *Service) GetChatSummaries(ctx context.Context, userID uuid.UUID, limit int) ([]ChatSummary, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	rec, err := s.store.Get(ctx, userID)
+	if err != nil || rec == nil {
+		return nil, fmt.Errorf("microsoft account not connected")
+	}
+	myMSID := rec.MicrosoftUserID
+
+	// Fetch chats with members expanded so we can get participant names.
+	var raw struct {
+		Value []struct {
+			ID       string `json:"id"`
+			ChatType string `json:"chatType"`
+			Topic    string `json:"topic"`
+			Members  []struct {
+				DisplayName      string `json:"displayName"`
+				Email            string `json:"email"`
+				UserID           string `json:"userId"`
+				VisibleHistoryStartDateTime string `json:"visibleHistoryStartDateTime"`
+			} `json:"members"`
+		} `json:"value"`
+	}
+	path := fmt.Sprintf("/me/chats?$top=%d&$expand=members&$select=id,chatType,topic", limit)
+	if err := s.graphGET(ctx, userID, path, &raw); err != nil {
+		return nil, err
+	}
+
+	out := make([]ChatSummary, 0, len(raw.Value))
+	for _, chat := range raw.Value {
+		// For 1:1 chats, find the OTHER person (not the current user).
+		var withName, withEmail string
+		for _, m := range chat.Members {
+			if m.UserID != myMSID {
+				withName = m.DisplayName
+				withEmail = m.Email
+				break
+			}
+		}
+		if withName == "" && chat.Topic != "" {
+			withName = chat.Topic // group chat fallback
+		}
+
+		// Fetch the last message preview.
+		var msgs struct {
+			Value []struct {
+				ID   string `json:"id"`
+				Body struct{ Content string `json:"content"` } `json:"body"`
+				CreatedAt string `json:"createdDateTime"`
+				From struct {
+					User struct{ DisplayName string `json:"displayName"` } `json:"user"`
+				} `json:"from"`
+			} `json:"value"`
+		}
+		msgPath := fmt.Sprintf("/me/chats/%s/messages?$top=1&$orderby=createdDateTime%%20desc", url.PathEscape(chat.ID))
+		_ = s.graphGET(ctx, userID, msgPath, &msgs) // skip error — just show empty preview
+
+		var last TeamsMessage
+		if len(msgs.Value) > 0 {
+			m := msgs.Value[0]
+			last = TeamsMessage{
+				ID: m.ID, ChatID: chat.ID,
+				Body:       m.Body.Content,
+				SentAt:     m.CreatedAt,
+				SenderName: m.From.User.DisplayName,
+			}
+		}
+
+		out = append(out, ChatSummary{
+			ID: chat.ID, ChatType: chat.ChatType, Topic: chat.Topic,
+			WithName: withName, WithEmail: withEmail, LastMessage: last,
+		})
+	}
+	return out, nil
+}
+
+// GetChatPage returns a page of messages for a chat, newest first then reversed for display.
+// Pass an empty nextLink for the first page; subsequent pages use the nextLink from the previous response.
+func (s *Service) GetChatPage(ctx context.Context, userID uuid.UUID, chatID string, top int, nextLink string) (*ChatPage, error) {
+	if top <= 0 {
+		top = 50
+	}
+	token, err := s.accessToken(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	var fetchURL string
+	if nextLink != "" {
+		fetchURL = nextLink // Graph provides the full URL for next page
+	} else {
+		fetchURL = fmt.Sprintf("%s/me/chats/%s/messages?$top=%d&$orderby=createdDateTime%%20desc",
+			graphBase, url.PathEscape(chatID), top)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fetchURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var raw struct {
+		NextLink string `json:"@odata.nextLink"`
+		Value    []struct {
+			ID   string `json:"id"`
+			Body struct{ Content string `json:"content"` } `json:"body"`
+			CreatedAt string `json:"createdDateTime"`
+			From struct {
+				User struct{ DisplayName string `json:"displayName"` } `json:"user"`
+			} `json:"from"`
+		} `json:"value"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return nil, err
+	}
+
+	// Messages come newest-first from Graph; reverse so display is oldest-at-top.
+	msgs := make([]TeamsMessage, 0, len(raw.Value))
+	for i := len(raw.Value) - 1; i >= 0; i-- {
+		m := raw.Value[i]
+		msgs = append(msgs, TeamsMessage{
+			ID:         m.ID,
+			ChatID:     chatID,
+			Body:       m.Body.Content,
+			SentAt:     m.CreatedAt,
+			SenderName: m.From.User.DisplayName,
+		})
+	}
+	return &ChatPage{Messages: msgs, NextLink: raw.NextLink}, nil
+}
+
+// GetEmailThread returns all emails in a conversation thread, oldest first.
+func (s *Service) GetEmailThread(ctx context.Context, userID uuid.UUID, conversationID string) ([]MailMessage, error) {
+	var raw struct {
+		Value []struct {
+			ID          string `json:"id"`
+			Subject     string `json:"subject"`
+			BodyPreview string `json:"bodyPreview"`
+			ReceivedAt  string `json:"receivedDateTime"`
+			IsRead      bool   `json:"isRead"`
+			From        struct {
+				EmailAddress struct {
+					Name    string `json:"name"`
+					Address string `json:"address"`
+				} `json:"emailAddress"`
+			} `json:"from"`
+		} `json:"value"`
+	}
+	filter := url.QueryEscape(fmt.Sprintf("conversationId eq '%s'", conversationID))
+	path := fmt.Sprintf("/me/messages?$filter=%s&$orderby=receivedDateTime&$select=id,subject,bodyPreview,receivedDateTime,isRead,from&$top=50", filter)
+	if err := s.graphGET(ctx, userID, path, &raw); err != nil {
+		return nil, err
+	}
+	out := make([]MailMessage, 0, len(raw.Value))
+	for _, m := range raw.Value {
+		out = append(out, MailMessage{
+			ID: m.ID, Subject: m.Subject, BodyPreview: m.BodyPreview,
+			ReceivedAt: m.ReceivedAt, IsRead: m.IsRead,
+			SenderName: m.From.EmailAddress.Name, SenderEmail: m.From.EmailAddress.Address,
+		})
+	}
+	return out, nil
+}
+
+// GetInboxUnreadCount returns the number of unread emails in the inbox.
+func (s *Service) GetInboxUnreadCount(ctx context.Context, userID uuid.UUID) (int, error) {
+	var raw struct {
+		UnreadItemCount int `json:"unreadItemCount"`
+	}
+	if err := s.graphGET(ctx, userID, "/me/mailFolders/inbox?$select=unreadItemCount", &raw); err != nil {
+		return 0, err
+	}
+	return raw.UnreadItemCount, nil
 }
 
 // GetChatMessages returns the last 20 messages in a specific chat (ascending order).
