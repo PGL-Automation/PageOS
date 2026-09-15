@@ -20,18 +20,19 @@ function MailPageInner() {
     },
     onError: () => toast({ title: "Disconnect failed", variant: "destructive" }),
   });
+  const [folder, setFolder] = useState<"inbox" | "sent" | "drafts" | "junk">("inbox");
   const [selected, setSelected] = useState<MailMessage | null>(null);
   const [replyMode, setReplyMode] = useState<"reply" | "replyAll" | null>(null);
   const [replyText, setReplyText] = useState("");
   const [composing, setComposing] = useState(false);
-  const [compose, setCompose] = useState({ to: "", subject: "", body: "" });
+  const [compose, setCompose] = useState({ to: "", cc: "", bcc: "", showCcBcc: false, subject: "", body: "" });
   const [sending, setSending] = useState(false);
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 20;
 
   const { data, isLoading } = useQuery({
-    queryKey: ["msgraph-mail-full"],
-    queryFn: () => msApi(`/mail?$top=50`) as Promise<{ messages: MailMessage[] }>,
+    queryKey: ["msgraph-mail-full", folder],
+    queryFn: () => msApi(`/mail?folder=${folder}`) as Promise<{ messages: MailMessage[] }>,
     staleTime: 60_000, refetchInterval: 120_000,
   });
 
@@ -65,16 +66,28 @@ function MailPageInner() {
     } finally { setSending(false); }
   }
 
+  function parseEmails(raw: string): string[] {
+    return raw.split(/[,;]/).map(s => s.trim()).filter(Boolean);
+  }
+
   async function sendCompose() {
-    if (!compose.to || !compose.subject) return;
+    const toList = parseEmails(compose.to);
+    if (toList.length === 0 || !compose.subject) return;
     setSending(true);
     try {
       await msApi("/mail/compose", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(compose),
+        body: JSON.stringify({
+          to: toList,
+          cc: parseEmails(compose.cc),
+          bcc: parseEmails(compose.bcc),
+          subject: compose.subject,
+          body: compose.body,
+        }),
       });
       toast({ title: "Email sent" });
-      setCompose({ to: "", subject: "", body: "" }); setComposing(false);
+      setCompose({ to: "", cc: "", bcc: "", showCcBcc: false, subject: "", body: "" });
+      setComposing(false);
     } catch (e) {
       toast({ title: "Failed", description: (e as Error).message, variant: "destructive" });
     } finally { setSending(false); }
@@ -90,23 +103,37 @@ function MailPageInner() {
       {/* ── Left: inbox list ── */}
       <div className="w-80 shrink-0 flex flex-col border-r overflow-hidden" style={{ borderColor: "var(--pg-card-border)", background: "var(--pg-card)" }}>
         {/* Header */}
-        <div className="flex items-center gap-2 px-4 py-3 shrink-0" style={{ borderBottom: "1px solid var(--pg-row-border)" }}>
-          <Image src="/outlook-logo.svg" alt="Outlook" width={20} height={20} />
-          <span className="text-[14px] font-bold flex-1" style={{ color: "var(--pg-text-1)" }}>Inbox</span>
-          {isLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: "var(--pg-text-4)" }} />}
-          <button onClick={() => disconnectMutation.mutate()} disabled={disconnectMutation.isPending}
-                  title="Disconnect from Microsoft 365"
-                  className="w-6 h-6 flex items-center justify-center rounded"
-                  style={{ color: "var(--pg-text-3)" }}
-                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#ef4444"}
-                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "var(--pg-text-3)"}>
-            {disconnectMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Link2Off className="w-3.5 h-3.5" />}
-          </button>
-          <button onClick={() => setComposing(true)}
-                  className="flex items-center gap-1 h-6 px-2 rounded-lg text-[11px] font-semibold"
-                  style={{ background: "var(--pg-accent)", color: "white" }}>
-            <Plus className="w-3 h-3" /> Compose
-          </button>
+        <div className="px-4 py-3 shrink-0" style={{ borderBottom: "1px solid var(--pg-row-border)" }}>
+          <div className="flex items-center gap-2 mb-2">
+            <Image src="/outlook-logo.svg" alt="Outlook" width={18} height={18} />
+            <span className="text-[14px] font-bold flex-1" style={{ color: "var(--pg-text-1)" }}>Outlook</span>
+            {isLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: "var(--pg-text-4)" }} />}
+            <button onClick={() => disconnectMutation.mutate()} disabled={disconnectMutation.isPending}
+                    title="Disconnect" className="w-6 h-6 flex items-center justify-center rounded"
+                    style={{ color: "var(--pg-text-3)" }}
+                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#ef4444"}
+                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "var(--pg-text-3)"}>
+              {disconnectMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Link2Off className="w-3.5 h-3.5" />}
+            </button>
+            <button onClick={() => { setComposing(true); setSelected(null); }}
+                    className="flex items-center gap-1 h-6 px-2 rounded-lg text-[11px] font-semibold"
+                    style={{ background: "#0078d4", color: "white" }}>
+              <Plus className="w-3 h-3" /> Compose
+            </button>
+          </div>
+          {/* Folder tabs */}
+          <div className="flex gap-1">
+            {(["inbox", "sent", "drafts", "junk"] as const).map(f => (
+              <button key={f} onClick={() => { setFolder(f); setSelected(null); setPage(0); }}
+                      className="flex-1 py-1 rounded text-[11px] font-medium capitalize transition-colors"
+                      style={{
+                        background: folder === f ? "#0078d4" : "var(--pg-muted-bg)",
+                        color: folder === f ? "white" : "var(--pg-text-2)",
+                      }}>
+                {f}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Email list */}
@@ -158,20 +185,40 @@ function MailPageInner() {
               <h2 className="text-[16px] font-bold flex-1" style={{ color: "var(--pg-text-1)" }}>New Email</h2>
               <button onClick={() => setComposing(false)} className="text-[12px]" style={{ color: "var(--pg-text-3)" }}>Cancel</button>
             </div>
-            {[
-              { placeholder: "To (email address)", value: compose.to, key: "to" as const },
-              { placeholder: "Subject", value: compose.subject, key: "subject" as const },
-            ].map(f => (
-              <input key={f.key} value={f.value} onChange={e => setCompose(p => ({ ...p, [f.key]: e.target.value }))}
-                     placeholder={f.placeholder} className="w-full px-4 py-2.5 text-[13px] rounded-xl outline-none"
+            {/* To — multiple recipients comma-separated */}
+            <div className="relative">
+              <input value={compose.to} onChange={e => setCompose(p => ({ ...p, to: e.target.value }))}
+                     placeholder="To (comma-separate multiple: a@co.com, b@co.com)"
+                     className="w-full px-4 py-2.5 text-[13px] rounded-xl outline-none pr-20"
                      style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)", color: "var(--pg-text-1)" }} />
-            ))}
+              <button onClick={() => setCompose(p => ({ ...p, showCcBcc: !p.showCcBcc }))}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-medium"
+                      style={{ color: "#0078d4" }}>
+                CC / BCC
+              </button>
+            </div>
+            {compose.showCcBcc && (
+              <>
+                <input value={compose.cc} onChange={e => setCompose(p => ({ ...p, cc: e.target.value }))}
+                       placeholder="CC (comma-separated)"
+                       className="w-full px-4 py-2.5 text-[13px] rounded-xl outline-none"
+                       style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)", color: "var(--pg-text-1)" }} />
+                <input value={compose.bcc} onChange={e => setCompose(p => ({ ...p, bcc: e.target.value }))}
+                       placeholder="BCC (comma-separated)"
+                       className="w-full px-4 py-2.5 text-[13px] rounded-xl outline-none"
+                       style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)", color: "var(--pg-text-1)" }} />
+              </>
+            )}
+            <input value={compose.subject} onChange={e => setCompose(p => ({ ...p, subject: e.target.value }))}
+                   placeholder="Subject"
+                   className="w-full px-4 py-2.5 text-[13px] rounded-xl outline-none"
+                   style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)", color: "var(--pg-text-1)" }} />
             <textarea value={compose.body} onChange={e => setCompose(p => ({ ...p, body: e.target.value }))}
                       placeholder="Write your message…" className="flex-1 w-full px-4 py-2.5 text-[13px] rounded-xl outline-none resize-none"
                       style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)", color: "var(--pg-text-1)" }} />
-            <button onClick={sendCompose} disabled={sending || !compose.to || !compose.subject}
+            <button onClick={sendCompose} disabled={sending || !compose.to.trim() || !compose.subject}
                     className="flex items-center gap-2 h-9 px-5 rounded-xl text-[13px] font-semibold text-white self-start"
-                    style={{ background: "#0078d4", opacity: (sending || !compose.to || !compose.subject) ? 0.6 : 1 }}>
+                    style={{ background: "#0078d4", opacity: (sending || !compose.to.trim() || !compose.subject) ? 0.6 : 1 }}>
               {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} Send
             </button>
           </div>

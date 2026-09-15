@@ -444,7 +444,20 @@ type MailMessage struct {
 	SenderEmail string `json:"senderEmail"`
 }
 
-func (s *Service) GetMail(ctx context.Context, userID uuid.UUID) ([]MailMessage, error) {
+// mailFolderPath maps user-facing folder names to Graph API folder names.
+var mailFolderPath = map[string]string{
+	"inbox":  "inbox",
+	"sent":   "sentItems",
+	"drafts": "drafts",
+	"junk":   "junkemail",
+}
+
+// GetMail fetches messages from a specific mail folder (inbox, sent, drafts, junk).
+func (s *Service) GetMail(ctx context.Context, userID uuid.UUID, folder string) ([]MailMessage, error) {
+	fp, ok := mailFolderPath[folder]
+	if !ok {
+		fp = "inbox"
+	}
 	var raw struct {
 		Value []struct {
 			ID          string `json:"id"`
@@ -460,8 +473,7 @@ func (s *Service) GetMail(ctx context.Context, userID uuid.UUID) ([]MailMessage,
 			} `json:"from"`
 		} `json:"value"`
 	}
-	path := "/me/mailFolders/inbox/messages?$top=10&$orderby=receivedDateTime%20desc" +
-		"&$select=id,subject,bodyPreview,receivedDateTime,isRead,from"
+	path := fmt.Sprintf("/me/mailFolders/%s/messages?$top=20&$orderby=receivedDateTime%%20desc&$select=id,subject,bodyPreview,receivedDateTime,isRead,from", fp)
 	if err := s.graphGET(ctx, userID, path, &raw); err != nil {
 		return nil, err
 	}
@@ -531,29 +543,39 @@ func (s *Service) ReplyAllToEmail(ctx context.Context, userID uuid.UUID, message
 	return nil
 }
 
-// SendEmail composes and sends a new email.
-func (s *Service) SendEmail(ctx context.Context, userID uuid.UUID, to, subject, body string) error {
-	payload := map[string]any{
-		"message": map[string]any{
-			"subject": subject,
-			"body": map[string]string{
-				"contentType": "Text",
-				"content":     body,
-			},
-			"toRecipients": []map[string]any{
-				{"emailAddress": map[string]string{"address": to}},
-			},
-		},
-		"saveToSentItems": true,
+func makeRecipients(emails []string) []map[string]any {
+	out := make([]map[string]any, 0, len(emails))
+	for _, e := range emails {
+		e = strings.TrimSpace(e)
+		if e != "" {
+			out = append(out, map[string]any{"emailAddress": map[string]string{"address": e}})
+		}
 	}
+	return out
+}
+
+// SendEmail composes and sends a new email to one or more recipients with optional CC/BCC.
+func (s *Service) SendEmail(ctx context.Context, userID uuid.UUID, to []string, subject, body string, cc, bcc []string) error {
+	msg := map[string]any{
+		"subject": subject,
+		"body":    map[string]string{"contentType": "Text", "content": body},
+		"toRecipients": makeRecipients(to),
+	}
+	if len(cc) > 0 {
+		msg["ccRecipients"] = makeRecipients(cc)
+	}
+	if len(bcc) > 0 {
+		msg["bccRecipients"] = makeRecipients(bcc)
+	}
+	payload := map[string]any{"message": msg, "saveToSentItems": true}
 	if err := s.graphPOST(ctx, userID, "/me/sendMail", payload, nil); err != nil {
 		return err
 	}
 	_ = s.auditWriter.Write(ctx, audit.Entry{
-		Actor:  audit.Actor{Type: "user", ID: userID.String()},
-		Action: "msgraph.email.sent",
+		Actor:        audit.Actor{Type: "user", ID: userID.String()},
+		Action:       "msgraph.email.sent",
 		ResourceType: "email",
-		Context: map[string]any{"to": to, "subject": subject},
+		Context:      map[string]any{"to": to, "subject": subject},
 	})
 	return nil
 }
@@ -1118,14 +1140,14 @@ func (s *Service) GetChatMessages(ctx context.Context, userID uuid.UUID, chatID 
 	return out, nil
 }
 
-// DeleteTeamsMessage soft-deletes a message (shows "This message was deleted" to participants).
-// Graph requires /chats/{id}/... not /me/chats/{id}/... for write operations.
+// DeleteTeamsMessage soft-deletes a message (shows "This message was deleted").
+// Uses /me/chats/ — consistent with the read path which is known to work.
 func (s *Service) DeleteTeamsMessage(ctx context.Context, userID uuid.UUID, chatID, messageID string) error {
 	token, err := s.accessToken(ctx, userID)
 	if err != nil {
 		return err
 	}
-	path := fmt.Sprintf("%s/chats/%s/messages/%s", graphBase, url.PathEscape(chatID), url.PathEscape(messageID))
+	path := fmt.Sprintf("%s/me/chats/%s/messages/%s", graphBase, url.PathEscape(chatID), url.PathEscape(messageID))
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, path, nil)
 	if err != nil {
 		return err
@@ -1148,15 +1170,15 @@ func (s *Service) DeleteTeamsMessage(ctx context.Context, userID uuid.UUID, chat
 	return nil
 }
 
-// ReactToMessage adds an emoji reaction. Uses /chats/ (not /me/chats/) — required by Graph for write ops.
+// ReactToMessage adds an emoji reaction. Uses /me/chats/ — consistent with read path.
 func (s *Service) ReactToMessage(ctx context.Context, userID uuid.UUID, chatID, messageID, reactionType string) error {
-	path := fmt.Sprintf("/chats/%s/messages/%s/setReaction", url.PathEscape(chatID), url.PathEscape(messageID))
+	path := fmt.Sprintf("/me/chats/%s/messages/%s/setReaction", url.PathEscape(chatID), url.PathEscape(messageID))
 	return s.graphPOST(ctx, userID, path, map[string]string{"reactionType": reactionType}, nil)
 }
 
-// UnreactToMessage removes a reaction. Uses /chats/ (not /me/chats/).
+// UnreactToMessage removes a reaction. Uses /me/chats/ — consistent with read path.
 func (s *Service) UnreactToMessage(ctx context.Context, userID uuid.UUID, chatID, messageID, reactionType string) error {
-	path := fmt.Sprintf("/chats/%s/messages/%s/unsetReaction", url.PathEscape(chatID), url.PathEscape(messageID))
+	path := fmt.Sprintf("/me/chats/%s/messages/%s/unsetReaction", url.PathEscape(chatID), url.PathEscape(messageID))
 	return s.graphPOST(ctx, userID, path, map[string]string{"reactionType": reactionType}, nil)
 }
 

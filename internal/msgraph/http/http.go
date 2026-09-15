@@ -173,7 +173,9 @@ func callerID(r *http.Request) (uuid.UUID, bool) {
 func (h *Handler) mail(w http.ResponseWriter, r *http.Request) {
 	id, ok := callerID(r)
 	if !ok { httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated"); return }
-	msgs, err := h.svc.GetMail(r.Context(), id)
+	folder := r.URL.Query().Get("folder")
+	if folder == "" { folder = "inbox" }
+	msgs, err := h.svc.GetMail(r.Context(), id, folder)
 	if err != nil { notConnected(w); return }
 	httpx.JSON(w, http.StatusOK, map[string]any{"messages": msgs})
 }
@@ -289,14 +291,16 @@ func (h *Handler) composeEmail(w http.ResponseWriter, r *http.Request) {
 	id, ok := callerID(r)
 	if !ok { httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated"); return }
 	var in struct {
-		To      string `json:"to"`
-		Subject string `json:"subject"`
-		Body    string `json:"body"`
+		To      []string `json:"to"`
+		CC      []string `json:"cc"`
+		BCC     []string `json:"bcc"`
+		Subject string   `json:"subject"`
+		Body    string   `json:"body"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.To == "" || in.Subject == "" {
-		httpx.Error(w, http.StatusBadRequest, "bad_request", "to and subject are required"); return
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || len(in.To) == 0 || in.Subject == "" {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "to (array) and subject are required"); return
 	}
-	if err := h.svc.SendEmail(r.Context(), id, in.To, in.Subject, in.Body); err != nil {
+	if err := h.svc.SendEmail(r.Context(), id, in.To, in.Subject, in.Body, in.CC, in.BCC); err != nil {
 		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error()); return
 	}
 	httpx.JSON(w, http.StatusOK, map[string]bool{"ok": true})
