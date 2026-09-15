@@ -10,6 +10,7 @@ import {
 import Image from "next/image";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
+import { FileAttachmentCard } from "./FileAttachmentCard";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
 
@@ -679,17 +680,15 @@ function TeamsPanel() {
                             ? <p className="px-3 py-2 italic text-[11px]">This message was deleted</p>
                             : <>
                                 {text && <p className="px-3 py-2 whitespace-pre-wrap">{text}</p>}
-                                {/* Attachments */}
-                                {(msg.attachments ?? []).filter(a => a.name && a.contentUrl).map(att => (
-                                  <a key={att.id} href={att.contentUrl} target="_blank" rel="noreferrer"
-                                     className="flex items-center gap-2 px-3 py-2 text-[11px] hover:opacity-80 transition-opacity"
-                                     style={{ borderTop: text ? "1px solid rgba(255,255,255,0.15)" : "none",
-                                              color: isMe ? "rgba(255,255,255,0.9)" : "var(--pg-accent)" }}>
-                                    <span>📎</span>
-                                    <span className="truncate max-w-[160px]">{att.name}</span>
-                                    <ExternalLink className="w-3 h-3 shrink-0" />
-                                  </a>
-                                ))}
+                                {/* File attachment cards */}
+                                {(msg.attachments ?? []).filter(a => a.name && a.contentUrl).length > 0 && (
+                                  <div className={`flex flex-wrap gap-2 px-2 py-2 ${text ? "border-t" : ""}`}
+                                       style={{ borderColor: isMe ? "rgba(255,255,255,0.12)" : "var(--pg-row-border)" }}>
+                                    {(msg.attachments ?? []).filter(a => a.name && a.contentUrl).map(att => (
+                                      <FileAttachmentCard key={att.id} attachment={att} isMe={isMe} />
+                                    ))}
+                                  </div>
+                                )}
                               </>
                           }
                         </div>

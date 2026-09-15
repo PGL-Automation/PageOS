@@ -13,6 +13,7 @@ import {
 } from "../components";
 import { PeoplePicker } from "../PeoplePicker";
 import { ProfileCard } from "../ProfileCard";
+import { FileAttachmentCard } from "../FileAttachmentCard";
 
 // Encode chatId and messageId — Teams IDs contain ':', '@', spaces
 function encodeId(id: string) { return encodeURIComponent(id); }
@@ -603,15 +604,14 @@ function TeamsPageInner() {
                               ? <p className="px-4 py-2.5 italic text-[12px]">This message was deleted</p>
                               : <>
                                   {text && <p className="px-4 py-2.5 whitespace-pre-wrap">{text}</p>}
-                                  {(msg.attachments ?? []).filter(a => a.name && a.contentUrl).map(att => (
-                                    <a key={att.id} href={att.contentUrl} target="_blank" rel="noreferrer"
-                                       className="flex items-center gap-2 px-4 py-2 text-[12px] hover:opacity-80 transition-opacity"
-                                       style={{ borderTop: text ? "1px solid rgba(255,255,255,0.15)" : "none",
-                                                color: isMe ? "rgba(255,255,255,0.9)" : "var(--pg-accent)" }}>
-                                      <span>📎</span><span className="truncate max-w-[200px]">{att.name}</span>
-                                      <ExternalLink className="w-3 h-3 shrink-0" />
-                                    </a>
-                                  ))}
+                                  {(msg.attachments ?? []).filter(a => a.name && a.contentUrl).length > 0 && (
+                                    <div className={`flex flex-wrap gap-2 px-3 py-2.5 ${text ? "border-t" : ""}`}
+                                         style={{ borderColor: isMe ? "rgba(255,255,255,0.12)" : "var(--pg-row-border)" }}>
+                                      {(msg.attachments ?? []).filter(a => a.name && a.contentUrl).map(att => (
+                                        <FileAttachmentCard key={att.id} attachment={att} isMe={isMe} />
+                                      ))}
+                                    </div>
+                                  )}
                                 </>
                             }
                           </div>
