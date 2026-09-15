@@ -158,3 +158,100 @@
   .duration-200        { animation-duration: 200ms; }
   .duration-300        { animation-duration: 300ms; }
 }
+
+/* ── Teams message HTML rendering ─────────────────────────────────────────── */
+.teams-msg-body {
+  font-size: 13px;
+  line-height: 1.55;
+}
+.teams-msg-body a {
+  color: var(--link-color, #0078d4);
+  text-decoration: underline;
+  word-break: break-all;
+}
+.teams-msg-body a:hover { opacity: 0.8; }
+
+/* Quoted reply blockquotes */
+.teams-msg-body blockquote {
+  border-left: 3px solid var(--quote-border, #0078d4);
+  background: var(--quote-bg, rgba(0,120,212,0.06));
+  margin: 4px 0 8px 0;
+  padding: 6px 10px;
+  border-radius: 0 8px 8px 0;
+  font-size: 12px;
+  opacity: 0.85;
+}
+.teams-msg-body blockquote cite {
+  display: block;
+  font-style: normal;
+  font-weight: 600;
+  font-size: 11px;
+  margin-bottom: 2px;
+}
+
+/* Adaptive card containers */
+.teams-msg-body .adaptiveCard,
+.teams-msg-body [class*="card"] {
+  background: rgba(0,0,0,0.06);
+  border-radius: 12px;
+  padding: 12px;
+  margin: 8px 0;
+}
+
+/* Buttons inside cards (e.g. "Start now") */
+.teams-msg-body button,
+.teams-msg-body [role="button"],
+.teams-msg-body input[type="button"],
+.teams-msg-body input[type="submit"] {
+  display: inline-block;
+  padding: 8px 16px;
+  border-radius: 6px;
+  background: transparent;
+  border: 1px solid currentColor;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 8px;
+}
+
+/* Images inside messages */
+.teams-msg-body img {
+  max-width: 100%;
+  border-radius: 8px;
+  display: block;
+  margin: 4px 0;
+}
+
+.teams-msg-body p { margin: 0 0 4px 0; }
+.teams-msg-body ul, .teams-msg-body ol { margin: 4px 0 4px 16px; }
+.teams-msg-body strong { font-weight: 600; }
+
+/* ── Context menu ─────────────────────────────────────────────────────────── */
+.ctx-menu {
+  position: fixed;
+  z-index: 9999;
+  min-width: 180px;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+  background: var(--pg-card);
+  border: 1px solid var(--pg-card-border);
+}
+.ctx-menu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 14px;
+  font-size: 13px;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--pg-text-1);
+  border-bottom: 1px solid var(--pg-row-border);
+  transition: background 0.1s;
+}
+.ctx-menu button:last-child { border-bottom: none; }
+.ctx-menu button:hover { background: var(--pg-hover); }
+.ctx-menu button.danger { color: #ef4444; }

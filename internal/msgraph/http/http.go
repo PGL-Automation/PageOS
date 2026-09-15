@@ -47,6 +47,7 @@ func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	r.Get("/teams/{chatId}/page",                                  h.chatPage)
 	r.Post("/teams/{chatId}/send",                                 h.sendTeamsMessage)
 	r.Delete("/teams/{chatId}/messages/{messageId}",               h.deleteMessage)
+	r.Patch("/teams/{chatId}/messages/{messageId}",                h.editMessage)
 	r.Post("/teams/{chatId}/messages/{messageId}/react",           h.reactMessage)
 	r.Post("/teams/{chatId}/messages/{messageId}/unreact",         h.unreactMessage)
 	r.Get("/teams/{chatId}/read-status",                           h.chatReadStatus)
@@ -438,6 +439,19 @@ func (h *Handler) chatMessages(w http.ResponseWriter, r *http.Request) {
 	msgs, err := h.svc.GetChatMessages(r.Context(), id, chi.URLParam(r, "chatId"))
 	if err != nil { notConnected(w); return }
 	httpx.JSON(w, http.StatusOK, map[string]any{"messages": msgs})
+}
+
+func (h *Handler) editMessage(w http.ResponseWriter, r *http.Request) {
+	id, ok := callerID(r)
+	if !ok { httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated"); return }
+	var in struct{ Content string `json:"content"` }
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.Content == "" {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "content is required"); return
+	}
+	if err := h.svc.EditTeamsMessage(r.Context(), id, chi.URLParam(r, "chatId"), chi.URLParam(r, "messageId"), in.Content); err != nil {
+		httpx.Error(w, http.StatusUnprocessableEntity, "graph_error", err.Error()); return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 func (h *Handler) deleteMessage(w http.ResponseWriter, r *http.Request) {

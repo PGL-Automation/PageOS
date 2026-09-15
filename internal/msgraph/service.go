@@ -1214,6 +1214,35 @@ func (s *Service) GetInboxUnreadCount(ctx context.Context, userID uuid.UUID) (in
 	return raw.UnreadItemCount, nil
 }
 
+// EditTeamsMessage replaces the content of a sent message.
+func (s *Service) EditTeamsMessage(ctx context.Context, userID uuid.UUID, chatID, messageID, content string) error {
+	token, err := s.accessToken(ctx, userID)
+	if err != nil {
+		return err
+	}
+	payload := map[string]any{
+		"body": map[string]string{"contentType": "text", "content": content},
+	}
+	encoded, _ := json.Marshal(payload)
+	path := fmt.Sprintf("%s/me/chats/%s/messages/%s", graphBase, url.PathEscape(chatID), url.PathEscape(messageID))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, path, strings.NewReader(string(encoded)))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("graph PATCH message: %d %s", resp.StatusCode, string(b))
+	}
+	return nil
+}
+
 // GetChatMessages returns the last 20 messages in a specific chat (ascending order).
 func (s *Service) GetChatMessages(ctx context.Context, userID uuid.UUID, chatID string) ([]TeamsMessage, error) {
 	var msgs struct {

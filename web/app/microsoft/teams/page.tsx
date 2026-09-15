@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Send, Plus, Search, ArrowUp, ExternalLink, ChevronDown, Phone, Video, Eye, Link2Off } from "lucide-react";
+import { Loader2, Send, Plus, Search, ArrowUp, ExternalLink, ChevronDown, Phone, Video, Eye, Link2Off, Reply, Forward, Pencil, Trash2, Pin } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import Image from "next/image";
 import { useToast } from "@/hooks/use-toast";
@@ -14,6 +14,7 @@ import {
 import { PeoplePicker } from "../PeoplePicker";
 import { ProfileCard } from "../ProfileCard";
 import { FileAttachmentCard } from "../FileAttachmentCard";
+import { MessageBody } from "../MessageBody";
 
 // Encode chatId and messageId — Teams IDs contain ':', '@', spaces
 function encodeId(id: string) { return encodeURIComponent(id); }
@@ -75,7 +76,11 @@ function TeamsPageInner() {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [startingChat, setStartingChat] = useState<string | null>(null);
-  const [profileCard, setProfileCard] = useState<{ msId: string; name: string; rect: DOMRect } | null>(null);
+  const [profileCard, setProfileCard]   = useState<{ msId: string; name: string; rect: DOMRect } | null>(null);
+  const [contextMenu, setContextMenu]   = useState<{ msg: TeamsMessage; x: number; y: number } | null>(null);
+  const [quoteMsg, setQuoteMsg]         = useState<TeamsMessage | null>(null);
+  const [editingMsg, setEditingMsg]     = useState<TeamsMessage | null>(null);
+  const [editText, setEditText]         = useState("");
   const [groupMode, setGroupMode] = useState(false);
   // Optimistic messages — shown immediately on send, cleared after next successful fetch
   const [optimisticMessages, setOptimisticMessages] = useState<TeamsMessage[]>([]);
@@ -134,6 +139,15 @@ function TeamsPageInner() {
     enabled: debouncedQuery.length >= 2,
     staleTime: 30_000,
   });
+
+  // Close context menu on any click/scroll
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    window.addEventListener("click", close);
+    window.addEventListener("scroll", close, true);
+    return () => { window.removeEventListener("click", close); window.removeEventListener("scroll", close, true); };
+  }, [contextMenu]);
 
   // Mark chat as read when opened — enables read receipts for the other person
   useEffect(() => {
@@ -231,8 +245,12 @@ function TeamsPageInner() {
 
   async function sendMessage() {
     if (!selectedChat || !message.trim()) return;
-    const text = message;
-    setMessage(""); // Clear input immediately
+    // If quoting, prepend the quoted block as HTML
+    const quotedPrefix = quoteMsg
+      ? `<blockquote><cite>${quoteMsg.senderName}</cite>${stripHtml(quoteMsg.body).slice(0, 200)}</blockquote>`
+      : "";
+    const text = quotedPrefix + message;
+    setMessage(""); setQuoteMsg(null);
 
     // Optimistic update — show the message right away before API responds
     const tempId = `opt-${Date.now()}`;
@@ -327,6 +345,18 @@ function TeamsPageInner() {
       });
       refetchReactions(); // refresh local reaction counts immediately
     } catch (e) { toast({ title: "Reaction failed", description: (e as Error).message, variant: "destructive" }); }
+  }
+
+  async function saveEdit() {
+    if (!editingMsg || !editText.trim()) return;
+    try {
+      await msApi(`/teams/${encodeId(editingMsg.chatId)}/messages/${encodeId(editingMsg.id)}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: editText }),
+      });
+      setEditingMsg(null); setEditText("");
+      queryClient.invalidateQueries({ queryKey: ["msgraph-chat-page-full", selectedChat?.id] });
+    } catch (e) { toast({ title: "Could not edit message", description: (e as Error).message, variant: "destructive" }); }
   }
 
   async function deleteMsg(msg: TeamsMessage) {
@@ -592,18 +622,33 @@ function TeamsPageInner() {
                         )}
                         <div className={`flex items-end gap-2 ${isMe ? "flex-row-reverse" : "flex-row"}`}>
                           <div className="max-w-[60%] rounded-2xl text-[13px] leading-relaxed overflow-hidden"
+                               onContextMenu={e => { if (!isDeleted && !isOptimistic) { e.preventDefault(); setContextMenu({ msg, x: e.clientX, y: e.clientY }); } }}
                                style={{
                                  background: isDeleted ? "transparent" : isMe ? "#5059C9" : "var(--pg-card)",
                                  color: isDeleted ? "var(--pg-text-4)" : isMe ? "white" : "var(--pg-text-1)",
                                  border: isDeleted ? "1px dashed var(--pg-card-border)" : isMe ? "none" : "1px solid var(--pg-card-border)",
                                  borderBottomRightRadius: isMe ? 4 : undefined,
                                  borderBottomLeftRadius: isMe ? undefined : 4,
-                                 opacity: isOptimistic ? 0.7 : 1, // slightly faded while sending
+                                 opacity: isOptimistic ? 0.7 : 1,
                                }}>
                             {isDeleted
                               ? <p className="px-4 py-2.5 italic text-[12px]">This message was deleted</p>
                               : <>
-                                  {text && <p className="px-4 py-2.5 whitespace-pre-wrap">{text}</p>}
+                                  {/* Edit mode */}
+                                  {editingMsg?.id === msg.id
+                                    ? <div className="p-2">
+                                        <input value={editText} onChange={e => setEditText(e.target.value)}
+                                               onKeyDown={e => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") { setEditingMsg(null); } }}
+                                               className="w-full px-3 py-1.5 text-[13px] rounded-lg outline-none"
+                                               style={{ background: "rgba(0,0,0,0.2)", color: "white", border: "1px solid rgba(255,255,255,0.3)" }}
+                                               autoFocus />
+                                        <div className="flex gap-1.5 mt-1.5">
+                                          <button onClick={saveEdit} className="text-[11px] px-2 py-0.5 rounded" style={{ background: "rgba(255,255,255,0.2)", color: "white" }}>Save</button>
+                                          <button onClick={() => setEditingMsg(null)} className="text-[11px] px-2 py-0.5 rounded" style={{ background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)" }}>Cancel</button>
+                                        </div>
+                                      </div>
+                                    : <MessageBody body={msg.body} isMe={isMe} className="px-4 py-2.5" />
+                                  }
                                   {(msg.attachments ?? []).filter(a => a.name && a.contentUrl).length > 0 && (
                                     <div className={`flex flex-wrap gap-2 px-3 py-2.5 ${text ? "border-t" : ""}`}
                                          style={{ borderColor: isMe ? "rgba(255,255,255,0.12)" : "var(--pg-row-border)" }}>
@@ -666,6 +711,20 @@ function TeamsPageInner() {
             <div ref={messagesEndRef} />
           </div>
 
+          {/* Quote preview */}
+          {quoteMsg && (
+            <div className="flex items-start gap-2 px-5 py-2 shrink-0"
+                 style={{ borderTop: "1px solid var(--pg-row-border)", background: "var(--pg-muted-bg)" }}>
+              <div className="flex-1 border-l-2 pl-2" style={{ borderColor: "#5059C9" }}>
+                <p className="text-[10px] font-semibold" style={{ color: "#5059C9" }}>{quoteMsg.senderName}</p>
+                <p className="text-[11px] truncate" style={{ color: "var(--pg-text-3)" }}>
+                  {stripHtml(quoteMsg.body).slice(0, 80)}
+                </p>
+              </div>
+              <button onClick={() => setQuoteMsg(null)} className="text-[10px]" style={{ color: "var(--pg-text-4)" }}>✕</button>
+            </div>
+          )}
+
           {/* Input */}
           <div className="flex items-center gap-3 px-5 py-3 shrink-0" style={{ borderTop: "1px solid var(--pg-row-border)", background: "var(--pg-card)" }}>
             <input value={message} onChange={e => setMessage(e.target.value)}
@@ -684,6 +743,33 @@ function TeamsPageInner() {
         <div className="flex-1 flex flex-col items-center justify-center gap-3">
           <Image src="/teams-logo.svg" alt="Teams" width={56} height={56} style={{ opacity: 0.3 }} />
           <p className="text-[13px]" style={{ color: "var(--pg-text-3)" }}>Select a chat or search for someone</p>
+        </div>
+      )}
+
+      {/* Right-click context menu */}
+      {contextMenu && (
+        <div className="ctx-menu" style={{ left: contextMenu.x, top: contextMenu.y }}
+             onClick={e => e.stopPropagation()}>
+          <button onClick={() => { setQuoteMsg(contextMenu.msg); setContextMenu(null); }}>
+            <Reply className="w-4 h-4" /> Reply with Quote
+          </button>
+          {contextMenu.msg.senderName === user?.DisplayName && (
+            <button onClick={() => {
+              setEditingMsg(contextMenu.msg);
+              setEditText(stripHtml(contextMenu.msg.body));
+              setContextMenu(null);
+            }}>
+              <Pencil className="w-4 h-4" /> Edit
+            </button>
+          )}
+          <button onClick={() => { /* forward: open a chat selector */ setContextMenu(null); toast({ title: "Select a chat to forward to", description: "Use the search bar to find a person" }); }}>
+            <Forward className="w-4 h-4" /> Forward
+          </button>
+          {contextMenu.msg.senderName === user?.DisplayName && (
+            <button className="danger" onClick={() => { deleteMsg(contextMenu.msg); setContextMenu(null); }}>
+              <Trash2 className="w-4 h-4" /> Delete
+            </button>
+          )}
         </div>
       )}
 

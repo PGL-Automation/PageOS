@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { Loader2, Send, Plus, ChevronLeft, ChevronRight, Link2Off } from "lucide-react";
 import Image from "next/image";
@@ -32,11 +32,32 @@ function MailPageInner() {
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 20;
 
+  const prevMailIdsRef = useRef<Set<string>>(new Set());
+
   const { data, isLoading } = useQuery({
     queryKey: ["msgraph-mail-full", folder],
     queryFn: () => msApi(`/mail?folder=${folder}`) as Promise<{ messages: MailMessage[] }>,
-    staleTime: 60_000, refetchInterval: 120_000,
+    staleTime: 2_000,
+    refetchInterval: folder === "inbox" ? 3_000 : 60_000, // 3s for inbox, slower for others
   });
+
+  // Browser notification for new inbox emails
+  useEffect(() => {
+    if (folder !== "inbox") return;
+    const ids = new Set((data?.messages ?? []).map(m => m.id));
+    if (prevMailIdsRef.current.size > 0) {
+      (data?.messages ?? []).filter(m => !prevMailIdsRef.current.has(m.id)).forEach(m => {
+        if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+          const n = new Notification(`New email from ${m.senderName}`, {
+            body: m.subject, icon: "/outlook-logo.svg",
+          });
+          const capturedM = m;
+          n.onclick = () => { window.focus(); }; // user can click the email in the list
+        }
+      });
+    }
+    prevMailIdsRef.current = ids;
+  }, [data, folder]);
 
   const { data: threadData, isLoading: threadLoading } = useQuery({
     queryKey: ["msgraph-thread", selected?.conversationId],

@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Plus, ExternalLink } from "lucide-react";
 import Image from "next/image";
@@ -10,6 +10,7 @@ import { msApi, formatEventTime, CalendarEvent } from "../components";
 function CalendarPageInner() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const notifiedRef = useRef<Set<string>>(new Set());
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({
     subject: "", date: "", startTime: "09:00", endTime: "10:00",
@@ -20,8 +21,40 @@ function CalendarPageInner() {
   const { data, isLoading } = useQuery({
     queryKey: ["msgraph-calendar-full"],
     queryFn: () => msApi("/calendar") as Promise<{ events: CalendarEvent[] }>,
-    staleTime: 60_000, refetchInterval: 300_000,
+    staleTime: 60_000,
+    refetchInterval: 60_000, // check every minute
   });
+
+  // Notify 15 minutes before an event starts
+  useEffect(() => {
+    if (typeof Notification !== "undefined" && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+    const events = data?.events ?? [];
+    const now = Date.now();
+    events.forEach(ev => {
+      if (!ev.start || notifiedRef.current.has(ev.id)) return;
+      const startMs = new Date(ev.start).getTime();
+      const minsUntil = (startMs - now) / 60_000;
+      if (minsUntil > 0 && minsUntil <= 15) {
+        notifiedRef.current.add(ev.id);
+        if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+          const n = new Notification(`📅 Upcoming: ${ev.subject}`, {
+            body: `Starts in ${Math.round(minsUntil)} minute${Math.round(minsUntil) === 1 ? "" : "s"}${ev.location ? ` · ${ev.location}` : ""}`,
+            icon: "/calendar-logo.svg",
+          });
+          if (ev.onlineMeetingUrl) {
+            n.onclick = () => { window.open(ev.onlineMeetingUrl, "_blank"); };
+          }
+        }
+        // In-app toast as well
+        toast({
+          title: `📅 ${ev.subject}`,
+          description: `Starting in ${Math.round(minsUntil)} minute${Math.round(minsUntil) === 1 ? "" : "s"}${ev.location ? ` · ${ev.location}` : ""}`,
+        });
+      }
+    });
+  }, [data, toast]);
 
   async function createEvent() {
     if (!form.subject || !form.date) return;
