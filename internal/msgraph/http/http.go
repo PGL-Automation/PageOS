@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -379,7 +380,7 @@ func (h *Handler) deleteMessage(w http.ResponseWriter, r *http.Request) {
 	id, ok := callerID(r)
 	if !ok { httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated"); return }
 	if err := h.svc.DeleteTeamsMessage(r.Context(), id, chi.URLParam(r, "chatId"), chi.URLParam(r, "messageId")); err != nil {
-		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error()); return
+		httpx.Error(w, http.StatusUnprocessableEntity, "graph_error", err.Error()); return
 	}
 	httpx.JSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
@@ -392,7 +393,7 @@ func (h *Handler) reactMessage(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "reactionType is required"); return
 	}
 	if err := h.svc.ReactToMessage(r.Context(), id, chi.URLParam(r, "chatId"), chi.URLParam(r, "messageId"), in.ReactionType); err != nil {
-		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error()); return
+		httpx.Error(w, http.StatusUnprocessableEntity, "graph_error", err.Error()); return
 	}
 	httpx.JSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
@@ -405,7 +406,7 @@ func (h *Handler) unreactMessage(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "reactionType is required"); return
 	}
 	if err := h.svc.UnreactToMessage(r.Context(), id, chi.URLParam(r, "chatId"), chi.URLParam(r, "messageId"), in.ReactionType); err != nil {
-		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error()); return
+		httpx.Error(w, http.StatusUnprocessableEntity, "graph_error", err.Error()); return
 	}
 	httpx.JSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
@@ -531,6 +532,18 @@ func (h *Handler) SSOCallback(identitySvc *identity.Service) http.HandlerFunc {
 			Secure:   cookieSecure,
 			SameSite: http.SameSiteLaxMode,
 		})
-		http.Redirect(w, r, "/dashboard", http.StatusFound)
+
+		// Return HTML instead of 302 redirect.
+		// Browsers increasingly block Set-Cookie headers in 3xx redirect responses
+		// during cross-site OAuth flows (ITP, ETP, Privacy Sandbox).
+		// A 200 HTML response with the cookie in its headers is always accepted;
+		// the JavaScript then navigates client-side after the cookie is stored.
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprintf(w, `<!DOCTYPE html>
+<html><head><title>PageOS – Signing in</title></head>
+<body>
+<p style="font-family:system-ui;text-align:center;padding:3rem;color:#475569">Signing you in…</p>
+<script>window.location.replace("/dashboard");</script>
+</body></html>`)
 	}
 }

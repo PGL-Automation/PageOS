@@ -1,13 +1,9 @@
-name: Deploy to VPS
+name: Deploy to Production
 
-# This workflow is superseded by deploy-prod.yml and deploy-dev.yml.
-# Kept for reference only — no triggers.
 on:
-  workflow_dispatch:
-    inputs:
-      disabled:
-        description: "This workflow is disabled. Use deploy-prod.yml instead."
-        required: false
+  push:
+    branches: [master]
+  workflow_dispatch: {}
 
 concurrency:
   group: deploy-production
@@ -43,12 +39,8 @@ jobs:
           for i in $(seq 1 12); do
             rsync -az --delete \
               -e "ssh -o ConnectTimeout=15 -o ConnectionAttempts=1" \
-              --exclude '.git' \
-              --exclude '.env' \
-              --exclude '.env.prod' \
-              --exclude 'node_modules' \
-              --exclude '.next' \
-              --exclude 'bin' \
+              --exclude '.git' --exclude '.env' --exclude '.env.prod' \
+              --exclude 'node_modules' --exclude '.next' --exclude 'bin' \
               ./ root@${{ secrets.VPS_HOST }}:/opt/pageos/ && exit 0
             echo "rsync attempt $i failed; retrying in 20s..."; sleep 20
           done
@@ -81,17 +73,14 @@ jobs:
 
       - name: Health check
         run: |
-          # Give containers a moment to finish starting up
           sleep 8
-          # Check API health via Docker network (works before DNS is configured)
-          # healthz is at /healthz (not /api/v1/healthz) on the API container
           for i in $(seq 1 10); do
             if ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no \
               root@${{ secrets.VPS_HOST }} \
               'docker run --rm --network pageos_default curlimages/curl:latest \
                 -fsS --max-time 5 http://pageos-api-1:8080/healthz' 2>/dev/null; then
               echo "API healthy"
-              echo "NOTE: Visit https://pageos.org once DNS A records pageos.org -> ${{ secrets.VPS_HOST }} are configured"
+              echo "Live at https://pageos.org"
               exit 0
             fi
             echo "waiting for API (attempt $i)..."; sleep 10

@@ -1,8 +1,8 @@
 "use client";
 
 import { Suspense, useEffect, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Send, Plus, ChevronLeft, ChevronRight } from "lucide-react";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
+import { Loader2, Send, Plus, ChevronLeft, ChevronRight, Link2Off } from "lucide-react";
 import Image from "next/image";
 import { useToast } from "@/hooks/use-toast";
 import { msApi, relativeTime, stripHtml, MailMessage } from "../components";
@@ -10,6 +10,16 @@ import { msApi, relativeTime, stripHtml, MailMessage } from "../components";
 function MailPageInner() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  const disconnectMutation = useMutation({
+    mutationFn: () => msApi("/disconnect", { method: "POST" }),
+    onSuccess: () => {
+      toast({ title: "Disconnected from Microsoft 365" });
+      queryClient.invalidateQueries({ queryKey: ["msgraph-status"] });
+      window.location.href = "/microsoft";
+    },
+    onError: () => toast({ title: "Disconnect failed", variant: "destructive" }),
+  });
   const [selected, setSelected] = useState<MailMessage | null>(null);
   const [replyMode, setReplyMode] = useState<"reply" | "replyAll" | null>(null);
   const [replyText, setReplyText] = useState("");
@@ -84,6 +94,14 @@ function MailPageInner() {
           <Image src="/outlook-logo.svg" alt="Outlook" width={20} height={20} />
           <span className="text-[14px] font-bold flex-1" style={{ color: "var(--pg-text-1)" }}>Inbox</span>
           {isLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: "var(--pg-text-4)" }} />}
+          <button onClick={() => disconnectMutation.mutate()} disabled={disconnectMutation.isPending}
+                  title="Disconnect from Microsoft 365"
+                  className="w-6 h-6 flex items-center justify-center rounded"
+                  style={{ color: "var(--pg-text-3)" }}
+                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#ef4444"}
+                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "var(--pg-text-3)"}>
+            {disconnectMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Link2Off className="w-3.5 h-3.5" />}
+          </button>
           <button onClick={() => setComposing(true)}
                   className="flex items-center gap-1 h-6 px-2 rounded-lg text-[11px] font-semibold"
                   style={{ background: "var(--pg-accent)", color: "white" }}>

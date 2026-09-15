@@ -2,7 +2,8 @@
 
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Send, Plus, Search, ArrowUp, ExternalLink, ChevronDown, Phone, Video, Eye } from "lucide-react";
+import { Loader2, Send, Plus, Search, ArrowUp, ExternalLink, ChevronDown, Phone, Video, Eye, Link2Off } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
 import Image from "next/image";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
@@ -45,8 +46,17 @@ function TeamsPageInner() {
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [startingChat, setStartingChat] = useState<string | null>(null);
   const [settingPresence, setSettingPresence] = useState(false);
-  // Track last message ID per chat to detect new incoming messages
   const prevLastMsgRef = useRef<Map<string, string>>(new Map());
+
+  const disconnectMutation = useMutation({
+    mutationFn: () => msApi("/disconnect", { method: "POST" }),
+    onSuccess: () => {
+      toast({ title: "Disconnected from Microsoft 365" });
+      queryClient.invalidateQueries({ queryKey: ["msgraph-status"] });
+      window.location.href = "/microsoft";
+    },
+    onError: () => toast({ title: "Disconnect failed", variant: "destructive" }),
+  });
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(searchQuery), 350);
@@ -229,6 +239,14 @@ function TeamsPageInner() {
             <Image src="/teams-logo.svg" alt="Teams" width={20} height={20} />
             <span className="text-[14px] font-bold flex-1" style={{ color: "var(--pg-text-1)" }}>Teams Chat</span>
             {isLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: "var(--pg-text-4)" }} />}
+            <button onClick={() => disconnectMutation.mutate()} disabled={disconnectMutation.isPending}
+                    title="Disconnect from Microsoft 365"
+                    className="w-6 h-6 flex items-center justify-center rounded"
+                    style={{ color: "var(--pg-text-3)" }}
+                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#ef4444"}
+                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "var(--pg-text-3)"}>
+              {disconnectMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Link2Off className="w-3.5 h-3.5" />}
+            </button>
             {/* My presence indicator + setter */}
             {presenceData && (
               <div className="relative group/presence">
