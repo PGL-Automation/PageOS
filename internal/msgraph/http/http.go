@@ -372,7 +372,7 @@ func (h *Handler) SSOCallback(identitySvc *identity.Service) http.HandlerFunc {
 			Expires:  expiresAt,
 			HttpOnly: true,
 			Secure:   cookieSecure,
-			SameSite: http.SameSiteStrictMode,
+			SameSite: http.SameSiteLaxMode,
 		})
 		http.Redirect(w, r, "/dashboard", http.StatusFound)
 	}
