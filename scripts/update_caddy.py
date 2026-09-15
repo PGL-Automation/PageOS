@@ -7,7 +7,8 @@ Run after every deploy; safe to run multiple times.
 import re
 
 CADDYFILE = "/opt/proxy/Caddyfile"
-REMOVE_PREFIXES = ("pageos.org {", "www.pageos.org {", "app.pageos.org {")
+# Only manage pageos.org and www.pageos.org — app.pageos.org is managed by update_caddy_dev.py
+REMOVE_PREFIXES = ("pageos.org {", "www.pageos.org {")
 
 NEW_BLOCK = """\
 www.pageos.org {
@@ -21,10 +22,6 @@ pageos.org {
 \thandle {
 \t\treverse_proxy pageos-web-1:3000
 \t}
-}
-
-app.pageos.org {
-\tredir https://pageos.org{uri} permanent
 }
 """
 
