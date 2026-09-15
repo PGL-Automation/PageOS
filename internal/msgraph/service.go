@@ -789,6 +789,79 @@ type ChatPage struct {
 	NextLink string         `json:"nextLink"` // empty string when no more pages
 }
 
+// UserProfile holds extended information about a Microsoft 365 user.
+type UserProfile struct {
+	ID          string `json:"id"`
+	DisplayName string `json:"displayName"`
+	Mail        string `json:"mail"`
+	JobTitle    string `json:"jobTitle"`
+	Department  string `json:"department"`
+	Phone       string `json:"phone"`
+}
+
+// GetUserProfile fetches extended profile info for a user by their MS ID.
+func (s *Service) GetUserProfile(ctx context.Context, userID uuid.UUID, targetMSID string) (*UserProfile, error) {
+	var raw struct {
+		ID             string   `json:"id"`
+		DisplayName    string   `json:"displayName"`
+		Mail           string   `json:"mail"`
+		JobTitle       string   `json:"jobTitle"`
+		Department     string   `json:"department"`
+		BusinessPhones []string `json:"businessPhones"`
+	}
+	path := fmt.Sprintf("/users/%s?$select=id,displayName,mail,jobTitle,department,businessPhones",
+		url.PathEscape(targetMSID))
+	if err := s.graphGET(ctx, userID, path, &raw); err != nil {
+		return nil, err
+	}
+	phone := ""
+	if len(raw.BusinessPhones) > 0 {
+		phone = raw.BusinessPhones[0]
+	}
+	return &UserProfile{
+		ID: raw.ID, DisplayName: raw.DisplayName, Mail: raw.Mail,
+		JobTitle: raw.JobTitle, Department: raw.Department, Phone: phone,
+	}, nil
+}
+
+// GetUserPhoto fetches a user's profile photo bytes and content type.
+// Returns nil bytes when the user has no photo (404 from Graph).
+func (s *Service) GetUserPhoto(ctx context.Context, userID uuid.UUID, targetMSID string) ([]byte, string, error) {
+	token, err := s.accessToken(ctx, userID)
+	if err != nil {
+		return nil, "", err
+	}
+	photoURL := fmt.Sprintf("%s/users/%s/photo/$value", graphBase, url.PathEscape(targetMSID))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, photoURL, nil)
+	if err != nil {
+		return nil, "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, "", nil // user has no photo — not an error
+	}
+	if resp.StatusCode >= 400 {
+		return nil, "", fmt.Errorf("photo fetch: %d", resp.StatusCode)
+	}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, "", err
+	}
+	ct := resp.Header.Get("Content-Type")
+	if ct == "" {
+		ct = "image/jpeg"
+	}
+	return data, ct, nil
+}
+
 // OrgUser is a colleague returned by a people search.
 type OrgUser struct {
 	ID          string `json:"id"`

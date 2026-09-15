@@ -52,6 +52,8 @@ func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	r.Get("/teams/{chatId}/read-status",                           h.chatReadStatus)
 	r.Get("/presence/user/{msId}",                                 h.otherUserPresence)
 	r.Get("/users/search",                  h.searchUsers)
+	r.Get("/users/{msId}/profile",          h.userProfile)
+	r.Get("/users/{msId}/photo",            h.userPhoto)
 	r.Post("/teams/new-chat",               h.newChat)
 	r.Post("/teams/new-group",              h.newGroupChat)
 	r.Get("/mail/thread/{conversationId}",  h.emailThread)
@@ -203,6 +205,27 @@ func (h *Handler) teams(w http.ResponseWriter, r *http.Request) {
 	chats, err := h.svc.GetTeamsChats(r.Context(), id, limit)
 	if err != nil { notConnected(w); return }
 	httpx.JSON(w, http.StatusOK, map[string]any{"chats": chats})
+}
+
+func (h *Handler) userProfile(w http.ResponseWriter, r *http.Request) {
+	id, ok := callerID(r)
+	if !ok { httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated"); return }
+	profile, err := h.svc.GetUserProfile(r.Context(), id, chi.URLParam(r, "msId"))
+	if err != nil { httpx.Error(w, http.StatusInternalServerError, "internal", err.Error()); return }
+	httpx.JSON(w, http.StatusOK, profile)
+}
+
+func (h *Handler) userPhoto(w http.ResponseWriter, r *http.Request) {
+	id, ok := callerID(r)
+	if !ok { w.WriteHeader(http.StatusUnauthorized); return }
+	data, ct, err := h.svc.GetUserPhoto(r.Context(), id, chi.URLParam(r, "msId"))
+	if err != nil { w.WriteHeader(http.StatusBadGateway); return }
+	if data == nil { w.WriteHeader(http.StatusNotFound); return }
+	// Cache photo for 10 minutes — it rarely changes
+	w.Header().Set("Content-Type", ct)
+	w.Header().Set("Cache-Control", "private, max-age=600")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
 }
 
 func (h *Handler) searchUsers(w http.ResponseWriter, r *http.Request) {

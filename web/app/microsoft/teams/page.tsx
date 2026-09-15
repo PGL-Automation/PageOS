@@ -8,13 +8,41 @@ import Image from "next/image";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import {
-  msApi, relativeTime, stripHtml, presenceColor,
+  msApi, relativeTime, stripHtml, presenceColor, BASE,
   ChatSummary, ChatPage, TeamsMessage, Presence, OrgUser, REACTION_EMOJIS,
 } from "../components";
 import { PeoplePicker } from "../PeoplePicker";
+import { ProfileCard } from "../ProfileCard";
 
 // Encode chatId and messageId — Teams IDs contain ':', '@', spaces
 function encodeId(id: string) { return encodeURIComponent(id); }
+
+/** Avatar with profile photo fallback to coloured initial */
+function ChatAvatar({ msId, name, isGroup, size = 36 }: { msId: string; name: string; isGroup?: boolean; size?: number }) {
+  const [photoError, setPhotoError] = useState(false);
+  const initial = isGroup ? "G" : (name || "?").charAt(0).toUpperCase();
+  const bg = isGroup ? "#7b5ea7" : "#5059C9";
+
+  if (msId && !photoError && !isGroup) {
+    return (
+      <div className="relative" style={{ width: size, height: size }}>
+        <img
+          src={`${BASE}/api/v1/msgraph/users/${encodeId(msId)}/photo`}
+          alt={name}
+          onError={() => setPhotoError(true)}
+          className="rounded-full object-cover"
+          style={{ width: size, height: size }}
+        />
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-full flex items-center justify-center font-bold text-white"
+         style={{ width: size, height: size, background: bg, fontSize: size * 0.4 }}>
+      {initial}
+    </div>
+  );
+}
 
 // Play a short notification beep using Web Audio API (no file needed)
 function playBeep() {
@@ -46,6 +74,7 @@ function TeamsPageInner() {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [startingChat, setStartingChat] = useState<string | null>(null);
+  const [profileCard, setProfileCard] = useState<{ msId: string; name: string; rect: DOMRect } | null>(null);
   const [groupMode, setGroupMode] = useState(false);
   const [groupMembers, setGroupMembers] = useState("");
   const [groupTopic, setGroupTopic] = useState("");
@@ -376,9 +405,10 @@ function TeamsPageInner() {
                  }}
                  onMouseEnter={e => { if (selectedChat?.id !== chat.id) (e.currentTarget as HTMLElement).style.background = "var(--pg-hover)"; }}
                  onMouseLeave={e => { if (selectedChat?.id !== chat.id) (e.currentTarget as HTMLElement).style.background = ""; }}>
-              <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-[13px] font-bold text-white"
-                   style={{ background: chat.chatType === "group" ? "#7b5ea7" : "#5059C9" }}>
-                {chat.chatType === "group" ? "G" : (chat.withName || chat.topic || "?").charAt(0).toUpperCase()}
+              {/* Avatar — shows profile photo if available */}
+              <div className="relative shrink-0 cursor-pointer"
+                   onClick={e => { e.stopPropagation(); if (chat.withMsId && chat.chatType !== "group") setProfileCard({ msId: chat.withMsId, name: chat.withName, rect: (e.currentTarget as HTMLElement).getBoundingClientRect() }); }}>
+                <ChatAvatar msId={chat.chatType === "group" ? "" : chat.withMsId} name={chat.withName || chat.topic || "?"} isGroup={chat.chatType === "group"} size={36} />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-1">
@@ -409,19 +439,21 @@ function TeamsPageInner() {
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Thread header */}
           <div className="flex items-center gap-3 px-5 py-3 shrink-0" style={{ borderBottom: "1px solid var(--pg-row-border)", background: "var(--pg-card)" }}>
-            {/* Avatar with presence dot */}
-            <div className="relative shrink-0">
-              <div className="w-9 h-9 rounded-full flex items-center justify-center text-[13px] font-bold text-white"
-                   style={{ background: "#5059C9" }}>
-                {(selectedChat.withName || "?").charAt(0).toUpperCase()}
-              </div>
+            {/* Avatar with presence dot — clickable to show profile card */}
+            <div className="relative shrink-0 cursor-pointer"
+                 onClick={e => { if (selectedChat.withMsId) setProfileCard({ msId: selectedChat.withMsId, name: selectedChat.withName, rect: (e.currentTarget as HTMLElement).getBoundingClientRect() }); }}>
+              <ChatAvatar msId={selectedChat.withMsId} name={selectedChat.withName || selectedChat.topic || "?"} isGroup={selectedChat.chatType === "group"} size={36} />
               {otherPresence && (
                 <div className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2"
                      style={{ background: presenceColor(otherPresence.availability), borderColor: "var(--pg-card)" }} />
               )}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[14px] font-bold truncate" style={{ color: "var(--pg-text-1)" }}>{selectedChat.withName || selectedChat.topic}</p>
+              <p className="text-[14px] font-bold truncate cursor-pointer hover:underline"
+                 style={{ color: "var(--pg-text-1)" }}
+                 onClick={e => { if (selectedChat.withMsId) setProfileCard({ msId: selectedChat.withMsId, name: selectedChat.withName, rect: (e.currentTarget as HTMLElement).getBoundingClientRect() }); }}>
+                {selectedChat.withName || selectedChat.topic}
+              </p>
               <p className="text-[11px]" style={{ color: presenceColor(otherPresence?.availability ?? "Unknown") }}>
                 {otherPresence?.availability ?? (selectedChat.withEmail || "")}
                 {otherPresence?.activity && otherPresence.activity !== otherPresence.availability && ` · ${otherPresence.activity}`}
@@ -484,7 +516,13 @@ function TeamsPageInner() {
                     });
                     return (
                       <div key={msg.id} className={`flex flex-col group ${isMe ? "items-end" : "items-start"}`}>
-                        {!isMe && <span className="text-[11px] mb-0.5 ml-1 font-medium" style={{ color: "var(--pg-text-3)" }}>{msg.senderName}</span>}
+                        {!isMe && (
+                          <span className="text-[11px] mb-0.5 ml-1 font-medium cursor-pointer hover:underline"
+                                style={{ color: "var(--pg-text-3)" }}
+                                onClick={e => { if (msg.senderMsId) setProfileCard({ msId: msg.senderMsId, name: msg.senderName, rect: (e.currentTarget as HTMLElement).getBoundingClientRect() }); }}>
+                            {msg.senderName}
+                          </span>
+                        )}
                         <div className={`flex items-end gap-2 ${isMe ? "flex-row-reverse" : "flex-row"}`}>
                           <div className="max-w-[60%] rounded-2xl text-[13px] leading-relaxed overflow-hidden"
                                style={{
@@ -580,6 +618,30 @@ function TeamsPageInner() {
           <Image src="/teams-logo.svg" alt="Teams" width={56} height={56} style={{ opacity: 0.3 }} />
           <p className="text-[13px]" style={{ color: "var(--pg-text-3)" }}>Select a chat or search for someone</p>
         </div>
+      )}
+
+      {/* Profile card popup */}
+      {profileCard && (
+        <ProfileCard
+          msId={profileCard.msId}
+          displayName={profileCard.name}
+          anchorRect={profileCard.rect}
+          onClose={() => setProfileCard(null)}
+          onStartChat={profileCard.msId !== selectedChat?.withMsId ? () => {
+            // Start 1:1 chat with this person
+            msApi("/teams/new-chat", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ recipient_ms_id: profileCard.msId }),
+            }).then((res: any) => {
+              setSelectedChat({
+                id: res.chat_id, chatType: "oneOnOne", topic: "",
+                withName: profileCard.name, withEmail: "", withMsId: profileCard.msId,
+                lastMessage: { id: "", chatId: res.chat_id, body: "", sentAt: "", senderName: "", senderMsId: "" },
+              });
+              queryClient.invalidateQueries({ queryKey: ["msgraph-teams-full"] });
+            }).catch(() => {});
+          } : undefined}
+        />
       )}
     </div>
   );
