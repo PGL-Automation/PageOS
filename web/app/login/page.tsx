@@ -66,19 +66,42 @@ function LoginPageInner() {
     if (!isLoading && user) router.replace("/dashboard");
   }, [user, isLoading, router]);
 
-  // Handle SSO redirect errors and admin consent success
+  // Handle SSO exchange code, errors, and admin consent
   useEffect(() => {
+    const msCode   = searchParams.get("ms_code");
     const ssoError = searchParams.get("error");
     const adminConsent = searchParams.get("admin_consent");
-    if (adminConsent === "1") {
-      // Admin consent granted — show success, don't set error
+
+    if (adminConsent === "1") return; // admin consent success — no action needed
+
+    if (msCode) {
+      // Exchange the short-lived code for a real session cookie via a same-site fetch.
+      // This is never blocked by ITP/ETP — it's a normal same-origin API call.
+      setLoading(true);
+      fetch(`${BASE}/api/v1/auth/microsoft/exchange`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: msCode }),
+      })
+        .then(res => {
+          if (!res.ok) throw new Error("exchange failed");
+          // Cookie is now set — hard-navigate to dashboard so Next.js re-reads cookie
+          window.location.replace("/dashboard");
+        })
+        .catch(() => {
+          setLoading(false);
+          setError("Microsoft sign-in could not be completed. Please try again.");
+        });
       return;
     }
+
     if (ssoError === "no_account") {
       setError("No PageOS account found for this Microsoft email. Contact HR to get access.");
     } else if (ssoError === "sso_failed") {
       setError("Microsoft sign-in failed. Please try again or use your email and password.");
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
   async function handleSubmit(e: React.FormEvent) {

@@ -2,18 +2,28 @@ package msgraph
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/pagegroup/pageos/internal/audit"
 	msgraphstore "github.com/pagegroup/pageos/internal/msgraph/store"
 )
+
+// exchangeEntry holds a short-lived SSO exchange code so the frontend can
+// complete the login via a same-site fetch call (avoiding cookie ITP issues).
+type exchangeEntry struct {
+	userID    uuid.UUID
+	expiresAt time.Time
+}
 
 const (
 	graphBase    = "https://graph.microsoft.com/v1.0"
@@ -56,10 +66,11 @@ var oauthScopes = []string{
 
 // Service handles Microsoft OAuth and Graph API proxying.
 type Service struct {
-	cfg         Config
-	store       *msgraphstore.Store
-	auditWriter *audit.Writer
-	httpClient  *http.Client
+	cfg           Config
+	store         *msgraphstore.Store
+	auditWriter   *audit.Writer
+	httpClient    *http.Client
+	exchangeCodes sync.Map // map[code string]exchangeEntry — short-lived SSO codes
 }
 
 func NewService(cfg Config, store *msgraphstore.Store, aw *audit.Writer) *Service {
@@ -69,6 +80,36 @@ func NewService(cfg Config, store *msgraphstore.Store, aw *audit.Writer) *Servic
 		auditWriter: aw,
 		httpClient:  &http.Client{Timeout: 15 * time.Second},
 	}
+}
+
+// IssueExchangeCode creates a single-use 60-second code tied to a userID.
+// The frontend uses this to complete SSO login via a same-site fetch call,
+// which avoids ITP/ETP blocking of cookies set during OAuth redirect chains.
+func (s *Service) IssueExchangeCode(userID uuid.UUID) (string, error) {
+	b := make([]byte, 24)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	code := base64.RawURLEncoding.EncodeToString(b)
+	s.exchangeCodes.Store(code, exchangeEntry{
+		userID:    userID,
+		expiresAt: time.Now().Add(60 * time.Second),
+	})
+	return code, nil
+}
+
+// RedeemExchangeCode validates and consumes a code, returning the userID.
+// Returns an error if the code is unknown, expired, or already used.
+func (s *Service) RedeemExchangeCode(code string) (uuid.UUID, error) {
+	v, ok := s.exchangeCodes.LoadAndDelete(code)
+	if !ok {
+		return uuid.Nil, fmt.Errorf("invalid or already used exchange code")
+	}
+	entry := v.(exchangeEntry)
+	if time.Now().After(entry.expiresAt) {
+		return uuid.Nil, fmt.Errorf("exchange code expired")
+	}
+	return entry.userID, nil
 }
 
 // AuthURL returns the Microsoft OAuth2 authorization URL with CSRF state.

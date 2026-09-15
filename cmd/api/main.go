@@ -236,6 +236,9 @@ func run() error {
 			// SSO login routes — no auth middleware (user is not yet logged in)
 			api.Get("/auth/microsoft",          msGraphH.SSORedirect)
 			api.Get("/auth/microsoft/callback", msGraphH.SSOCallback(identitySvc))
+			// Exchange: frontend calls this after receiving the ms_code in the URL.
+			// Cookie is set here via a same-site fetch — never blocked by ITP/ETP.
+			api.Post("/auth/microsoft/exchange", msGraphH.SSOExchange(identitySvc))
 		}
 		// Vault notes — private personal notes scoped to the caller.
 		api.With(identityH.Authenticator).Get("/vault/notes", vaultListNotes(pool))

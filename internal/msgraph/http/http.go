@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -27,7 +26,7 @@ func New(svc *msgraph.Service) *Handler { return &Handler{svc: svc} }
 func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	r := chi.NewRouter()
 	r.Use(authMW)
-	r.Get("/connect",                       h.connect)
+	r.Get("/connect",                          h.connect)
 	r.Get("/callback",                      h.callback)
 	r.Get("/status",                        h.status)
 	r.Post("/disconnect",                   h.disconnect)
@@ -464,13 +463,18 @@ func (h *Handler) SSORedirect(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, h.svc.SSOAuthURL(state), http.StatusFound)
 }
 
-// SSOCallback handles Microsoft's redirect after the user authenticates.
-// It validates the CSRF state, exchanges the code for the user's email, looks up
-// the matching PageOS account, creates a session, and redirects to the dashboard.
+// SSOCallback handles Microsoft's redirect after authentication.
+//
+// ITP/ETP/Privacy Sandbox problem: browsers block cookies set during OAuth
+// redirect chains (even in HTML responses). The fix — exchange code pattern:
+//  1. Callback issues a 60-second single-use code stored in memory.
+//  2. Redirects to /login?ms_code=CODE (no cookie set here).
+//  3. Login page JS calls POST /auth/microsoft/exchange with the code.
+//  4. Exchange endpoint sets the session cookie via a same-site fetch response.
+//     Cookies from same-site fetch are NEVER blocked by any browser.
 func (h *Handler) SSOCallback(identitySvc *identity.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Admin consent callback — Microsoft redirects here with admin_consent=True (no code).
-		// Just redirect to login with a success flag so the admin sees a friendly message.
+		// Admin consent redirect — just show success on the login page.
 		if r.URL.Query().Get("admin_consent") == "True" {
 			http.Redirect(w, r, "/login?admin_consent=1", http.StatusFound)
 			return
@@ -495,33 +499,59 @@ func (h *Handler) SSOCallback(identitySvc *identity.Service) http.HandlerFunc {
 			return
 		}
 
-		// Exchange code → Microsoft email
+		// Exchange Microsoft code → email → PageOS user
 		msEmail, err := h.svc.ExchangeCodeForEmail(r.Context(), code)
 		if err != nil {
 			http.Redirect(w, r, "/login?error=sso_failed", http.StatusFound)
 			return
 		}
 
-		// Find the matching PageOS user by email
 		user, err := identitySvc.FindByEmail(r.Context(), msEmail)
 		if err != nil {
-			// No PageOS account for this Microsoft email
 			http.Redirect(w, r, "/login?error=no_account", http.StatusFound)
 			return
 		}
 
-		// Create PageOS session
-		token, expiresAt, err := identitySvc.CreateSession(r.Context(), user.ID)
+		// Issue a short-lived exchange code — the frontend completes login via fetch.
+		exchangeCode, err := h.svc.IssueExchangeCode(user.ID)
 		if err != nil {
 			http.Redirect(w, r, "/login?error=sso_failed", http.StatusFound)
 			return
 		}
 
-		// Set session cookie (same settings as the regular login flow)
+		http.Redirect(w, r, "/login?ms_code="+exchangeCode, http.StatusFound)
+	}
+}
+
+// SSOExchange is called by the login page frontend with the ms_code from the URL.
+// It redeems the exchange code and sets the session cookie via a same-site fetch
+// response — this is guaranteed to work and is never blocked by any browser.
+func (h *Handler) SSOExchange(identitySvc *identity.Service) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Code string `json:"code"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.Code == "" {
+			httpx.Error(w, http.StatusBadRequest, "bad_request", "code is required")
+			return
+		}
+
+		userID, err := h.svc.RedeemExchangeCode(in.Code)
+		if err != nil {
+			httpx.Error(w, http.StatusUnauthorized, "invalid_code", "exchange code invalid or expired")
+			return
+		}
+
+		token, expiresAt, err := identitySvc.CreateSession(r.Context(), userID)
+		if err != nil {
+			httpx.Error(w, http.StatusInternalServerError, "internal", "could not create session")
+			return
+		}
+
+		// Set session cookie — this is a same-site fetch response, always honoured.
 		secure := r.TLS != nil
-		cookieSecure := secure
 		if v := r.Header.Get("X-Forwarded-Proto"); v == "https" {
-			cookieSecure = true
+			secure = true
 		}
 		http.SetCookie(w, &http.Cookie{
 			Name:     "pageos_session",
@@ -529,21 +559,16 @@ func (h *Handler) SSOCallback(identitySvc *identity.Service) http.HandlerFunc {
 			Path:     "/",
 			Expires:  expiresAt,
 			HttpOnly: true,
-			Secure:   cookieSecure,
+			Secure:   secure,
 			SameSite: http.SameSiteLaxMode,
 		})
 
-		// Return HTML instead of 302 redirect.
-		// Browsers increasingly block Set-Cookie headers in 3xx redirect responses
-		// during cross-site OAuth flows (ITP, ETP, Privacy Sandbox).
-		// A 200 HTML response with the cookie in its headers is always accepted;
-		// the JavaScript then navigates client-side after the cookie is stored.
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprintf(w, `<!DOCTYPE html>
-<html><head><title>PageOS – Signing in</title></head>
-<body>
-<p style="font-family:system-ui;text-align:center;padding:3rem;color:#475569">Signing you in…</p>
-<script>window.location.replace("/dashboard");</script>
-</body></html>`)
+		// Fetch the user to return to the frontend so it can set auth state.
+		user, err := identitySvc.ResolveSession(r.Context(), token)
+		if err != nil {
+			httpx.Error(w, http.StatusInternalServerError, "internal", "session resolve failed")
+			return
+		}
+		httpx.JSON(w, http.StatusOK, user)
 	}
 }
