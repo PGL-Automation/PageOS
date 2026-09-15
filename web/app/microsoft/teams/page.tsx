@@ -76,6 +76,9 @@ function TeamsPageInner() {
   const [startingChat, setStartingChat] = useState<string | null>(null);
   const [profileCard, setProfileCard] = useState<{ msId: string; name: string; rect: DOMRect } | null>(null);
   const [groupMode, setGroupMode] = useState(false);
+  // Optimistic messages — shown immediately on send, cleared after next successful fetch
+  const [optimisticMessages, setOptimisticMessages] = useState<TeamsMessage[]>([]);
+  const prevPageLengthRef = useRef(0);
   const [groupMembers, setGroupMembers] = useState("");
   const [groupTopic, setGroupTopic] = useState("");
   const [creatingGroup, setCreatingGroup] = useState(false);
@@ -106,21 +109,22 @@ function TeamsPageInner() {
   const { data: chatsData, isLoading } = useQuery({
     queryKey: ["msgraph-teams-full", chatLimit],
     queryFn: () => msApi(`/teams/chats?top=${chatLimit}`) as Promise<{ chats: ChatSummary[] }>,
-    staleTime: 60_000, refetchInterval: 60_000,
+    staleTime: 30_000,
+    refetchInterval: 30_000, // check for new chats every 30s
   });
 
   const { data: pageData, isLoading: pageLoading } = useQuery({
     queryKey: ["msgraph-chat-page-full", selectedChat?.id],
     queryFn: async () => {
-      // Teams chat IDs contain ':' and '@' — must encode for URL routing
       const p = await msApi(`/teams/${encodeId(selectedChat!.id)}/page?top=50`) as ChatPage;
       setOlderNextLink(p.nextLink || null);
       setOlderMessages([]);
+      setOptimisticMessages([]); // clear stale optimistic messages on chat switch
       return p;
     },
     enabled: !!selectedChat,
-    staleTime: 30_000,
-    refetchInterval: 10_000, // poll for new messages
+    staleTime: 2_000,
+    refetchInterval: 3_000, // poll active chat every 3s
   });
 
   const { data: searchData } = useQuery({
@@ -183,6 +187,16 @@ function TeamsPageInner() {
     prevLastMsgRef.current = updated;
   }, [chatsData, user?.DisplayName]);
 
+  // Clear optimistic messages when real messages arrive (fetch count increased)
+  useEffect(() => {
+    const len = pageData?.messages?.length ?? 0;
+    if (len > prevPageLengthRef.current && optimisticMessages.length > 0) {
+      setOptimisticMessages([]);
+    }
+    prevPageLengthRef.current = len;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageData?.messages?.length]);
+
   useEffect(() => {
     if (pageData) setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
   }, [pageData]);
@@ -200,16 +214,38 @@ function TeamsPageInner() {
 
   async function sendMessage() {
     if (!selectedChat || !message.trim()) return;
+    const text = message;
+    setMessage(""); // Clear input immediately
+
+    // Optimistic update — show the message right away before API responds
+    const tempId = `opt-${Date.now()}`;
+    const optimistic: TeamsMessage = {
+      id: tempId,
+      chatId: selectedChat.id,
+      body: text,
+      sentAt: new Date().toISOString(),
+      senderName: user?.DisplayName || "You",
+      senderMsId: "",
+      attachments: [],
+      reactions: [],
+    };
+    setOptimisticMessages(prev => [...prev, optimistic]);
+    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+
     setSending(true);
     try {
       await msApi(`/teams/${encodeId(selectedChat.id)}/send`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: message }),
+        body: JSON.stringify({ content: text }),
       });
-      setMessage("");
+      // Trigger immediate refetch (don't wait for the 3s interval)
       queryClient.invalidateQueries({ queryKey: ["msgraph-chat-page-full", selectedChat.id] });
-    } catch (e) { toast({ title: "Failed to send", description: (e as Error).message, variant: "destructive" }); }
-    finally { setSending(false); }
+    } catch (e) {
+      // Remove optimistic message and restore input on failure
+      setOptimisticMessages(prev => prev.filter(m => m.id !== tempId));
+      setMessage(text);
+      toast({ title: "Failed to send", description: (e as Error).message, variant: "destructive" });
+    } finally { setSending(false); }
   }
 
   async function updatePresence(availability: string) {
@@ -282,7 +318,13 @@ function TeamsPageInner() {
   }
 
   const chats = chatsData?.chats ?? [];
-  const currentMessages = [...olderMessages, ...(pageData?.messages ?? [])];
+  // Merge: older pages + current page + optimistic (not yet in Graph response)
+  const realIds = new Set((pageData?.messages ?? []).map(m => m.id));
+  const currentMessages = [
+    ...olderMessages,
+    ...(pageData?.messages ?? []),
+    ...optimisticMessages.filter(m => !realIds.has(m.id)),
+  ];
   const searchResults = searchData?.users ?? [];
 
   return (
@@ -500,9 +542,10 @@ function TeamsPageInner() {
                   </div>
                 : currentMessages.map((msg, msgIdx) => {
                     const isMe = msg.senderName === user?.DisplayName;
+                    const isOptimistic = msg.id.startsWith("opt-"); // pending — not yet confirmed by Graph
                     const text = stripHtml(msg.body);
                     // Read receipt: show eye on the last sent message if other user has read past it
-                    const isLastSent = isMe && msgIdx === currentMessages.map((m, i) => m.senderName === user?.DisplayName ? i : -1).filter(i => i >= 0).pop();
+                    const isLastSent = isMe && !isOptimistic && msgIdx === currentMessages.map((m, i) => m.senderName === user?.DisplayName ? i : -1).filter(i => i >= 0).pop();
                     const otherMemberRead = readStatusData?.members?.find(m => m.userId === selectedChat?.withMsId);
                     const isRead = isLastSent && otherMemberRead?.lastReadDateTime
                       ? new Date(otherMemberRead.lastReadDateTime) >= new Date(msg.sentAt)
@@ -531,6 +574,7 @@ function TeamsPageInner() {
                                  border: isDeleted ? "1px dashed var(--pg-card-border)" : isMe ? "none" : "1px solid var(--pg-card-border)",
                                  borderBottomRightRadius: isMe ? 4 : undefined,
                                  borderBottomLeftRadius: isMe ? undefined : 4,
+                                 opacity: isOptimistic ? 0.7 : 1, // slightly faded while sending
                                }}>
                             {isDeleted
                               ? <p className="px-4 py-2.5 italic text-[12px]">This message was deleted</p>
@@ -583,8 +627,8 @@ function TeamsPageInner() {
                           </div>
                         )}
                         <div className={`flex items-center gap-1 mt-1 mx-1 ${isMe ? "justify-end" : "justify-start"}`}>
-                          <span className="text-[10px]" style={{ color: "var(--pg-text-4)" }}>
-                            {relativeTime(msg.sentAt)}
+                          <span className="text-[10px]" style={{ color: isOptimistic ? "#0078d4" : "var(--pg-text-4)" }}>
+                            {isOptimistic ? "Sending…" : relativeTime(msg.sentAt)}
                           </span>
                           {isRead && (
                             <span title="Seen">
