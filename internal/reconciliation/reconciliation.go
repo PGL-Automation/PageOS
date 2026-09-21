@@ -123,7 +123,7 @@ type Service struct {
 }
 
 func NewService(db *pgxpool.Pool, a *audit.Writer) *Service {
-	return &Service{store: store.New(db), audit: a, matcher: ExactMatcher{}}
+	return &Service{store: store.New(db), audit: a, matcher: DefaultSmartMatcher()}
 }
 
 // ── Bank accounts ─────────────────────────────────────────────────────────────
@@ -581,6 +581,15 @@ func (s *Service) ListUnmatched(ctx context.Context, runID uuid.UUID) (Unmatched
 
 // RecordManualMatch links one bank line to one internal transaction.
 func (s *Service) RecordManualMatch(ctx context.Context, runID, bankLineID, internalTxnID, userID uuid.UUID, notes string) (Match, error) {
+	// Remove any existing classification for these items so there are no duplicate
+	// records after auto-match already marked them as unmatched_bank/unmatched_internal.
+	if _, err := s.store.Pool().Exec(ctx,
+		`DELETE FROM reconciliation.reconciliation_match
+		 WHERE run_id = $1 AND (bank_line_id = $2 OR internal_txn_id = $3)`,
+		runID, bankLineID, internalTxnID,
+	); err != nil {
+		return Match{}, fmt.Errorf("reconciliation: clear stale matches: %w", err)
+	}
 	pct := int32(100)
 	m, err := s.store.CreateMatch(ctx, recondb.CreateMatchParams{
 		RunID:         runID,
@@ -604,30 +613,46 @@ func (s *Service) RecordManualMatch(ctx context.Context, runID, bankLineID, inte
 	return toMatch(m), nil
 }
 
-// MarkBankLineUnmatched explicitly marks a bank line as having no internal counterpart.
+// MarkBankLineUnmatched acknowledges a bank line as having no internal counterpart.
+// Uses status "adjustment" so it does not block run closure.
 func (s *Service) MarkBankLineUnmatched(ctx context.Context, runID, bankLineID, userID uuid.UUID, notes string) (Match, error) {
+	// Replace any existing classification for this bank line.
+	if _, err := s.store.Pool().Exec(ctx,
+		`DELETE FROM reconciliation.reconciliation_match WHERE run_id = $1 AND bank_line_id = $2`,
+		runID, bankLineID,
+	); err != nil {
+		return Match{}, fmt.Errorf("reconciliation: clear bank line match: %w", err)
+	}
 	pct := int32(0)
 	m, err := s.store.CreateMatch(ctx, recondb.CreateMatchParams{
 		RunID: runID, BankLineID: &bankLineID,
-		Status: "unmatched_bank", MatchType: "manual",
+		Status: "adjustment", MatchType: "manual",
 		ConfidencePct: &pct, MatchedBy: &userID, Notes: notes,
 	})
 	if err != nil {
-		return Match{}, fmt.Errorf("reconciliation: mark bank line unmatched: %w", err)
+		return Match{}, fmt.Errorf("reconciliation: mark bank line adjustment: %w", err)
 	}
 	return toMatch(m), nil
 }
 
-// MarkInternalTxnUnmatched explicitly marks an internal txn as having no bank counterpart.
+// MarkInternalTxnUnmatched acknowledges an internal txn as having no bank counterpart.
+// Uses status "adjustment" so it does not block run closure.
 func (s *Service) MarkInternalTxnUnmatched(ctx context.Context, runID, internalTxnID, userID uuid.UUID, notes string) (Match, error) {
+	// Replace any existing classification for this internal txn.
+	if _, err := s.store.Pool().Exec(ctx,
+		`DELETE FROM reconciliation.reconciliation_match WHERE run_id = $1 AND internal_txn_id = $2`,
+		runID, internalTxnID,
+	); err != nil {
+		return Match{}, fmt.Errorf("reconciliation: clear internal txn match: %w", err)
+	}
 	pct := int32(0)
 	m, err := s.store.CreateMatch(ctx, recondb.CreateMatchParams{
 		RunID: runID, InternalTxnID: &internalTxnID,
-		Status: "unmatched_internal", MatchType: "manual",
+		Status: "adjustment", MatchType: "manual",
 		ConfidencePct: &pct, MatchedBy: &userID, Notes: notes,
 	})
 	if err != nil {
-		return Match{}, fmt.Errorf("reconciliation: mark internal txn unmatched: %w", err)
+		return Match{}, fmt.Errorf("reconciliation: mark internal txn adjustment: %w", err)
 	}
 	return toMatch(m), nil
 }

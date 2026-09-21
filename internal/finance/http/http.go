@@ -98,6 +98,11 @@ func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	r.Put("/budget", h.upsertBudgets)
 	r.Get("/budget/variance", h.budgetVariance)
 
+	// FX Rates
+	r.Post("/fx-rates", h.setFXRate)
+	r.Get("/fx-rates", h.listFXRates)
+	r.Get("/fx-rates/latest", h.getLatestFXRate)
+
 	// Tax compliance
 	r.Get("/vat/return", h.vatReturn)
 	r.Get("/wht/register", h.whtRegister)

@@ -612,12 +612,38 @@ type CalendarEvent struct {
 }
 
 func (s *Service) GetCalendar(ctx context.Context, userID uuid.UUID) ([]CalendarEvent, error) {
+	token, err := s.accessToken(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
 	now := time.Now().UTC().Format(time.RFC3339)
-	end := time.Now().Add(7 * 24 * time.Hour).UTC().Format(time.RFC3339)
-	path := fmt.Sprintf(
-		"/me/calendarView?startDateTime=%s&endDateTime=%s&$top=10&$orderby=start/dateTime&$select=id,subject,start,end,location,isOnlineMeeting,onlineMeetingUrl",
-		url.QueryEscape(now), url.QueryEscape(end),
+	endTime := time.Now().Add(7 * 24 * time.Hour).UTC().Format(time.RFC3339)
+	reqURL := fmt.Sprintf(
+		"%s/me/calendarView?startDateTime=%s&endDateTime=%s&$top=10&$orderby=start/dateTime&$select=id,subject,start,end,location,isOnlineMeeting,onlineMeetingUrl",
+		graphBase, url.QueryEscape(now), url.QueryEscape(endTime),
 	)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/json")
+	// Return event times in WAT (West Africa Time, GMT+1 / UTC+1, no DST).
+	// Microsoft's Windows timezone ID for this zone is "W. Central Africa Standard Time".
+	req.Header.Set("Prefer", `outlook.timezone="W. Central Africa Standard Time"`)
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("graph calendarView: %d %s", resp.StatusCode, string(body))
+	}
+
 	var raw struct {
 		Value []struct {
 			ID       string `json:"id"`
@@ -629,22 +655,38 @@ func (s *Service) GetCalendar(ctx context.Context, userID uuid.UUID) ([]Calendar
 			JoinURL  string `json:"onlineMeetingUrl"`
 		} `json:"value"`
 	}
-	if err := s.graphGET(ctx, userID, path, &raw); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
 		return nil, err
 	}
+
 	out := make([]CalendarEvent, 0, len(raw.Value))
 	for _, e := range raw.Value {
+		// Append the WAT offset so the frontend can parse these as unambiguous
+		// GMT+1 timestamps regardless of the browser's local timezone.
 		out = append(out, CalendarEvent{
 			ID:       e.ID,
 			Subject:  e.Subject,
-			Start:    e.Start.DateTime,
-			End:      e.End.DateTime,
+			Start:    appendWATOffset(e.Start.DateTime),
+			End:      appendWATOffset(e.End.DateTime),
 			Location: e.Location.DisplayName,
 			IsOnline: e.IsOnline,
 			JoinURL:  e.JoinURL,
 		})
 	}
 	return out, nil
+}
+
+// appendWATOffset converts a naive Graph API datetime string to an explicit
+// WAT (GMT+1) timestamp by stripping sub-second precision and appending "+01:00".
+// Example: "2026-09-17T09:00:00.0000000" → "2026-09-17T09:00:00+01:00"
+func appendWATOffset(dt string) string {
+	if dt == "" {
+		return dt
+	}
+	if i := strings.Index(dt, "."); i > 0 {
+		dt = dt[:i]
+	}
+	return dt + "+01:00"
 }
 
 // CreateEventReq holds the fields for creating a new calendar event.

@@ -126,6 +126,18 @@ func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	// Pricing
 	r.Post("/prices", h.updatePrices)
 
+	// NAV
+	r.Post("/funds/{id}/nav", h.calculateNAV)
+	r.Get("/funds/{id}/nav", h.getNAVHistory)
+	r.Post("/nav/run-all", h.runAllNAVs)
+
+	// Corporate actions
+	r.Get("/corporate-actions", h.listCorporateActions)
+	r.Post("/corporate-actions", h.createCorporateAction)
+	r.Get("/corporate-actions/{id}", h.getCorporateAction)
+	r.Post("/corporate-actions/{id}/process", h.processCorporateAction)
+	r.Delete("/corporate-actions/{id}", h.cancelCorporateAction)
+
 	// Client accounts
 	r.Get("/accounts", h.listClientAccounts)
 	r.Post("/accounts", h.openClientAccount)
@@ -135,6 +147,32 @@ func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	r.Post("/accounts/{id}/redeem", h.processRedemption)                 // legacy simple
 	r.Get("/accounts/{id}/redemption-preview", h.redemptionPreview)       // preview before confirm
 	r.Post("/accounts/{id}/redeem-confirmed", h.processRedemptionWithPenalty) // full workflow
+
+	// ── Performance Analytics ────────────────────────────────────────────────────
+	r.Get("/funds/{id}/performance", h.calculatePerformance)
+	r.Get("/funds/{id}/performance/history", h.getPerformanceHistory)
+	r.Get("/funds/{id}/performance/clients", h.getClientPerformance)
+
+	// ── Compliance ───────────────────────────────────────────────────────────────
+	r.Post("/compliance/rules", h.createComplianceRule)
+	r.Get("/compliance/rules", h.listComplianceRules)
+	r.Delete("/compliance/rules/{id}", h.deleteComplianceRule)
+	r.Post("/compliance/check", h.checkCompliance)
+	r.Get("/compliance/breaches", h.listBreaches)
+	r.Post("/compliance/breaches/{id}/acknowledge", h.acknowledgeBreach)
+	r.Post("/compliance/breaches/{id}/resolve", h.resolveBreach)
+
+	// ── Rebalancing ──────────────────────────────────────────────────────────────
+	r.Get("/rebalancing/targets", h.listTargetAllocations)
+	r.Post("/rebalancing/targets", h.setTargetAllocation)
+	r.Delete("/rebalancing/targets/{id}", h.deleteTargetAllocation)
+	r.Get("/rebalancing/drift", h.analyseDrift)
+	r.Get("/rebalancing/suggestions", h.generateRebalancingTrades)
+	r.Post("/rebalancing/execute", h.executeRebalancing)
+
+	// ── Client Reports ───────────────────────────────────────────────────────────
+	r.Get("/accounts/{id}/report", h.getClientReport)
+	r.Get("/accounts/{id}/report/export", h.exportClientReport)
 
 	return r
 }

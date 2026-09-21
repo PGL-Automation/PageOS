@@ -205,6 +205,7 @@ export default function RunPage() {
   const matchedRows = fullRows.filter(r => r.status === "matched");
   const unmatchedBankRows = fullRows.filter(r => r.status === "unmatched_bank");
   const unmatchedInternalRows = fullRows.filter(r => r.status === "unmatched_internal");
+  const adjustmentRows = fullRows.filter(r => r.status === "adjustment");
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -478,6 +479,45 @@ export default function RunPage() {
                     <TableCell className="text-right text-xs">{koboToNaira(m.ledger_amount_kobo ?? 0)}</TableCell>
                   </TableRow>
                 ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {adjustmentRows.length > 0 && (
+        <Card>
+          <CardHeader><CardTitle className="text-base text-slate-500">Acknowledged Adjustments ({adjustmentRows.length})</CardTitle></CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Side</TableHead>
+                  <TableHead>Narration / Reference</TableHead>
+                  <TableHead className="text-right">Amount</TableHead>
+                  <TableHead>Notes</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {adjustmentRows.map(m => {
+                  const isBank = Boolean(m.bank_line_id);
+                  return (
+                    <TableRow key={m.match_id}>
+                      <TableCell className="text-xs text-slate-500">{fmt(isBank ? m.bank_date : m.ledger_date)}</TableCell>
+                      <TableCell><Badge variant="outline" className="text-xs">{isBank ? "Bank" : "Ledger"}</Badge></TableCell>
+                      <TableCell className="text-sm max-w-[240px] truncate">
+                        {isBank ? (m.bank_narration || m.bank_reference || "—") : (m.ledger_reference || m.ledger_type || "—")}
+                      </TableCell>
+                      <TableCell className="text-right text-xs text-slate-500">
+                        {isBank
+                          ? ((m.bank_credit_kobo ?? 0) > 0 ? koboToNaira(m.bank_credit_kobo!) : koboToNaira(m.bank_debit_kobo ?? 0))
+                          : koboToNaira(m.ledger_amount_kobo ?? 0)}
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-400">{m.notes || "—"}</TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </CardContent>

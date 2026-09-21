@@ -42,6 +42,9 @@ func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	r.Post("/accounts/{id}/statements", h.uploadStatement)
 	r.Post("/accounts/{id}/ledger", h.uploadLedger)
 	r.Post("/accounts/{id}/sync-gl", h.syncGL)
+	r.Post("/accounts/{id}/connectivity", h.setBankConnectivity)
+	r.Get("/accounts/{id}/connectivity", h.getBankConnectivity)
+	r.Post("/accounts/{id}/pull", h.triggerManualPull)
 
 	r.Post("/transactions", h.createInternalTxn)
 
@@ -59,6 +62,14 @@ func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	r.Post("/runs/{id}/matches/{matchId}/unmatch", h.unmatchRecord)
 	// Export a full reconciliation result as an Excel workbook.
 	r.Get("/runs/{id}/export", h.exportRun)
+	// Validate that the run's matched totals balance against statement balances.
+	r.Get("/runs/{id}/balance", h.validateBalance)
+	// Attempt to auto-close a run when all items are matched.
+	r.Post("/runs/{id}/auto-close", h.tryAutoClose)
+	// Exception summary across all accounts for a subsidiary.
+	r.Get("/exceptions", h.getExceptions)
+	// Dashboard: all run summaries for a subsidiary.
+	r.Get("/dashboard", h.getDashboard)
 	return r
 }
 
@@ -517,6 +528,76 @@ func (h *Handler) exportRun(w http.ResponseWriter, r *http.Request) {
 	if err := f.Write(w); err != nil {
 		return
 	}
+}
+
+// validateBalance checks that the matched totals for a run are consistent with
+// the statement opening/closing balances and returns the validation result.
+func (h *Handler) validateBalance(w http.ResponseWriter, r *http.Request) {
+	runID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid run id")
+		return
+	}
+	result, err := h.svc.ValidateBalance(r.Context(), runID)
+	if err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		return
+	}
+	httpx.JSON(w, http.StatusOK, result)
+}
+
+// tryAutoClose attempts to close the run automatically when every bank line and
+// internal transaction has been matched. Returns {"auto_closed": true/false}.
+func (h *Handler) tryAutoClose(w http.ResponseWriter, r *http.Request) {
+	runID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid run id")
+		return
+	}
+	closed, err := h.svc.TryAutoClose(r.Context(), runID)
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "auto_close_failed", err.Error())
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]bool{"auto_closed": closed})
+}
+
+// getExceptions returns a summary of unresolved reconciliation exceptions
+// (unmatched lines marked as exceptions) for the given subsidiary.
+func (h *Handler) getExceptions(w http.ResponseWriter, r *http.Request) {
+	subsidiaryID, err := uuid.Parse(r.URL.Query().Get("subsidiary_id"))
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "subsidiary_id required")
+		return
+	}
+	exceptions, err := h.svc.GetExceptionSummary(r.Context(), subsidiaryID)
+	if err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		return
+	}
+	if exceptions == nil {
+		exceptions = []reconciliation.RunSummaryFull{}
+	}
+	httpx.JSON(w, http.StatusOK, exceptions)
+}
+
+// getDashboard returns aggregated run summaries for all bank accounts belonging
+// to the given subsidiary, suitable for a high-level reconciliation overview.
+func (h *Handler) getDashboard(w http.ResponseWriter, r *http.Request) {
+	subsidiaryID, err := uuid.Parse(r.URL.Query().Get("subsidiary_id"))
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "subsidiary_id required")
+		return
+	}
+	summaries, err := h.svc.GetAllRunSummaries(r.Context(), subsidiaryID)
+	if err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		return
+	}
+	if summaries == nil {
+		summaries = []reconciliation.RunSummaryFull{}
+	}
+	httpx.JSON(w, http.StatusOK, summaries)
 }
 
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {

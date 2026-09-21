@@ -58,6 +58,11 @@ const WM_NAV: NavGroup[] = [
     { href: "/wm/portfolio",          label: "Funds & Mandates",  icon: BarChart2 },
     { href: "/wm/portfolio/accounts", label: "Client Accounts",   icon: Users },
   ]},
+  { id: "analytics", label: "Analytics & Risk", items: [
+    { href: "/wm/performance",        label: "Performance Analytics", icon: TrendingUp },
+    { href: "/wm/compliance",         label: "Compliance",            icon: Shield },
+    { href: "/wm/rebalancing",        label: "Rebalancing",           icon: RefreshCw },
+  ]},
   { id: "business", label: "My Business", items: [
     { href: "/wm/commission",         label: "My Commission",    icon: DollarSign },
     { href: "/appraisal",             label: "My Appraisal",     icon: ClipboardList },
@@ -130,6 +135,9 @@ const MD_NAV: NavGroup[] = [
   { id: "finance", label: "Finance", items: [
     { href: "/finance",               label: "Finance",        icon: TrendingUp },
     { href: "/finance/reconciliation",label: "Reconciliation", icon: RefreshCw },
+    { href: "/finance/fx-rates",      label: "FX Rates",       icon: RefreshCw },
+    { href: "/reconciliation/dashboard",    label: "Recon Dashboard",   icon: LayoutDashboard },
+    { href: "/reconciliation/connectivity", label: "Bank Connectivity", icon: Building2 },
   ]},
   { id: "compliance", label: "Audit & Risk", items: [
     { href: "/audit/control-review",  label: "Control Review Queue", icon: ClipboardList },
@@ -173,6 +181,11 @@ const FINANCE_NAV: NavGroup[] = [
     { href: "/finance/payables",      label: "Payables",       icon: CreditCard },
     { href: "/finance/receivables",   label: "Receivables",    icon: Wallet },
     { href: "/finance/assets",        label: "Fixed Assets",   icon: Package },
+    { href: "/finance/fx-rates",      label: "FX Rates",       icon: RefreshCw },
+  ]},
+  { id: "connectivity", label: "Banking", items: [
+    { href: "/reconciliation/dashboard",    label: "Dashboard",         icon: LayoutDashboard },
+    { href: "/reconciliation/connectivity", label: "Bank Connectivity", icon: Building2 },
   ]},
   { id: "appraisal", label: "Appraisal", items: [
     { href: "/appraisal",             label: "My Appraisal",   icon: ClipboardList },
@@ -248,6 +261,9 @@ const ADMIN_NAV: NavGroup[] = [
     { href: "/finance/ledger",         label: "General Ledger",   icon: BookOpen },
     { href: "/finance/journals",       label: "Journals",         icon: FileText },
     { href: "/finance/assets",         label: "Fixed Assets",     icon: Package },
+    { href: "/finance/fx-rates",       label: "FX Rates",         icon: RefreshCw },
+    { href: "/reconciliation/dashboard",    label: "Recon Dashboard",   icon: LayoutDashboard },
+    { href: "/reconciliation/connectivity", label: "Bank Connectivity", icon: Building2 },
   ]},
   { id: "governance", label: "Governance", items: [
     { href: "/approval",               label: "Approvals",        icon: CheckSquare },

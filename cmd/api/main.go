@@ -212,6 +212,15 @@ func run() error {
 	scheduler := notification.NewScheduler(pool, logger)
 	go scheduler.Run(ctx)
 
+	// --- Portfolio scheduler (daily NAV + compliance checks) ---
+	portfolioScheduler := portfolio.NewPortfolioScheduler(portfolioSvc, logger)
+	go portfolioScheduler.Run(ctx)
+
+	// --- Reconciliation scheduler (daily Mono statement pull + auto-match) ---
+	monoKey := os.Getenv("MONO_SECRET_KEY")
+	reconScheduler := reconciliation.NewReconScheduler(reconSvc, monoKey, logger)
+	go reconScheduler.Run(ctx)
+
 	notifH := notifhttp.New(pool)
 
 	// --- HTTP router ---

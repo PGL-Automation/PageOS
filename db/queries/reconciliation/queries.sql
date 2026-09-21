@@ -49,13 +49,15 @@ ORDER BY txn_date, created_at;
 -- name: GetUnmatchedBankLines :many
 SELECT l.* FROM reconciliation.bank_statement_line l
 JOIN reconciliation.bank_statement s ON s.id = l.statement_id
-LEFT JOIN reconciliation.reconciliation_match m
-    ON m.bank_line_id = l.id AND m.run_id = $1
 WHERE s.bank_account_id = (SELECT bank_account_id FROM reconciliation.reconciliation_run WHERE id = $1)
   AND l.txn_date BETWEEN
       (SELECT period_start FROM reconciliation.reconciliation_run WHERE id = $1)
       AND (SELECT period_end   FROM reconciliation.reconciliation_run WHERE id = $1)
-  AND m.id IS NULL
+  AND NOT EXISTS (
+      SELECT 1 FROM reconciliation.reconciliation_match m
+      WHERE m.bank_line_id = l.id AND m.run_id = $1
+        AND m.status IN ('matched', 'adjustment')
+  )
 ORDER BY l.txn_date;
 
 -- ── Internal transactions ─────────────────────────────────────────────────────
@@ -75,13 +77,15 @@ ORDER BY txn_date;
 
 -- name: GetUnmatchedInternalTxns :many
 SELECT t.* FROM reconciliation.internal_transaction t
-LEFT JOIN reconciliation.reconciliation_match m
-    ON m.internal_txn_id = t.id AND m.run_id = $1
 WHERE t.bank_account_id = (SELECT bank_account_id FROM reconciliation.reconciliation_run WHERE id = $1)
   AND t.txn_date BETWEEN
       (SELECT period_start FROM reconciliation.reconciliation_run WHERE id = $1)
       AND (SELECT period_end   FROM reconciliation.reconciliation_run WHERE id = $1)
-  AND m.id IS NULL
+  AND NOT EXISTS (
+      SELECT 1 FROM reconciliation.reconciliation_match m
+      WHERE m.internal_txn_id = t.id AND m.run_id = $1
+        AND m.status IN ('matched', 'adjustment')
+  )
 ORDER BY t.txn_date;
 
 -- ── Reconciliation runs ───────────────────────────────────────────────────────

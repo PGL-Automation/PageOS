@@ -380,13 +380,15 @@ func (q *Queries) GetRunSummary(ctx context.Context, runID uuid.UUID) (GetRunSum
 const getUnmatchedBankLines = `-- name: GetUnmatchedBankLines :many
 SELECT l.id, l.statement_id, l.txn_date, l.value_date, l.debit_kobo, l.credit_kobo, l.balance_kobo, l.narration, l.reference, l.raw, l.created_at FROM reconciliation.bank_statement_line l
 JOIN reconciliation.bank_statement s ON s.id = l.statement_id
-LEFT JOIN reconciliation.reconciliation_match m
-    ON m.bank_line_id = l.id AND m.run_id = $1
 WHERE s.bank_account_id = (SELECT bank_account_id FROM reconciliation.reconciliation_run WHERE id = $1)
   AND l.txn_date BETWEEN
       (SELECT period_start FROM reconciliation.reconciliation_run WHERE id = $1)
       AND (SELECT period_end   FROM reconciliation.reconciliation_run WHERE id = $1)
-  AND m.id IS NULL
+  AND NOT EXISTS (
+      SELECT 1 FROM reconciliation.reconciliation_match m
+      WHERE m.bank_line_id = l.id AND m.run_id = $1
+        AND m.status IN ('matched', 'adjustment')
+  )
 ORDER BY l.txn_date
 `
 
@@ -424,13 +426,15 @@ func (q *Queries) GetUnmatchedBankLines(ctx context.Context, runID uuid.UUID) ([
 
 const getUnmatchedInternalTxns = `-- name: GetUnmatchedInternalTxns :many
 SELECT t.id, t.subsidiary_id, t.bank_account_id, t.type, t.direction, t.amount_kobo, t.currency, t.reference, t.client_id, t.related_type, t.related_id, t.txn_date, t.recorded_at FROM reconciliation.internal_transaction t
-LEFT JOIN reconciliation.reconciliation_match m
-    ON m.internal_txn_id = t.id AND m.run_id = $1
 WHERE t.bank_account_id = (SELECT bank_account_id FROM reconciliation.reconciliation_run WHERE id = $1)
   AND t.txn_date BETWEEN
       (SELECT period_start FROM reconciliation.reconciliation_run WHERE id = $1)
       AND (SELECT period_end   FROM reconciliation.reconciliation_run WHERE id = $1)
-  AND m.id IS NULL
+  AND NOT EXISTS (
+      SELECT 1 FROM reconciliation.reconciliation_match m
+      WHERE m.internal_txn_id = t.id AND m.run_id = $1
+        AND m.status IN ('matched', 'adjustment')
+  )
 ORDER BY t.txn_date
 `
 
