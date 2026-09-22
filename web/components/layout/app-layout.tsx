@@ -181,6 +181,7 @@ const FINANCE_NAV: NavGroup[] = [
     { href: "/finance/payables",      label: "Payables",       icon: CreditCard },
     { href: "/finance/receivables",   label: "Receivables",    icon: Wallet },
     { href: "/finance/assets",        label: "Fixed Assets",   icon: Package },
+    { href: "/finance/vendors",       label: "Vendors",        icon: Briefcase },
     { href: "/finance/fx-rates",      label: "FX Rates",       icon: RefreshCw },
   ]},
   { id: "connectivity", label: "Banking", items: [
