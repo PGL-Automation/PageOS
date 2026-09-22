@@ -2,6 +2,7 @@
 package reconhttp
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -11,11 +12,26 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/pagegroup/pageos/internal/identity"
 	identityhttp "github.com/pagegroup/pageos/internal/identity/http"
 	"github.com/pagegroup/pageos/internal/platform/httpx"
 	"github.com/pagegroup/pageos/internal/reconciliation"
 )
+
+// reconStaffRoles are the position codes permitted to access reconciliation.
+// Covers Treasury and FinOps staff including their management chain.
+var reconStaffRoles = []string{
+	"HEAD_OF_OPERATIONS",
+	"TREASURY_OPS_FINANCE_MGR",
+	"FUND_TREASURY_OPERATIONS",
+	"TREASURY_OFFICER",
+	"TREASURY_ANALYST",
+	"FINOPS_MANAGER",
+	"RECONCILIATION_OFFICER",
+	"GROUP_ADMIN",
+}
 
 // isExcelFile returns true when a filename has an Excel extension.
 func isExcelFile(name string) bool {
@@ -24,16 +40,67 @@ func isExcelFile(name string) bool {
 }
 
 type Handler struct {
-	svc *reconciliation.Service
+	svc  *reconciliation.Service
+	pool *pgxpool.Pool
 }
 
-func New(svc *reconciliation.Service) *Handler {
-	return &Handler{svc: svc}
+func New(svc *reconciliation.Service, pool *pgxpool.Pool) *Handler {
+	return &Handler{svc: svc, pool: pool}
+}
+
+// isReconStaff returns true when the user holds an active assignment in one of
+// the treasury or finops position codes.
+func (h *Handler) isReconStaff(ctx context.Context, userID uuid.UUID) (bool, error) {
+	const q = `
+		SELECT EXISTS (
+			SELECT 1
+			FROM   organization.assignment a
+			JOIN   organization.position   pos ON pos.id  = a.position_id
+			JOIN   organization.person     per ON per.id  = a.person_id
+			WHERE  per.user_id = $1
+			  AND  pos.code = ANY($2::text[])
+			  AND  a.effective_from <= CURRENT_DATE
+			  AND  (a.effective_to IS NULL OR a.effective_to >= CURRENT_DATE)
+		)
+	`
+	var exists bool
+	if err := h.pool.QueryRow(ctx, q, userID, reconStaffRoles).Scan(&exists); err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
+// requireReconStaff extracts the caller, verifies they hold a treasury/finops
+// role, and writes 401/403 on failure. Returns (user, true) on success.
+func (h *Handler) requireReconStaff(w http.ResponseWriter, r *http.Request) (identity.User, bool) {
+	caller, ok := identityhttp.UserFrom(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthenticated", "login required")
+		return identity.User{}, false
+	}
+	allowed, err := h.isReconStaff(r.Context(), caller.ID)
+	if err != nil || !allowed {
+		httpx.Error(w, http.StatusForbidden, "forbidden", "treasury or finops role required")
+		return identity.User{}, false
+	}
+	return caller, true
+}
+
+// reconStaffMiddleware enforces that the authenticated caller holds a treasury
+// or finops role. It must run after authMW (which sets the user in context).
+func (h *Handler) reconStaffMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := h.requireReconStaff(w, r); !ok {
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	r := chi.NewRouter()
 	r.Use(authMW)
+	r.Use(h.reconStaffMiddleware)
 
 	r.Post("/accounts", h.createAccount)
 	r.Get("/accounts", h.listAccounts)

@@ -153,7 +153,7 @@ func run() error {
 	onboardingH := onboardinghttp.New(onboardingSvc, docSvc)
 
 	reconSvc := reconciliation.NewService(pool, auditWriter)
-	reconH := reconhttp.New(reconSvc)
+	reconH := reconhttp.New(reconSvc, pool)
 
 	appraisalSvc := appraisal.NewService(pool)
 	appraisalH   := appraisalhttp.New(appraisalSvc)
