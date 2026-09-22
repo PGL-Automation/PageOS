@@ -183,6 +183,7 @@ const FINANCE_NAV: NavGroup[] = [
     { href: "/finance/assets",        label: "Fixed Assets",   icon: Package },
     { href: "/finance/vendors",       label: "Vendors",        icon: Briefcase },
     { href: "/finance/fx-rates",      label: "FX Rates",       icon: RefreshCw },
+    { href: "/finance/permissions",    label: "Permissions",    icon: Lock },
   ]},
   { id: "connectivity", label: "Banking", items: [
     { href: "/reconciliation/dashboard",    label: "Dashboard",         icon: LayoutDashboard },
