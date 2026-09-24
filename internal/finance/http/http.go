@@ -219,8 +219,9 @@ func (h *Handler) listJournals(w http.ResponseWriter, r *http.Request) {
 // ── Create ────────────────────────────────────────────────────────────────────
 
 func (h *Handler) createJournal(w http.ResponseWriter, r *http.Request) {
-	caller, ok := h.requireFinanceStaff(w, r)
+	caller, ok := identityhttp.UserFrom(r.Context())
 	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
 
@@ -261,8 +262,9 @@ func (h *Handler) getJournal(w http.ResponseWriter, r *http.Request) {
 // ── Post ──────────────────────────────────────────────────────────────────────
 
 func (h *Handler) postJournal(w http.ResponseWriter, r *http.Request) {
-	caller, ok := h.requireFinanceStaff(w, r)
+	caller, ok := identityhttp.UserFrom(r.Context())
 	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
@@ -280,8 +282,9 @@ func (h *Handler) postJournal(w http.ResponseWriter, r *http.Request) {
 // ── Reverse ───────────────────────────────────────────────────────────────────
 
 func (h *Handler) reverseJournal(w http.ResponseWriter, r *http.Request) {
-	caller, ok := h.requireFinanceStaff(w, r)
+	caller, ok := identityhttp.UserFrom(r.Context())
 	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
@@ -300,7 +303,8 @@ func (h *Handler) reverseJournal(w http.ResponseWriter, r *http.Request) {
 // ── Delete draft ──────────────────────────────────────────────────────────────
 
 func (h *Handler) deleteDraft(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.requireFinanceStaff(w, r); !ok {
+	if _, ok := identityhttp.UserFrom(r.Context()); !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
@@ -318,8 +322,9 @@ func (h *Handler) deleteDraft(w http.ResponseWriter, r *http.Request) {
 // ── Approval workflow ─────────────────────────────────────────────────────────
 
 func (h *Handler) submitForApproval(w http.ResponseWriter, r *http.Request) {
-	caller, ok := h.requireFinanceStaff(w, r)
+	caller, ok := identityhttp.UserFrom(r.Context())
 	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
@@ -335,8 +340,9 @@ func (h *Handler) submitForApproval(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) approveJournal(w http.ResponseWriter, r *http.Request) {
-	caller, ok := h.requireFinanceStaff(w, r)
+	caller, ok := identityhttp.UserFrom(r.Context())
 	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
@@ -352,8 +358,9 @@ func (h *Handler) approveJournal(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) rejectJournal(w http.ResponseWriter, r *http.Request) {
-	caller, ok := h.requireFinanceStaff(w, r)
+	caller, ok := identityhttp.UserFrom(r.Context())
 	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
@@ -432,8 +439,9 @@ func (h *Handler) listBudgets(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) upsertBudgets(w http.ResponseWriter, r *http.Request) {
-	caller, ok := h.requireFinanceStaff(w, r)
+	caller, ok := identityhttp.UserFrom(r.Context())
 	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
 	q := r.URL.Query()
@@ -533,7 +541,8 @@ func (h *Handler) listAccounts(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) createAccount(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.requireFinanceStaff(w, r); !ok {
+	if _, ok := identityhttp.UserFrom(r.Context()); !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
 	var in struct {
@@ -553,7 +562,8 @@ func (h *Handler) createAccount(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) updateAccount(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.requireFinanceStaff(w, r); !ok {
+	if _, ok := identityhttp.UserFrom(r.Context()); !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
 	code := chi.URLParam(r, "code")
@@ -571,7 +581,8 @@ func (h *Handler) updateAccount(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) toggleAccount(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.requireFinanceStaff(w, r); !ok {
+	if _, ok := identityhttp.UserFrom(r.Context()); !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
 	code := chi.URLParam(r, "code")
@@ -602,7 +613,8 @@ func (h *Handler) listPeriods(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) createPeriod(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.requireFinanceStaff(w, r); !ok {
+	if _, ok := identityhttp.UserFrom(r.Context()); !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
 	var in struct {
@@ -633,8 +645,9 @@ func (h *Handler) lockPeriod(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) setPeriodStatus(w http.ResponseWriter, r *http.Request, status string) {
-	caller, ok := h.requireFinanceStaff(w, r)
+	caller, ok := identityhttp.UserFrom(r.Context())
 	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
@@ -690,7 +703,8 @@ func (h *Handler) listVendors(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) createVendor(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.requireFinanceStaff(w, r); !ok {
+	if _, ok := identityhttp.UserFrom(r.Context()); !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
 	var in finance.VendorInput
@@ -721,7 +735,8 @@ func (h *Handler) getVendor(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) updateVendor(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.requireFinanceStaff(w, r); !ok {
+	if _, ok := identityhttp.UserFrom(r.Context()); !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
@@ -763,8 +778,9 @@ func (h *Handler) listPayables(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) createPayable(w http.ResponseWriter, r *http.Request) {
-	caller, ok := h.requireFinanceStaff(w, r)
+	caller, ok := identityhttp.UserFrom(r.Context())
 	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
 	var in finance.CreatePayableInput
@@ -795,8 +811,9 @@ func (h *Handler) getPayable(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) approvePayable(w http.ResponseWriter, r *http.Request) {
-	caller, ok := h.requireFinanceStaff(w, r)
+	caller, ok := identityhttp.UserFrom(r.Context())
 	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
@@ -813,8 +830,9 @@ func (h *Handler) approvePayable(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) payPayable(w http.ResponseWriter, r *http.Request) {
-	caller, ok := h.requireFinanceStaff(w, r)
+	caller, ok := identityhttp.UserFrom(r.Context())
 	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
@@ -878,8 +896,9 @@ func (h *Handler) listReceivables(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) createReceivable(w http.ResponseWriter, r *http.Request) {
-	caller, ok := h.requireFinanceStaff(w, r)
+	caller, ok := identityhttp.UserFrom(r.Context())
 	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
 	var in finance.CreateReceivableInput
@@ -910,8 +929,9 @@ func (h *Handler) getReceivable(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) recordReceipt(w http.ResponseWriter, r *http.Request) {
-	caller, ok := h.requireFinanceStaff(w, r)
+	caller, ok := identityhttp.UserFrom(r.Context())
 	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
@@ -1010,8 +1030,9 @@ func (h *Handler) listAssets(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) createAsset(w http.ResponseWriter, r *http.Request) {
-	caller, ok := h.requireFinanceStaff(w, r)
+	caller, ok := identityhttp.UserFrom(r.Context())
 	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
 	var in finance.CreateAssetInput
@@ -1042,8 +1063,9 @@ func (h *Handler) getAsset(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) depreciateAsset(w http.ResponseWriter, r *http.Request) {
-	caller, ok := h.requireFinanceStaff(w, r)
+	caller, ok := identityhttp.UserFrom(r.Context())
 	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
@@ -1066,8 +1088,9 @@ func (h *Handler) depreciateAsset(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) depreciateAll(w http.ResponseWriter, r *http.Request) {
-	caller, ok := h.requireFinanceStaff(w, r)
+	caller, ok := identityhttp.UserFrom(r.Context())
 	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
 	q := r.URL.Query()
@@ -1092,8 +1115,9 @@ func (h *Handler) depreciateAll(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) disposeAsset(w http.ResponseWriter, r *http.Request) {
-	caller, ok := h.requireFinanceStaff(w, r)
+	caller, ok := identityhttp.UserFrom(r.Context())
 	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
