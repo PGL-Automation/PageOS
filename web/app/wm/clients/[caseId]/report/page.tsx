@@ -362,7 +362,7 @@ function TransactionsTable({ transactions }: { transactions: TransactionRow[] })
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function Client360ReportPage() {
-  const { id: accountId } = useParams<{ id: string }>();
+  const { caseId: accountId } = useParams<{ caseId: string }>();
 
   const [fromDate, setFromDate] = useState(oneYearAgoIso());
   const [toDate, setToDate]     = useState(todayIso());
