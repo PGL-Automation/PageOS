@@ -133,12 +133,14 @@ const MD_NAV: NavGroup[] = [
     { href: "/wm/portfolio/accounts", label: "Client Accounts",   icon: Users },
   ]},
   { id: "finance", label: "Finance", items: [
-    { href: "/finance",               label: "Finance",        icon: TrendingUp },
-    { href: "/finance/reconciliation",label: "Reconciliation", icon: RefreshCw },
-    { href: "/finance/fx-rates",      label: "FX Rates",       icon: RefreshCw },
+    { href: "/finance",          label: "Overview",   icon: TrendingUp },
+    { href: "/finance/fx-rates", label: "FX Rates",   icon: RefreshCw },
     { href: "/settings/permissions", label: "Permissions", icon: Lock, visibleTo: ["TREASURY_OPS_FINANCE_MGR", "TL_FINANCIAL_REPORTING"] },
-    { href: "/reconciliation/dashboard",    label: "Recon Dashboard",   icon: LayoutDashboard },
-    { href: "/reconciliation/connectivity", label: "Bank Connectivity", icon: Building2 },
+  ]},
+  { id: "reconciliation", label: "Reconciliation", items: [
+    { href: "/reconciliation/dashboard",    label: "Overview",      icon: LayoutDashboard },
+    { href: "/finance/reconciliation",      label: "Runs",          icon: RefreshCw },
+    { href: "/reconciliation/connectivity", label: "Bank Accounts", icon: Building2 },
   ]},
   { id: "compliance", label: "Audit & Risk", items: [
     { href: "/audit/control-review",  label: "Control Review Queue", icon: ClipboardList },
@@ -176,7 +178,6 @@ const FINANCE_NAV: NavGroup[] = [
   ]},
   { id: "finance", label: "Finance", items: [
     { href: "/finance",               label: "Overview",       icon: TrendingUp },
-    { href: "/finance/reconciliation",label: "Reconciliation", icon: RefreshCw },
     { href: "/finance/ledger",        label: "General Ledger", icon: BookOpen },
     { href: "/finance/journals",      label: "Journals",       icon: FileText },
     { href: "/finance/payables",      label: "Payables",       icon: CreditCard },
@@ -186,9 +187,10 @@ const FINANCE_NAV: NavGroup[] = [
     { href: "/finance/fx-rates",      label: "FX Rates",       icon: RefreshCw },
     { href: "/settings/permissions", label: "Permissions", icon: Lock, visibleTo: ["TREASURY_OPS_FINANCE_MGR", "TL_FINANCIAL_REPORTING"] },
   ]},
-  { id: "connectivity", label: "Banking", items: [
-    { href: "/reconciliation/dashboard",    label: "Dashboard",         icon: LayoutDashboard },
-    { href: "/reconciliation/connectivity", label: "Bank Connectivity", icon: Building2 },
+  { id: "reconciliation", label: "Reconciliation", items: [
+    { href: "/reconciliation/dashboard",    label: "Overview",          icon: LayoutDashboard },
+    { href: "/finance/reconciliation",      label: "Runs",              icon: RefreshCw },
+    { href: "/reconciliation/connectivity", label: "Bank Accounts",     icon: Building2 },
   ]},
   { id: "appraisal", label: "Appraisal", items: [
     { href: "/appraisal",             label: "My Appraisal",   icon: ClipboardList },
@@ -260,14 +262,15 @@ const ADMIN_NAV: NavGroup[] = [
   ]},
   { id: "finance", label: "Finance", items: [
     { href: "/finance",                label: "Overview",         icon: TrendingUp },
-    { href: "/finance/reconciliation", label: "Reconciliation",   icon: RefreshCw },
     { href: "/finance/ledger",         label: "General Ledger",   icon: BookOpen },
     { href: "/finance/journals",       label: "Journals",         icon: FileText },
     { href: "/finance/assets",         label: "Fixed Assets",     icon: Package },
     { href: "/finance/fx-rates",       label: "FX Rates",         icon: RefreshCw },
-    { href: "/settings/permissions", label: "Permissions", icon: Lock, visibleTo: ["TREASURY_OPS_FINANCE_MGR", "TL_FINANCIAL_REPORTING"] },
-    { href: "/reconciliation/dashboard",    label: "Recon Dashboard",   icon: LayoutDashboard },
-    { href: "/reconciliation/connectivity", label: "Bank Connectivity", icon: Building2 },
+  ]},
+  { id: "reconciliation", label: "Reconciliation", items: [
+    { href: "/reconciliation/dashboard",    label: "Overview",      icon: LayoutDashboard },
+    { href: "/finance/reconciliation",      label: "Runs",          icon: RefreshCw },
+    { href: "/reconciliation/connectivity", label: "Bank Accounts", icon: Building2 },
   ]},
   { id: "governance", label: "Governance", items: [
     { href: "/approval",               label: "Approvals",        icon: CheckSquare },
@@ -306,9 +309,13 @@ const DEFAULT_NAV: NavGroup[] = [
   ]},
   { id: "finance", label: "Finance", items: [
     { href: "/finance",               label: "Overview",       icon: TrendingUp },
-    { href: "/finance/reconciliation",label: "Reconciliation", icon: RefreshCw },
     { href: "/finance/ledger",        label: "General Ledger", icon: BookOpen },
     { href: "/finance/journals",      label: "Journals",       icon: FileText },
+  ]},
+  { id: "reconciliation", label: "Reconciliation", items: [
+    { href: "/reconciliation/dashboard",    label: "Overview",      icon: LayoutDashboard },
+    { href: "/finance/reconciliation",      label: "Runs",          icon: RefreshCw },
+    { href: "/reconciliation/connectivity", label: "Bank Accounts", icon: Building2 },
   ]},
   { id: "governance", label: "Governance", items: [
     { href: "/compliance",            label: "Compliance",     icon: Shield },
