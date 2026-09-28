@@ -136,6 +136,7 @@ const MD_NAV: NavGroup[] = [
     { href: "/finance",               label: "Finance",        icon: TrendingUp },
     { href: "/finance/reconciliation",label: "Reconciliation", icon: RefreshCw },
     { href: "/finance/fx-rates",      label: "FX Rates",       icon: RefreshCw },
+    { href: "/finance/permissions",   label: "Permissions",    icon: Lock },
     { href: "/reconciliation/dashboard",    label: "Recon Dashboard",   icon: LayoutDashboard },
     { href: "/reconciliation/connectivity", label: "Bank Connectivity", icon: Building2 },
   ]},
