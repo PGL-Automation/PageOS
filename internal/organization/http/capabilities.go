@@ -59,10 +59,16 @@ func (h *Handler) getPersonCapabilities(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	callerDomains, err := h.capSvc.GetAllDomainsUserCanManage(r.Context(), caller.ID)
-	if err != nil {
-		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
-		return
+	// Build caller's managed domains by checking each domain individually.
+	// This avoids GetAllDomainsUserCanManage which has a known query bug;
+	// CanManageDomain uses ANY($2::text[]) which resolves correctly.
+	allDomains := []string{"finance", "reconciliation", "portfolio"}
+	var callerDomains []string
+	for _, d := range allDomains {
+		can, err := h.capSvc.CanManageDomain(r.Context(), caller.ID, d)
+		if err == nil && can {
+			callerDomains = append(callerDomains, d)
+		}
 	}
 	if len(callerDomains) == 0 {
 		httpx.Error(w, http.StatusForbidden, "forbidden", "you do not manage any capability domains")
@@ -242,10 +248,14 @@ func (h *Handler) getMyDomains(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "not authenticated")
 		return
 	}
-	domains, err := h.capSvc.GetAllDomainsUserCanManage(r.Context(), caller.ID)
-	if err != nil {
-		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
-		return
+	// Use CanManageDomain per domain (avoids GetAllDomainsUserCanManage bug).
+	allDomains := []string{"finance", "reconciliation", "portfolio"}
+	var domains []string
+	for _, d := range allDomains {
+		can, err := h.capSvc.CanManageDomain(r.Context(), caller.ID, d)
+		if err == nil && can {
+			domains = append(domains, d)
+		}
 	}
 	if domains == nil {
 		domains = []string{}
