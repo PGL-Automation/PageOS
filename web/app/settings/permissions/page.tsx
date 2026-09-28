@@ -194,10 +194,11 @@ export default function PermissionsPage() {
 
   // ── Fetch all staff — open to any authenticated user ─────────────────────────
 
-  const { data: staff = [], isLoading: staffLoading } = useQuery<StaffMember[]>({
-    queryKey: ["org-staff"],
+  const { data: staff = [], isLoading: staffLoading, error: staffError } = useQuery<StaffMember[]>({
+    queryKey: ["org-staff", "finance"],
     queryFn: () => apiFetch<StaffMember[]>("/org/staff?family=finance"),
-    staleTime: 2 * 60 * 1000,
+    staleTime: 0,
+    retry: 1,
   });
 
   // ── Fetch capabilities for selected domain (all users have the same cap list) ─
@@ -221,12 +222,13 @@ export default function PermissionsPage() {
 
   // ── Fetch person capabilities (right panel) ──────────────────────────────────
 
-  const { data: personCaps, isLoading: personCapsLoading } = useQuery<ResolvedCapability[]>({
+  const { data: personCaps, isLoading: personCapsLoading, error: personCapsError } = useQuery<ResolvedCapability[]>({
     queryKey: ["capabilities-person", selectedPersonId],
     queryFn: () =>
       apiFetch<ResolvedCapability[]>(`/org/capabilities/person/${selectedPersonId}`),
     enabled: selectedPersonId !== null,
-    staleTime: 0, // always fresh when switching people
+    staleTime: 0,
+    retry: 1,
   });
 
   // ── Filtered domain caps for selected person ─────────────────────────────────
@@ -444,10 +446,16 @@ export default function PermissionsPage() {
               <div className="flex justify-center py-12">
                 <Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--pg-text-4)" }} />
               </div>
+            ) : staffError ? (
+              <div className="px-4 py-8 text-center">
+                <p className="text-[12px]" style={{ color: "#ef4444" }}>
+                  Failed to load staff. Reload the page.
+                </p>
+              </div>
             ) : filteredStaff.length === 0 ? (
               <div className="px-4 py-8 text-center">
                 <p className="text-[12px]" style={{ color: "var(--pg-text-3)" }}>
-                  {search ? "No staff match your search." : "No staff found."}
+                  {search ? "No staff match your search." : "No finance staff found."}
                 </p>
               </div>
             ) : (
@@ -648,7 +656,16 @@ export default function PermissionsPage() {
                       style={{ color: "var(--pg-text-4)" }}
                     />
                   </div>
-                ) : personDomainCaps.length === 0 && !domainCapsLoading ? (
+                ) : personCapsError ? (
+                  <div className="flex flex-col items-center justify-center py-16 gap-2 px-4 text-center">
+                    <p className="text-[13px]" style={{ color: "#ef4444" }}>
+                      Could not load capabilities.
+                    </p>
+                    <p className="text-[11px]" style={{ color: "var(--pg-text-3)" }}>
+                      {(personCapsError as Error).message}
+                    </p>
+                  </div>
+                ) : personDomainCaps.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-16 gap-2">
                     <ShieldCheck className="w-8 h-8" style={{ color: "var(--pg-text-4)" }} />
                     <p className="text-[13px]" style={{ color: "var(--pg-text-3)" }}>
