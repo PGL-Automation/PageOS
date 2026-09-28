@@ -431,6 +431,10 @@ func (h *Handler) listUsers(w http.ResponseWriter, r *http.Request) {
 		"HEAD_COMPLIANCE_CORPORATE", "HEAD_CORPORATE_COMPLIANCE",
 		// Executive leadership
 		"MANAGING_DIRECTOR", "EXECUTIVE_DIRECTOR", "GROUP_ADMIN",
+		// Finance department heads — need staff list to manage capability permissions
+		"HEAD_OF_OPERATIONS", "FINOPS_MANAGER", "TREASURY_OPS_FINANCE_MGR", "TL_FINANCIAL_REPORTING",
+		// Portfolio department heads — need staff list to manage capability permissions
+		"HEAD_OF_INVESTMENT", "HEAD_INVESTMENT_MGMT", "GROUP_HEAD_WEALTH_MGMT",
 	)
 	if err != nil || !hasAccess {
 		httpx.Error(w, http.StatusForbidden, "forbidden", "HR or admin access required")
