@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	identityhttp "github.com/pagegroup/pageos/internal/identity/http"
 	"github.com/pagegroup/pageos/internal/finance"
 	"github.com/pagegroup/pageos/internal/platform/httpx"
 )
@@ -12,8 +13,9 @@ import (
 // ── FX Rates ──────────────────────────────────────────────────────────────────
 
 func (h *Handler) setFXRate(w http.ResponseWriter, r *http.Request) {
-	caller, ok := h.requireFinanceStaff(w, r)
+	caller, ok := identityhttp.UserFrom(r.Context())
 	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
 
