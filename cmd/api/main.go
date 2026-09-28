@@ -153,7 +153,6 @@ func run() error {
 	onboardingH := onboardinghttp.New(onboardingSvc, docSvc)
 
 	reconSvc := reconciliation.NewService(pool, auditWriter)
-	reconH := reconhttp.New(reconSvc, pool)
 
 	appraisalSvc := appraisal.NewService(pool)
 	appraisalH   := appraisalhttp.New(appraisalSvc)
@@ -161,14 +160,19 @@ func run() error {
 	hrSvc := hr.NewService(pool)
 	hrH   := hrhttp.New(hrSvc, pool)
 
+	capSvc := organization.NewCapabilityService(pool)
+	orgH.WithCapabilityService(capSvc)
+
+	reconH := reconhttp.New(reconSvc, capSvc)
+
 	financeSvc := finance.NewService(pool)
-	financeH   := financehttp.New(financeSvc, pool)
+	financeH   := financehttp.New(financeSvc, pool, capSvc)
 
 	payrollSvc := payroll.NewService(pool, financeSvc)
 	payrollH   := payrollhttp.New(payrollSvc, pool)
 
 	portfolioSvc := portfolio.NewService(pool, financeSvc)
-	portfolioH   := portfoliohttp.New(portfolioSvc, pool)
+	portfolioH   := portfoliohttp.New(portfolioSvc, pool, capSvc)
 
 	crmSvc := crm.NewService(pool)
 	crmH   := crmhttp.New(crmSvc)

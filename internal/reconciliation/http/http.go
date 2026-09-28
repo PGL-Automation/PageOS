@@ -2,7 +2,6 @@
 package reconhttp
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -12,26 +11,12 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/pagegroup/pageos/internal/identity"
 	identityhttp "github.com/pagegroup/pageos/internal/identity/http"
+	"github.com/pagegroup/pageos/internal/organization"
 	"github.com/pagegroup/pageos/internal/platform/httpx"
 	"github.com/pagegroup/pageos/internal/reconciliation"
 )
-
-// reconStaffRoles are the position codes permitted to access reconciliation.
-// Covers Treasury and FinOps staff including their management chain.
-var reconStaffRoles = []string{
-	"HEAD_OF_OPERATIONS",
-	"TREASURY_OPS_FINANCE_MGR",
-	"FUND_TREASURY_OPERATIONS",
-	"TREASURY_OFFICER",
-	"TREASURY_ANALYST",
-	"FINOPS_MANAGER",
-	"RECONCILIATION_OFFICER",
-	"GROUP_ADMIN",
-}
 
 // isExcelFile returns true when a filename has an Excel extension.
 func isExcelFile(name string) bool {
@@ -40,103 +25,70 @@ func isExcelFile(name string) bool {
 }
 
 type Handler struct {
-	svc  *reconciliation.Service
-	pool *pgxpool.Pool
+	svc    *reconciliation.Service
+	capSvc *organization.CapabilityService
 }
 
-func New(svc *reconciliation.Service, pool *pgxpool.Pool) *Handler {
-	return &Handler{svc: svc, pool: pool}
+func New(svc *reconciliation.Service, capSvc *organization.CapabilityService) *Handler {
+	return &Handler{svc: svc, capSvc: capSvc}
 }
 
-// isReconStaff returns true when the user holds an active assignment in one of
-// the treasury or finops position codes.
-func (h *Handler) isReconStaff(ctx context.Context, userID uuid.UUID) (bool, error) {
-	const q = `
-		SELECT EXISTS (
-			SELECT 1
-			FROM   organization.assignment a
-			JOIN   organization.position   pos ON pos.id  = a.position_id
-			JOIN   organization.person     per ON per.id  = a.person_id
-			WHERE  per.user_id = $1
-			  AND  pos.code = ANY($2::text[])
-			  AND  a.effective_from <= CURRENT_DATE
-			  AND  (a.effective_to IS NULL OR a.effective_to >= CURRENT_DATE)
-		)
-	`
-	var exists bool
-	if err := h.pool.QueryRow(ctx, q, userID, reconStaffRoles).Scan(&exists); err != nil {
-		return false, err
-	}
-	return exists, nil
-}
-
-// requireReconStaff extracts the caller, verifies they hold a treasury/finops
-// role, and writes 401/403 on failure. Returns (user, true) on success.
-func (h *Handler) requireReconStaff(w http.ResponseWriter, r *http.Request) (identity.User, bool) {
-	caller, ok := identityhttp.UserFrom(r.Context())
-	if !ok {
-		httpx.Error(w, http.StatusUnauthorized, "unauthenticated", "login required")
-		return identity.User{}, false
-	}
-	allowed, err := h.isReconStaff(r.Context(), caller.ID)
-	if err != nil || !allowed {
-		httpx.Error(w, http.StatusForbidden, "forbidden", "treasury or finops role required")
-		return identity.User{}, false
-	}
-	return caller, true
-}
-
-// reconStaffMiddleware enforces that the authenticated caller holds a treasury
-// or finops role. It must run after authMW (which sets the user in context).
-func (h *Handler) reconStaffMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := h.requireReconStaff(w, r); !ok {
+// withCap wraps a handler, requiring the caller to hold the given capability code.
+func (h *Handler) withCap(code string, fn http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, ok := identityhttp.UserFrom(r.Context())
+		if !ok {
+			httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 			return
 		}
-		next.ServeHTTP(w, r)
-	})
+		allowed, _ := h.capSvc.CheckCapability(r.Context(), caller.ID, code)
+		if !allowed {
+			httpx.Error(w, http.StatusForbidden, "forbidden", "you do not have the required permission")
+			return
+		}
+		fn(w, r)
+	}
 }
 
 func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	r := chi.NewRouter()
 	r.Use(authMW)
-	r.Use(h.reconStaffMiddleware)
 
-	r.Post("/accounts", h.createAccount)
-	r.Get("/accounts", h.listAccounts)
-	r.Patch("/accounts/{id}/gl-code", h.setGLCode)
-	r.Get("/accounts/{id}/statements", h.listStatements)
-	r.Post("/accounts/{id}/statements", h.uploadStatement)
-	r.Post("/accounts/{id}/ledger", h.uploadLedger)
-	r.Post("/accounts/{id}/sync-gl", h.syncGL)
-	r.Post("/accounts/{id}/connectivity", h.setBankConnectivity)
-	r.Get("/accounts/{id}/connectivity", h.getBankConnectivity)
-	r.Post("/accounts/{id}/pull", h.triggerManualPull)
+	r.Post("/accounts", h.withCap("recon.configure", h.createAccount))
+	r.Get("/accounts", h.withCap("recon.view", h.listAccounts))
+	r.Patch("/accounts/{id}/gl-code", h.withCap("recon.configure", h.setGLCode))
+	r.Get("/accounts/{id}/statements", h.withCap("recon.view", h.listStatements))
+	r.Post("/accounts/{id}/statements", h.withCap("recon.run", h.uploadStatement))
+	r.Post("/accounts/{id}/ledger", h.withCap("recon.run", h.uploadLedger))
+	r.Post("/accounts/{id}/sync-gl", h.withCap("recon.run", h.syncGL))
+	r.Post("/accounts/{id}/connectivity", h.withCap("recon.configure", h.setBankConnectivity))
+	r.Get("/accounts/{id}/connectivity", h.withCap("recon.view", h.getBankConnectivity))
+	r.Post("/accounts/{id}/pull", h.withCap("recon.pull", h.triggerManualPull))
 
-	r.Post("/transactions", h.createInternalTxn)
+	r.Post("/transactions", h.withCap("recon.run", h.createInternalTxn))
 
-	r.Post("/runs", h.createRun)
-	r.Get("/runs", h.listRuns)
-	r.Get("/runs/{id}", h.getRun)
+	r.Post("/runs", h.withCap("recon.run", h.createRun))
+	r.Get("/runs", h.withCap("recon.view", h.listRuns))
+	r.Get("/runs/{id}", h.withCap("recon.view", h.getRun))
 	// Full match view: every match with bank + ledger details joined in.
-	r.Get("/runs/{id}/full", h.getRunFull)
-	r.Get("/runs/{id}/unmatched", h.listUnmatched)
-	r.Post("/runs/{id}/match", h.recordManualMatch)
-	r.Post("/runs/{id}/unmatched-bank", h.markBankUnmatched)
-	r.Post("/runs/{id}/unmatched-internal", h.markInternalUnmatched)
-	r.Post("/runs/{id}/close", h.closeRun)
+	r.Get("/runs/{id}/full", h.withCap("recon.view", h.getRunFull))
+	r.Get("/runs/{id}/unmatched", h.withCap("recon.view", h.listUnmatched))
+	r.Post("/runs/{id}/match", h.withCap("recon.match", h.recordManualMatch))
+	r.Post("/runs/{id}/unmatched-bank", h.withCap("recon.match", h.markBankUnmatched))
+	r.Post("/runs/{id}/unmatched-internal", h.withCap("recon.match", h.markInternalUnmatched))
+	r.Post("/runs/{id}/close", h.withCap("recon.close", h.closeRun))
 	// Un-match a previously matched pair, returning both sides to unmatched state.
-	r.Post("/runs/{id}/matches/{matchId}/unmatch", h.unmatchRecord)
+	r.Post("/runs/{id}/matches/{matchId}/unmatch", h.withCap("recon.match", h.unmatchRecord))
 	// Export a full reconciliation result as an Excel workbook.
-	r.Get("/runs/{id}/export", h.exportRun)
+	r.Get("/runs/{id}/export", h.withCap("recon.view", h.exportRun))
 	// Validate that the run's matched totals balance against statement balances.
-	r.Get("/runs/{id}/balance", h.validateBalance)
+	r.Get("/runs/{id}/balance", h.withCap("recon.view", h.validateBalance))
 	// Attempt to auto-close a run when all items are matched.
-	r.Post("/runs/{id}/auto-close", h.tryAutoClose)
+	r.Post("/runs/{id}/auto-close", h.withCap("recon.close", h.tryAutoClose))
 	// Exception summary across all accounts for a subsidiary.
-	r.Get("/exceptions", h.getExceptions)
+	r.Get("/exceptions", h.withCap("recon.view", h.getExceptions))
 	// Dashboard: all run summaries for a subsidiary.
-	r.Get("/dashboard", h.getDashboard)
+	r.Get("/dashboard", h.withCap("recon.view", h.getDashboard))
 	return r
 }
 

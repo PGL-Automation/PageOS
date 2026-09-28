@@ -13,34 +13,31 @@ import (
 
 	"github.com/pagegroup/pageos/internal/finance"
 	identityhttp "github.com/pagegroup/pageos/internal/identity/http"
+	"github.com/pagegroup/pageos/internal/organization"
 	"github.com/pagegroup/pageos/internal/platform/httpx"
 )
 
 type Handler struct {
-	svc  *finance.Service
-	pool *pgxpool.Pool
+	svc    *finance.Service
+	pool   *pgxpool.Pool
+	capSvc *organization.CapabilityService
 }
 
-func New(svc *finance.Service, pool *pgxpool.Pool) *Handler {
-	return &Handler{svc: svc, pool: pool}
+func New(svc *finance.Service, pool *pgxpool.Pool, capSvc *organization.CapabilityService) *Handler {
+	return &Handler{svc: svc, pool: pool, capSvc: capSvc}
 }
 
-// withPerm wraps a handler function with a module-level permission check.
-// This is the sole access control gate for all finance endpoints.
-// Access is determined entirely by the finance.role_permission table —
-// no hardcoded role list. Any authenticated user whose role has the
-// required permission is allowed; all others receive 403.
-// action must be one of: "view", "create", "approve", "export".
-func (h *Handler) withPerm(module, action string, fn http.HandlerFunc) http.HandlerFunc {
+// withCap wraps a handler with a named capability check.
+func (h *Handler) withCap(code string, fn http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		caller, ok := identityhttp.UserFrom(r.Context())
 		if !ok {
 			httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 			return
 		}
-		allowed, err := h.svc.CheckPermission(r.Context(), caller.ID, module, action)
-		if err != nil || !allowed {
-			httpx.Error(w, http.StatusForbidden, "forbidden", "you do not have "+action+" permission on "+module)
+		allowed, _ := h.capSvc.CheckCapability(r.Context(), caller.ID, code)
+		if !allowed {
+			httpx.Error(w, http.StatusForbidden, "forbidden", "you do not have the required permission")
 			return
 		}
 		fn(w, r)
@@ -52,82 +49,82 @@ func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	r.Use(authMW)
 
 	// Journals
-	r.Get("/journals", h.withPerm("journals", "view", h.listJournals))
-	r.Post("/journals", h.withPerm("journals", "create", h.createJournal))
-	r.Get("/journals/{id}", h.withPerm("journals", "view", h.getJournal))
-	r.Post("/journals/{id}/post", h.withPerm("journals", "approve", h.postJournal))
-	r.Post("/journals/{id}/submit", h.withPerm("journals", "create", h.submitForApproval))
-	r.Post("/journals/{id}/approve", h.withPerm("journals", "approve", h.approveJournal))
-	r.Post("/journals/{id}/reject", h.withPerm("journals", "approve", h.rejectJournal))
-	r.Post("/journals/{id}/reverse", h.withPerm("journals", "approve", h.reverseJournal))
-	r.Delete("/journals/{id}", h.withPerm("journals", "create", h.deleteDraft))
+	r.Get("/journals", h.withCap("finance.view_journals", h.listJournals))
+	r.Post("/journals", h.withCap("finance.create_journals", h.createJournal))
+	r.Get("/journals/{id}", h.withCap("finance.view_journals", h.getJournal))
+	r.Post("/journals/{id}/post", h.withCap("finance.post_journals", h.postJournal))
+	r.Post("/journals/{id}/submit", h.withCap("finance.create_journals", h.submitForApproval))
+	r.Post("/journals/{id}/approve", h.withCap("finance.approve_journals", h.approveJournal))
+	r.Post("/journals/{id}/reject", h.withCap("finance.approve_journals", h.rejectJournal))
+	r.Post("/journals/{id}/reverse", h.withCap("finance.reverse_journals", h.reverseJournal))
+	r.Delete("/journals/{id}", h.withCap("finance.create_journals", h.deleteDraft))
 
 	// Financial Reports
-	r.Get("/reports/pl", h.withPerm("reports", "view", h.profitAndLoss))
-	r.Get("/reports/balance-sheet", h.withPerm("reports", "view", h.balanceSheet))
-	r.Get("/reports/cash-flow", h.withPerm("reports", "view", h.cashFlow))
+	r.Get("/reports/pl", h.withCap("finance.view_reports", h.profitAndLoss))
+	r.Get("/reports/balance-sheet", h.withCap("finance.view_reports", h.balanceSheet))
+	r.Get("/reports/cash-flow", h.withCap("finance.view_reports", h.cashFlow))
 
 	// Tax compliance
-	r.Get("/vat/return", h.withPerm("reports", "view", h.vatReturn))
-	r.Get("/wht/register", h.withPerm("reports", "view", h.whtRegister))
+	r.Get("/vat/return", h.withCap("finance.view_reports", h.vatReturn))
+	r.Get("/wht/register", h.withCap("finance.view_reports", h.whtRegister))
 
 	// Budget vs Actual
-	r.Get("/budget", h.withPerm("budget", "view", h.listBudgets))
-	r.Put("/budget", h.withPerm("budget", "create", h.upsertBudgets))
-	r.Get("/budget/variance", h.withPerm("budget", "view", h.budgetVariance))
+	r.Get("/budget", h.withCap("finance.view_reports", h.listBudgets))
+	r.Put("/budget", h.withCap("finance.manage_budget", h.upsertBudgets))
+	r.Get("/budget/variance", h.withCap("finance.view_reports", h.budgetVariance))
 
 	// FX Rates
-	r.Post("/fx-rates", h.withPerm("fx_rates", "create", h.setFXRate))
-	r.Get("/fx-rates", h.withPerm("fx_rates", "view", h.listFXRates))
-	r.Get("/fx-rates/latest", h.withPerm("fx_rates", "view", h.getLatestFXRate))
+	r.Post("/fx-rates", h.withCap("finance.manage_fx_rates", h.setFXRate))
+	r.Get("/fx-rates", h.withCap("finance.view_gl", h.listFXRates))
+	r.Get("/fx-rates/latest", h.withCap("finance.view_gl", h.getLatestFXRate))
 
 	// Fixed Asset Register
-	r.Get("/assets/fixed", h.withPerm("fixed_assets", "view", h.listAssets))
-	r.Post("/assets/fixed", h.withPerm("fixed_assets", "create", h.createAsset))
-	r.Get("/assets/fixed/{id}", h.withPerm("fixed_assets", "view", h.getAsset))
-	r.Post("/assets/fixed/{id}/depreciate", h.withPerm("fixed_assets", "approve", h.depreciateAsset))
-	r.Post("/assets/fixed/depreciate-all", h.withPerm("fixed_assets", "approve", h.depreciateAll))
-	r.Post("/assets/fixed/{id}/dispose", h.withPerm("fixed_assets", "approve", h.disposeAsset))
+	r.Get("/assets/fixed", h.withCap("finance.view_assets", h.listAssets))
+	r.Post("/assets/fixed", h.withCap("finance.manage_assets", h.createAsset))
+	r.Get("/assets/fixed/{id}", h.withCap("finance.view_assets", h.getAsset))
+	r.Post("/assets/fixed/{id}/depreciate", h.withCap("finance.depreciate_assets", h.depreciateAsset))
+	r.Post("/assets/fixed/depreciate-all", h.withCap("finance.depreciate_assets", h.depreciateAll))
+	r.Post("/assets/fixed/{id}/dispose", h.withCap("finance.depreciate_assets", h.disposeAsset))
 
 	// Vendors
-	r.Get("/vendors", h.withPerm("vendors", "view", h.listVendors))
-	r.Post("/vendors", h.withPerm("vendors", "create", h.createVendor))
-	r.Get("/vendors/{id}", h.withPerm("vendors", "view", h.getVendor))
-	r.Patch("/vendors/{id}", h.withPerm("vendors", "create", h.updateVendor))
+	r.Get("/vendors", h.withCap("finance.manage_vendors", h.listVendors))
+	r.Post("/vendors", h.withCap("finance.manage_vendors", h.createVendor))
+	r.Get("/vendors/{id}", h.withCap("finance.manage_vendors", h.getVendor))
+	r.Patch("/vendors/{id}", h.withCap("finance.manage_vendors", h.updateVendor))
 
 	// Accounts Payable
-	r.Get("/payables", h.withPerm("payables", "view", h.listPayables))
-	r.Post("/payables", h.withPerm("payables", "create", h.createPayable))
-	r.Get("/payables/{id}", h.withPerm("payables", "view", h.getPayable))
-	r.Post("/payables/{id}/approve", h.withPerm("payables", "approve", h.approvePayable))
-	r.Post("/payables/{id}/pay", h.withPerm("payables", "approve", h.payPayable))
-	r.Get("/payables/aging", h.withPerm("payables", "view", h.apAging))
+	r.Get("/payables", h.withCap("finance.view_payables", h.listPayables))
+	r.Post("/payables", h.withCap("finance.create_payables", h.createPayable))
+	r.Get("/payables/{id}", h.withCap("finance.view_payables", h.getPayable))
+	r.Post("/payables/{id}/approve", h.withCap("finance.approve_payables", h.approvePayable))
+	r.Post("/payables/{id}/pay", h.withCap("finance.pay_payables", h.payPayable))
+	r.Get("/payables/aging", h.withCap("finance.view_payables", h.apAging))
 
 	// Accounts Receivable
-	r.Get("/receivables", h.withPerm("receivables", "view", h.listReceivables))
-	r.Post("/receivables", h.withPerm("receivables", "create", h.createReceivable))
-	r.Get("/receivables/{id}", h.withPerm("receivables", "view", h.getReceivable))
-	r.Post("/receivables/{id}/receive", h.withPerm("receivables", "approve", h.recordReceipt))
-	r.Get("/receivables/aging", h.withPerm("receivables", "view", h.arAging))
+	r.Get("/receivables", h.withCap("finance.view_receivables", h.listReceivables))
+	r.Post("/receivables", h.withCap("finance.create_receivables", h.createReceivable))
+	r.Get("/receivables/{id}", h.withCap("finance.view_receivables", h.getReceivable))
+	r.Post("/receivables/{id}/receive", h.withCap("finance.receive_payments", h.recordReceipt))
+	r.Get("/receivables/aging", h.withCap("finance.view_receivables", h.arAging))
 
 	// Chart of Accounts
-	r.Get("/accounts", h.withPerm("general_ledger", "view", h.listAccounts))
-	r.Post("/accounts", h.withPerm("general_ledger", "create", h.createAccount))
-	r.Patch("/accounts/{code}", h.withPerm("general_ledger", "create", h.updateAccount))
-	r.Post("/accounts/{code}/toggle", h.withPerm("general_ledger", "approve", h.toggleAccount))
+	r.Get("/accounts", h.withCap("finance.view_gl", h.listAccounts))
+	r.Post("/accounts", h.withCap("finance.manage_gl", h.createAccount))
+	r.Patch("/accounts/{code}", h.withCap("finance.manage_gl", h.updateAccount))
+	r.Post("/accounts/{code}/toggle", h.withCap("finance.manage_gl", h.toggleAccount))
 
 	// Accounting Periods
-	r.Get("/periods", h.withPerm("general_ledger", "view", h.listPeriods))
-	r.Post("/periods", h.withPerm("general_ledger", "create", h.createPeriod))
-	r.Post("/periods/{id}/close", h.withPerm("general_ledger", "approve", h.closePeriod))
-	r.Post("/periods/{id}/reopen", h.withPerm("general_ledger", "approve", h.reopenPeriod))
-	r.Post("/periods/{id}/lock", h.withPerm("general_ledger", "approve", h.lockPeriod))
+	r.Get("/periods", h.withCap("finance.view_gl", h.listPeriods))
+	r.Post("/periods", h.withCap("finance.manage_gl", h.createPeriod))
+	r.Post("/periods/{id}/close", h.withCap("finance.manage_gl", h.closePeriod))
+	r.Post("/periods/{id}/reopen", h.withCap("finance.manage_gl", h.reopenPeriod))
+	r.Post("/periods/{id}/lock", h.withCap("finance.manage_gl", h.lockPeriod))
 
 	// Reports (own auth — unchanged)
 	r.Get("/trial-balance", h.trialBalance)
 	r.Get("/ledger", h.accountLedger)
 
-	// Permissions
+	// Permissions (open to any authenticated user — no cap check)
 	r.Get("/permissions/me", h.getMyPermissions)
 	r.Get("/permissions", h.getAllPermissions)
 	r.Put("/permissions", h.updatePermission)

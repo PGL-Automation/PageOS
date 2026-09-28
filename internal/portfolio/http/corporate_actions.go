@@ -7,13 +7,15 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	identityhttp "github.com/pagegroup/pageos/internal/identity/http"
 	"github.com/pagegroup/pageos/internal/platform/httpx"
 	"github.com/pagegroup/pageos/internal/portfolio"
 )
 
 func (h *Handler) createCorporateAction(w http.ResponseWriter, r *http.Request) {
-	caller, ok := h.requirePortfolioWrite(w, r)
+	caller, ok := identityhttp.UserFrom(r.Context())
 	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
 	var in portfolio.CreateCorporateActionInput
@@ -30,9 +32,6 @@ func (h *Handler) createCorporateAction(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *Handler) listCorporateActions(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.requirePortfolioStaff(w, r); !ok {
-		return
-	}
 	q := r.URL.Query()
 	var instrumentID *uuid.UUID
 	if s := q.Get("instrument_id"); s != "" {
@@ -55,9 +54,6 @@ func (h *Handler) listCorporateActions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getCorporateAction(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.requirePortfolioStaff(w, r); !ok {
-		return
-	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid id")
@@ -72,8 +68,9 @@ func (h *Handler) getCorporateAction(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) processCorporateAction(w http.ResponseWriter, r *http.Request) {
-	caller, ok := h.requirePortfolioWrite(w, r)
+	caller, ok := identityhttp.UserFrom(r.Context())
 	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
@@ -93,9 +90,6 @@ func (h *Handler) processCorporateAction(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *Handler) cancelCorporateAction(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.requirePortfolioWrite(w, r); !ok {
-		return
-	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid id")

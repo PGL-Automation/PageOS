@@ -11,9 +11,6 @@ import (
 )
 
 func (h *Handler) calculatePerformance(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.requirePortfolioStaff(w, r); !ok {
-		return
-	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid id")
@@ -32,9 +29,6 @@ func (h *Handler) calculatePerformance(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getPerformanceHistory(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.requirePortfolioStaff(w, r); !ok {
-		return
-	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid id")
@@ -52,9 +46,6 @@ func (h *Handler) getPerformanceHistory(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *Handler) getClientPerformance(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.requirePortfolioStaff(w, r); !ok {
-		return
-	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid id")

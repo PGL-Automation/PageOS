@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	identityhttp "github.com/pagegroup/pageos/internal/identity/http"
 	"github.com/pagegroup/pageos/internal/platform/httpx"
 	"github.com/pagegroup/pageos/internal/portfolio"
 )
@@ -15,8 +16,9 @@ import (
 // ── Compliance rules ───────────────────────────────────────────────────────────
 
 func (h *Handler) createComplianceRule(w http.ResponseWriter, r *http.Request) {
-	caller, ok := h.requirePortfolioWrite(w, r)
+	caller, ok := identityhttp.UserFrom(r.Context())
 	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
 	var in portfolio.CreateComplianceRuleInput
@@ -33,9 +35,6 @@ func (h *Handler) createComplianceRule(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) listComplianceRules(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.requirePortfolioStaff(w, r); !ok {
-		return
-	}
 	s := r.URL.Query().Get("fund_id")
 	if s == "" {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "fund_id is required")
@@ -58,9 +57,6 @@ func (h *Handler) listComplianceRules(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) deleteComplianceRule(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.requirePortfolioWrite(w, r); !ok {
-		return
-	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid id")
@@ -76,9 +72,6 @@ func (h *Handler) deleteComplianceRule(w http.ResponseWriter, r *http.Request) {
 // ── Compliance checks ──────────────────────────────────────────────────────────
 
 func (h *Handler) checkCompliance(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.requirePortfolioStaff(w, r); !ok {
-		return
-	}
 	s := r.URL.Query().Get("fund_id")
 	if s == "" {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "fund_id is required")
@@ -100,9 +93,6 @@ func (h *Handler) checkCompliance(w http.ResponseWriter, r *http.Request) {
 // ── Compliance breaches ────────────────────────────────────────────────────────
 
 func (h *Handler) listBreaches(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.requirePortfolioStaff(w, r); !ok {
-		return
-	}
 	q := r.URL.Query()
 	var fundID *uuid.UUID
 	if s := q.Get("fund_id"); s != "" {
@@ -125,8 +115,9 @@ func (h *Handler) listBreaches(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) acknowledgeBreach(w http.ResponseWriter, r *http.Request) {
-	caller, ok := h.requirePortfolioWrite(w, r)
+	caller, ok := identityhttp.UserFrom(r.Context())
 	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
@@ -142,8 +133,9 @@ func (h *Handler) acknowledgeBreach(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) resolveBreach(w http.ResponseWriter, r *http.Request) {
-	caller, ok := h.requirePortfolioWrite(w, r)
+	caller, ok := identityhttp.UserFrom(r.Context())
 	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))

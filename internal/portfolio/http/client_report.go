@@ -14,10 +14,6 @@ import (
 // getClientReport handles GET /accounts/{id}/report.
 // Query params: from, to (YYYY-MM-DD). Defaults to the last 12 months.
 func (h *Handler) getClientReport(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.requirePortfolioStaff(w, r); !ok {
-		return
-	}
-
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid id")
@@ -42,10 +38,6 @@ func (h *Handler) getClientReport(w http.ResponseWriter, r *http.Request) {
 // Query params: from, to (YYYY-MM-DD). Defaults to the last 12 months.
 // Returns an Excel workbook as an attachment.
 func (h *Handler) exportClientReport(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.requirePortfolioStaff(w, r); !ok {
-		return
-	}
-
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid id")

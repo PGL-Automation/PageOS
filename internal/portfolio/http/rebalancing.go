@@ -8,15 +8,13 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	identityhttp "github.com/pagegroup/pageos/internal/identity/http"
 	"github.com/pagegroup/pageos/internal/platform/httpx"
 	"github.com/pagegroup/pageos/internal/portfolio"
 )
 
 // GET /rebalancing/targets?fund_id=xxx
 func (h *Handler) listTargetAllocations(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.requirePortfolioStaff(w, r); !ok {
-		return
-	}
 	fundIDStr := r.URL.Query().Get("fund_id")
 	if fundIDStr == "" {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "fund_id is required")
@@ -40,8 +38,9 @@ func (h *Handler) listTargetAllocations(w http.ResponseWriter, r *http.Request) 
 
 // POST /rebalancing/targets
 func (h *Handler) setTargetAllocation(w http.ResponseWriter, r *http.Request) {
-	caller, ok := h.requirePortfolioWrite(w, r)
+	caller, ok := identityhttp.UserFrom(r.Context())
 	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
 	var in portfolio.SetTargetAllocationInput
@@ -59,9 +58,6 @@ func (h *Handler) setTargetAllocation(w http.ResponseWriter, r *http.Request) {
 
 // DELETE /rebalancing/targets/{id}
 func (h *Handler) deleteTargetAllocation(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.requirePortfolioWrite(w, r); !ok {
-		return
-	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid id")
@@ -76,9 +72,6 @@ func (h *Handler) deleteTargetAllocation(w http.ResponseWriter, r *http.Request)
 
 // GET /rebalancing/drift?fund_id=xxx
 func (h *Handler) analyseDrift(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.requirePortfolioStaff(w, r); !ok {
-		return
-	}
 	fundIDStr := r.URL.Query().Get("fund_id")
 	if fundIDStr == "" {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "fund_id is required")
@@ -99,9 +92,6 @@ func (h *Handler) analyseDrift(w http.ResponseWriter, r *http.Request) {
 
 // GET /rebalancing/suggestions?fund_id=xxx
 func (h *Handler) generateRebalancingTrades(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.requirePortfolioStaff(w, r); !ok {
-		return
-	}
 	fundIDStr := r.URL.Query().Get("fund_id")
 	if fundIDStr == "" {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "fund_id is required")
@@ -122,8 +112,9 @@ func (h *Handler) generateRebalancingTrades(w http.ResponseWriter, r *http.Reque
 
 // POST /rebalancing/execute?fund_id=xxx
 func (h *Handler) executeRebalancing(w http.ResponseWriter, r *http.Request) {
-	caller, ok := h.requirePortfolioWrite(w, r)
+	caller, ok := identityhttp.UserFrom(r.Context())
 	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
 	fundIDStr := r.URL.Query().Get("fund_id")

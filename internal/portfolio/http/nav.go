@@ -15,9 +15,6 @@ import (
 // calculateNAV handles POST /funds/{id}/nav.
 // Body (optional): {"nav_date": "YYYY-MM-DD"} — defaults to today.
 func (h *Handler) calculateNAV(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.requirePortfolioWrite(w, r); !ok {
-		return
-	}
 	fundID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid fund id")
@@ -52,9 +49,6 @@ func (h *Handler) calculateNAV(w http.ResponseWriter, r *http.Request) {
 // Query params: from (YYYY-MM-DD), to (YYYY-MM-DD).
 // Both default to today when omitted.
 func (h *Handler) getNAVHistory(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.requirePortfolioStaff(w, r); !ok {
-		return
-	}
 	fundID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid fund id")
@@ -98,10 +92,6 @@ func (h *Handler) getNAVHistory(w http.ResponseWriter, r *http.Request) {
 // Body (optional): {"nav_date": "YYYY-MM-DD"} — defaults to today.
 // Intended for manual triggers and scheduled jobs.
 func (h *Handler) runAllNAVs(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.requirePortfolioWrite(w, r); !ok {
-		return
-	}
-
 	var body struct {
 		NavDate string `json:"nav_date"`
 	}
