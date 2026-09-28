@@ -4,25 +4,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import { useAuth } from "@/lib/auth";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
-import { Loader2, Wifi, WifiOff, Settings2, RefreshCw } from "lucide-react";
+import { Loader2, Wifi, WifiOff, RefreshCw, X, Settings2 } from "lucide-react";
 import { ConnectivityForm } from "./components/ConnectivityForm";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
@@ -53,12 +35,22 @@ function fmt(dateStr: string | undefined | null) {
 }
 
 function ProviderBadge({ provider }: { provider?: string | null }) {
-  if (!provider) return <span className="text-slate-400 text-xs">—</span>;
-  const colours: Record<string, string> = {
-    mono: "bg-blue-100 text-blue-700",
-    okra: "bg-purple-100 text-purple-700",
-    sftp: "bg-amber-100 text-amber-700",
-    manual: "bg-slate-100 text-slate-600",
+  if (!provider) {
+    return (
+      <span
+        className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
+        style={{ background: "var(--pg-muted-bg)", color: "var(--pg-text-4)" }}
+      >
+        Not configured
+      </span>
+    );
+  }
+
+  const styles: Record<string, { background: string; color: string }> = {
+    mono:   { background: "#dbeafe", color: "#1d4ed8" },
+    okra:   { background: "#ede9fe", color: "#6d28d9" },
+    sftp:   { background: "#fef3c7", color: "#92400e" },
+    manual: { background: "#f1f5f9", color: "#64748b" },
   };
   const label: Record<string, string> = {
     mono: "Mono",
@@ -66,25 +58,45 @@ function ProviderBadge({ provider }: { provider?: string | null }) {
     sftp: "SFTP",
     manual: "Manual",
   };
-  const cls = colours[provider] ?? "bg-slate-100 text-slate-600";
+  const style = styles[provider] ?? { background: "var(--pg-muted-bg)", color: "var(--pg-text-4)" };
+
   return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>
+    <span
+      className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
+      style={style}
+    >
       {label[provider] ?? provider}
     </span>
   );
 }
 
 function PullStatusBadge({ status }: { status?: string | null }) {
-  if (!status) return <span className="text-slate-400 text-xs">—</span>;
-  const variant: Record<string, "default" | "destructive" | "secondary" | "outline"> = {
-    success: "default",
-    error: "destructive",
-    pending: "secondary",
+  if (!status) {
+    return (
+      <span
+        className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
+        style={{ background: "var(--pg-muted-bg)", color: "var(--pg-text-4)" }}
+      >
+        Never
+      </span>
+    );
+  }
+
+  const styleMap: Record<string, { background: string; color: string }> = {
+    success: { background: "#d1fae5", color: "#065f46" },
+    error:   { background: "#fee2e2", color: "#991b1b" },
+    failed:  { background: "#fee2e2", color: "#991b1b" },
+    pending: { background: "#f1f5f9", color: "#64748b" },
   };
+  const style = styleMap[status] ?? { background: "var(--pg-muted-bg)", color: "var(--pg-text-4)" };
+
   return (
-    <Badge variant={variant[status] ?? "outline"} className="text-xs uppercase">
+    <span
+      className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase"
+      style={style}
+    >
       {status}
-    </Badge>
+    </span>
   );
 }
 
@@ -109,7 +121,11 @@ export default function ConnectivityPage() {
         body: JSON.stringify({ for_date: forDate }),
       });
     } finally {
-      setPullingIds((prev) => { const s = new Set(prev); s.delete(accountId); return s; });
+      setPullingIds((prev) => {
+        const s = new Set(prev);
+        s.delete(accountId);
+        return s;
+      });
     }
   }
 
@@ -158,146 +174,242 @@ export default function ConnectivityPage() {
   const configuredCount = accounts.filter((a) => a.connectivity?.provider).length;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Page header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900 flex items-center gap-3">
-            <Wifi className="w-7 h-7 text-slate-400" />
+          <h1
+            className="text-[22px] font-bold flex items-center gap-2.5"
+            style={{ color: "var(--pg-text-1)" }}
+          >
+            <Wifi className="w-5 h-5 shrink-0" style={{ color: "var(--pg-text-3)" }} />
             Bank Connectivity
           </h1>
-          <p className="text-slate-500 text-sm mt-1">
+          <p className="text-[13px] mt-1" style={{ color: "var(--pg-text-3)" }}>
             Configure Mono, Okra, SFTP or manual feeds per bank account
           </p>
         </div>
         {accounts.length > 0 && (
-          <div className="text-sm text-slate-500">
+          <span className="text-[12px] mt-1" style={{ color: "var(--pg-text-3)" }}>
             {configuredCount}/{accounts.length} account{accounts.length !== 1 ? "s" : ""} configured
-          </div>
+          </span>
         )}
       </div>
 
-      {/* Accounts table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Bank Accounts</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="flex justify-center py-10">
-              <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Bank Name</TableHead>
-                  <TableHead>Account Number</TableHead>
-                  <TableHead>Provider</TableHead>
-                  <TableHead>Last Pulled</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {accounts.length === 0 ? (
-                  <TableRow>
-                    <TableCell
-                      colSpan={6}
-                      className="text-center py-12 text-slate-400"
-                    >
-                      No bank accounts found. Add one on the{" "}
-                      <a href="/reconciliation" className="underline hover:text-slate-600">
-                        Reconciliation
-                      </a>{" "}
-                      page first.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  accounts.map((account) => {
-                    const conn = account.connectivity;
-                    const isConfigured = Boolean(conn?.provider);
-                    return (
-                      <TableRow key={account.id}>
-                        <TableCell className="font-medium">
-                          <div className="flex items-center gap-2">
-                            {isConfigured ? (
-                              <Wifi className="w-3.5 h-3.5 text-green-500 shrink-0" />
-                            ) : (
-                              <WifiOff className="w-3.5 h-3.5 text-slate-300 shrink-0" />
-                            )}
-                            {account.bank_name}
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-mono text-sm">
-                          {account.account_number}
-                        </TableCell>
-                        <TableCell>
-                          <ProviderBadge provider={conn?.provider} />
-                        </TableCell>
-                        <TableCell className="text-sm text-slate-500">
-                          {fmt(conn?.last_pulled_at)}
-                        </TableCell>
-                        <TableCell>
-                          <PullStatusBadge status={conn?.last_pull_status} />
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => triggerPull(account.id)}
-                              disabled={pullingIds.has(account.id)}
-                              className="gap-1.5"
-                            >
-                              {pullingIds.has(account.id) ? (
-                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                              ) : (
-                                <RefreshCw className="w-3.5 h-3.5" />
-                              )}
-                              Trigger Pull
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => openConfig(account)}
-                              className="gap-1.5"
-                            >
-                              <Settings2 className="w-3.5 h-3.5" />
-                              Configure
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      {/* Accounts card */}
+      <div
+        className="rounded-2xl overflow-hidden"
+        style={{
+          background: "var(--pg-card)",
+          border: "1px solid var(--pg-card-border)",
+        }}
+      >
+        {/* Column headers */}
+        <div
+          className="grid px-5 py-2.5 text-[11px] font-bold uppercase tracking-widest"
+          style={{
+            gridTemplateColumns: "1fr 160px 130px 180px 120px 200px",
+            background: "var(--pg-muted-bg)",
+            color: "var(--pg-text-3)",
+            borderBottom: "1px solid var(--pg-card-border)",
+          }}
+        >
+          <span>Bank Name</span>
+          <span>Account Number</span>
+          <span>Provider</span>
+          <span>Last Pulled</span>
+          <span>Status</span>
+          <span className="text-right">Actions</span>
+        </div>
 
-      {/* Configure dialog */}
-      <Dialog open={configOpen} onOpenChange={(open) => { if (!open) handleClose(); }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Configure Connectivity</DialogTitle>
-            <DialogDescription>
-              {selectedAccount
-                ? `${selectedAccount.bank_name} — ${selectedAccount.account_number}`
-                : "Set up a bank data provider for this account."}
-            </DialogDescription>
-          </DialogHeader>
-          {selectedAccount && (
-            <ConnectivityForm
-              accountId={selectedAccount.id}
-              bankName={selectedAccount.bank_name}
-              onClose={handleClose}
+        {/* Body */}
+        {isLoading ? (
+          <div className="flex justify-center py-14">
+            <Loader2
+              className="w-5 h-5 animate-spin"
+              style={{ color: "var(--pg-text-4)" }}
             />
-          )}
-        </DialogContent>
-      </Dialog>
+          </div>
+        ) : accounts.length === 0 ? (
+          <div className="py-14 text-center text-[13px]" style={{ color: "var(--pg-text-3)" }}>
+            No bank accounts found. Add one on the{" "}
+            <a
+              href="/reconciliation"
+              className="underline"
+              style={{ color: "var(--pg-text-2)" }}
+            >
+              Reconciliation
+            </a>{" "}
+            page first.
+          </div>
+        ) : (
+          accounts.map((account, idx) => {
+            const conn = account.connectivity;
+            const isConfigured = Boolean(conn?.provider);
+            const isLast = idx === accounts.length - 1;
+
+            return (
+              <div
+                key={account.id}
+                className="grid items-center px-5 py-3.5 transition-colors"
+                style={{
+                  gridTemplateColumns: "1fr 160px 130px 180px 120px 200px",
+                  borderBottom: isLast ? "none" : "1px solid var(--pg-row-border)",
+                }}
+                onMouseEnter={(e) =>
+                  ((e.currentTarget as HTMLElement).style.background = "var(--pg-row-hover)")
+                }
+                onMouseLeave={(e) =>
+                  ((e.currentTarget as HTMLElement).style.background = "")
+                }
+              >
+                {/* Bank name */}
+                <div className="flex items-center gap-2 min-w-0">
+                  {isConfigured ? (
+                    <Wifi className="w-3.5 h-3.5 shrink-0" style={{ color: "#22c55e" }} />
+                  ) : (
+                    <WifiOff className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--pg-text-4)" }} />
+                  )}
+                  <span
+                    className="text-[13px] font-semibold truncate"
+                    style={{ color: "var(--pg-text-1)" }}
+                  >
+                    {account.bank_name}
+                  </span>
+                </div>
+
+                {/* Account number */}
+                <span
+                  className="text-[12px] font-mono"
+                  style={{ color: "var(--pg-text-3)" }}
+                >
+                  {account.account_number}
+                </span>
+
+                {/* Provider */}
+                <span>
+                  <ProviderBadge provider={conn?.provider} />
+                </span>
+
+                {/* Last pulled */}
+                <span className="text-[12px]" style={{ color: "var(--pg-text-3)" }}>
+                  {fmt(conn?.last_pulled_at)}
+                </span>
+
+                {/* Status */}
+                <span>
+                  <PullStatusBadge status={conn?.last_pull_status} />
+                </span>
+
+                {/* Actions */}
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    onClick={() => triggerPull(account.id)}
+                    disabled={pullingIds.has(account.id)}
+                    className="inline-flex items-center gap-1.5 h-7 px-3 rounded-xl text-[12px] font-medium disabled:opacity-50 transition-opacity"
+                    style={{
+                      border: "1px solid var(--pg-card-border)",
+                      color: "var(--pg-text-2)",
+                      background: "transparent",
+                    }}
+                    onMouseEnter={(e) =>
+                      ((e.currentTarget as HTMLElement).style.background = "var(--pg-muted-bg)")
+                    }
+                    onMouseLeave={(e) =>
+                      ((e.currentTarget as HTMLElement).style.background = "transparent")
+                    }
+                  >
+                    {pullingIds.has(account.id) ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <RefreshCw className="w-3 h-3" />
+                    )}
+                    Trigger Pull
+                  </button>
+
+                  <button
+                    onClick={() => openConfig(account)}
+                    className="inline-flex items-center gap-1.5 h-7 px-3 rounded-xl text-[12px] font-semibold text-white transition-opacity"
+                    style={{ background: "#FF6600" }}
+                    onMouseEnter={(e) =>
+                      ((e.currentTarget as HTMLElement).style.opacity = "0.88")
+                    }
+                    onMouseLeave={(e) =>
+                      ((e.currentTarget as HTMLElement).style.opacity = "1")
+                    }
+                  >
+                    <Settings2 className="w-3 h-3" />
+                    Configure
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Configure modal */}
+      {configOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)" }}
+          onClick={handleClose}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl overflow-hidden"
+            style={{
+              background: "var(--pg-card)",
+              border: "1px solid var(--pg-card-border)",
+              boxShadow: "0 24px 64px rgba(0,0,0,0.35)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal header */}
+            <div
+              className="flex items-center justify-between px-5 py-4"
+              style={{ borderBottom: "1px solid var(--pg-row-border)" }}
+            >
+              <div>
+                <h2
+                  className="text-[15px] font-bold"
+                  style={{ color: "var(--pg-text-1)" }}
+                >
+                  Configure Connectivity
+                </h2>
+                {selectedAccount && (
+                  <p className="text-[12px] mt-0.5" style={{ color: "var(--pg-text-3)" }}>
+                    {selectedAccount.bank_name} — {selectedAccount.account_number}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={handleClose}
+                className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors"
+                style={{ color: "var(--pg-text-3)" }}
+                onMouseEnter={(e) =>
+                  ((e.currentTarget as HTMLElement).style.background = "var(--pg-muted-bg)")
+                }
+                onMouseLeave={(e) =>
+                  ((e.currentTarget as HTMLElement).style.background = "")
+                }
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal body */}
+            <div className="px-5 py-5">
+              {selectedAccount && (
+                <ConnectivityForm
+                  accountId={selectedAccount.id}
+                  bankName={selectedAccount.bank_name}
+                  onClose={handleClose}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

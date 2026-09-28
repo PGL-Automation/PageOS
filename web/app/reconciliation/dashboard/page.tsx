@@ -2,9 +2,6 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   Loader2,
   ExternalLink,
@@ -61,14 +58,17 @@ type RunSummaryFull = {
 };
 
 function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, string> = {
-    closed: "bg-green-100 text-green-800 border-green-200",
-    in_progress: "bg-amber-100 text-amber-800 border-amber-200",
-    draft: "bg-slate-100 text-slate-600 border-slate-200",
+  const styles: Record<string, { background: string; color: string }> = {
+    closed:      { background: "#d1fae5", color: "#065f46" },
+    in_progress: { background: "#fef3c7", color: "#92400e" },
+    draft:       { background: "#f1f5f9", color: "#475569" },
   };
-  const cls = map[status] ?? "bg-slate-100 text-slate-600 border-slate-200";
+  const s = styles[status] ?? { background: "#f1f5f9", color: "#475569" };
   return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium uppercase tracking-wide ${cls}`}>
+    <span
+      className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap"
+      style={s}
+    >
       {status.replace("_", " ")}
     </span>
   );
@@ -76,36 +76,85 @@ function StatusBadge({ status }: { status: string }) {
 
 function MatchBar({ pct }: { pct: number }) {
   const clamped = Math.min(100, Math.max(0, pct));
-  const color =
-    clamped >= 95 ? "bg-green-500" : clamped >= 80 ? "bg-amber-400" : "bg-red-500";
+  const barColor =
+    clamped >= 95 ? "#22c55e" : clamped >= 80 ? "#f59e0b" : "#ef4444";
   const textColor =
-    clamped >= 95 ? "text-green-700" : clamped >= 80 ? "text-amber-700" : "text-red-700";
+    clamped >= 95 ? "#15803d" : clamped >= 80 ? "#b45309" : "#dc2626";
   return (
-    <div className="flex items-center gap-2 min-w-[90px]">
-      <div className="h-1.5 flex-1 rounded-full bg-slate-100 overflow-hidden">
-        <div className={`h-full rounded-full ${color}`} style={{ width: `${clamped}%` }} />
+    <div className="flex items-center gap-2 min-w-[100px]">
+      <div
+        className="flex-1 overflow-hidden rounded-full"
+        style={{ height: 4, background: "var(--pg-muted-bg)" }}
+      >
+        <div
+          style={{
+            width: `${clamped}%`,
+            height: "100%",
+            borderRadius: 9999,
+            background: `linear-gradient(90deg, ${barColor}, ${barColor}cc)`,
+          }}
+        />
       </div>
-      <span className={`text-xs font-medium tabular-nums ${textColor}`}>{clamped.toFixed(1)}%</span>
+      <span
+        className="text-[12px] font-semibold tabular-nums shrink-0"
+        style={{ color: textColor }}
+      >
+        {clamped.toFixed(1)}%
+      </span>
     </div>
   );
 }
 
 function BalanceCell({ bv }: { bv?: BalanceValidation }) {
-  if (!bv) return <span className="text-slate-300 text-xs">—</span>;
+  if (!bv)
+    return (
+      <span className="text-[12px]" style={{ color: "var(--pg-text-4)" }}>
+        —
+      </span>
+    );
   if (bv.is_balanced) {
     return (
-      <span className="inline-flex items-center gap-1 text-xs text-green-700">
+      <span
+        className="inline-flex items-center gap-1 text-[12px] font-semibold"
+        style={{ color: "#059669" }}
+      >
         <CheckCircle2 className="w-3.5 h-3.5" /> Balanced
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 text-xs text-red-600">
+    <span
+      className="inline-flex items-center gap-1 text-[12px] font-semibold"
+      style={{ color: "#dc2626" }}
+    >
       <XCircle className="w-3.5 h-3.5" />
       {koboToNaira(Math.abs(bv.difference_kobo))}
     </span>
   );
 }
+
+// ── Table column header ────────────────────────────────────────────────────────
+
+const TH_STYLE: React.CSSProperties = {
+  padding: "10px 12px",
+  textAlign: "left",
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  color: "var(--pg-text-3)",
+  background: "var(--pg-muted-bg)",
+  borderBottom: "1px solid var(--pg-row-border)",
+  whiteSpace: "nowrap",
+};
+
+const TD_STYLE: React.CSSProperties = {
+  padding: "10px 12px",
+  fontSize: 13,
+  color: "var(--pg-text-1)",
+  borderBottom: "1px solid var(--pg-row-border)",
+  whiteSpace: "nowrap",
+};
 
 function RunsTable({
   runs,
@@ -122,102 +171,184 @@ function RunsTable({
 }) {
   if (runs.length === 0) {
     return (
-      <div className="py-16 text-center text-slate-400 text-sm">No runs to display.</div>
+      <div
+        className="flex flex-col items-center justify-center py-16 gap-3"
+        style={{ color: "var(--pg-text-3)" }}
+      >
+        <ListChecks className="w-8 h-8 opacity-40" />
+        <p className="text-[13px]">No runs to display.</p>
+      </div>
     );
   }
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Bank</TableHead>
-          <TableHead>Account</TableHead>
-          <TableHead>Period</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead className="text-right">Total</TableHead>
-          <TableHead className="text-right">Matched</TableHead>
-          <TableHead className="text-right">Unmatched Bank</TableHead>
-          <TableHead className="text-right">Unmatched Internal</TableHead>
-          <TableHead>Match %</TableHead>
-          <TableHead>Balance</TableHead>
-          <TableHead className="text-right">Actions</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {runs.map((r) => {
-          const totalUnmatched = r.unmatched_bank_lines + r.unmatched_internal_txns;
-          const canAutoClose = r.status !== "closed" && totalUnmatched === 0;
-          return (
-            <TableRow key={r.run_id}>
-              <TableCell className="font-medium text-sm">{r.bank_name}</TableCell>
-              <TableCell className="font-mono text-xs text-slate-500">{r.account_number}</TableCell>
-              <TableCell className="text-xs text-slate-500 whitespace-nowrap">
-                {fmt(r.period_start)} → {fmt(r.period_end)}
-              </TableCell>
-              <TableCell>
-                <StatusBadge status={r.status} />
-              </TableCell>
-              <TableCell className="text-right text-sm tabular-nums">{r.total_lines}</TableCell>
-              <TableCell className="text-right text-sm tabular-nums text-green-700">{r.matched_lines}</TableCell>
-              <TableCell className="text-right text-sm tabular-nums text-amber-700">
-                {r.unmatched_bank_lines > 0 ? r.unmatched_bank_lines : <span className="text-slate-300">0</span>}
-              </TableCell>
-              <TableCell className="text-right text-sm tabular-nums text-red-700">
-                {r.unmatched_internal_txns > 0 ? r.unmatched_internal_txns : <span className="text-slate-300">0</span>}
-              </TableCell>
-              <TableCell>
-                <MatchBar pct={r.match_rate_pct} />
-              </TableCell>
-              <TableCell>
-                <BalanceCell bv={r.balance_validation} />
-              </TableCell>
-              <TableCell className="text-right">
-                <div className="flex items-center justify-end gap-1">
-                  <Link href={`/reconciliation/runs/${r.run_id}`}>
-                    <Button variant="ghost" size="sm" className="h-7 px-2">
-                      <ExternalLink className="w-3.5 h-3.5" />
-                      <span className="ml-1 hidden xl:inline">View</span>
-                    </Button>
-                  </Link>
-                  {canAutoClose && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 px-2 text-green-700 hover:text-green-800 hover:bg-green-50"
-                      disabled={autoClosingId === r.run_id}
-                      onClick={() => onAutoClose(r.run_id)}
-                      title="Auto-close: all items matched"
+    <div className="overflow-x-auto">
+      <table className="w-full border-collapse">
+        <thead>
+          <tr>
+            <th style={TH_STYLE}>Bank</th>
+            <th style={TH_STYLE}>Account</th>
+            <th style={TH_STYLE}>Period</th>
+            <th style={TH_STYLE}>Status</th>
+            <th style={{ ...TH_STYLE, textAlign: "right" }}>Total</th>
+            <th style={{ ...TH_STYLE, textAlign: "right" }}>Matched</th>
+            <th style={{ ...TH_STYLE, textAlign: "right" }}>Unmatched Bank</th>
+            <th style={{ ...TH_STYLE, textAlign: "right" }}>Unmatched Internal</th>
+            <th style={TH_STYLE}>Match %</th>
+            <th style={TH_STYLE}>Balance</th>
+            <th style={{ ...TH_STYLE, textAlign: "right" }}>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {runs.map((r) => {
+            const totalUnmatched = r.unmatched_bank_lines + r.unmatched_internal_txns;
+            const canAutoClose = r.status !== "closed" && totalUnmatched === 0;
+            return (
+              <tr
+                key={r.run_id}
+                onMouseEnter={(e) =>
+                  ((e.currentTarget as HTMLElement).style.background =
+                    "var(--pg-row-hover)")
+                }
+                onMouseLeave={(e) =>
+                  ((e.currentTarget as HTMLElement).style.background = "")
+                }
+              >
+                <td style={TD_STYLE}>
+                  <span className="font-semibold text-[13px]" style={{ color: "var(--pg-text-1)" }}>
+                    {r.bank_name}
+                  </span>
+                </td>
+                <td style={TD_STYLE}>
+                  <code className="text-[12px]" style={{ color: "var(--pg-text-3)", fontFamily: "monospace" }}>
+                    {r.account_number}
+                  </code>
+                </td>
+                <td style={TD_STYLE}>
+                  <span className="text-[12px]" style={{ color: "var(--pg-text-3)" }}>
+                    {fmt(r.period_start)} → {fmt(r.period_end)}
+                  </span>
+                </td>
+                <td style={TD_STYLE}>
+                  <StatusBadge status={r.status} />
+                </td>
+                <td style={{ ...TD_STYLE, textAlign: "right" }}>
+                  <span className="tabular-nums font-semibold">{r.total_lines}</span>
+                </td>
+                <td style={{ ...TD_STYLE, textAlign: "right" }}>
+                  <span className="tabular-nums font-semibold" style={{ color: "#059669" }}>
+                    {r.matched_lines}
+                  </span>
+                </td>
+                <td style={{ ...TD_STYLE, textAlign: "right" }}>
+                  {r.unmatched_bank_lines > 0 ? (
+                    <span className="tabular-nums font-semibold" style={{ color: "#d97706" }}>
+                      {r.unmatched_bank_lines}
+                    </span>
+                  ) : (
+                    <span style={{ color: "var(--pg-text-4)" }}>0</span>
+                  )}
+                </td>
+                <td style={{ ...TD_STYLE, textAlign: "right" }}>
+                  {r.unmatched_internal_txns > 0 ? (
+                    <span className="tabular-nums font-semibold" style={{ color: "#dc2626" }}>
+                      {r.unmatched_internal_txns}
+                    </span>
+                  ) : (
+                    <span style={{ color: "var(--pg-text-4)" }}>0</span>
+                  )}
+                </td>
+                <td style={TD_STYLE}>
+                  <MatchBar pct={r.match_rate_pct} />
+                </td>
+                <td style={TD_STYLE}>
+                  <BalanceCell bv={r.balance_validation} />
+                </td>
+                <td style={{ ...TD_STYLE, textAlign: "right" }}>
+                  <div className="flex items-center justify-end gap-1">
+                    <Link href={`/reconciliation/runs/${r.run_id}`}>
+                      <button
+                        className="inline-flex items-center gap-1 rounded-xl px-3 py-1.5 text-[12px] font-semibold transition-colors"
+                        style={{
+                          border: "1px solid var(--pg-card-border)",
+                          color: "var(--pg-text-2)",
+                          background: "transparent",
+                        }}
+                        onMouseEnter={(e) =>
+                          ((e.currentTarget as HTMLElement).style.background =
+                            "var(--pg-muted-bg)")
+                        }
+                        onMouseLeave={(e) =>
+                          ((e.currentTarget as HTMLElement).style.background =
+                            "transparent")
+                        }
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span className="hidden xl:inline">View</span>
+                      </button>
+                    </Link>
+                    {canAutoClose && (
+                      <button
+                        className="inline-flex items-center gap-1 rounded-xl px-3 py-1.5 text-[12px] font-semibold transition-colors disabled:opacity-50"
+                        style={{
+                          border: "1px solid #a7f3d0",
+                          color: "#059669",
+                          background: "transparent",
+                        }}
+                        disabled={autoClosingId === r.run_id}
+                        onClick={() => onAutoClose(r.run_id)}
+                        title="Auto-close: all items matched"
+                        onMouseEnter={(e) =>
+                          ((e.currentTarget as HTMLElement).style.background =
+                            "#d1fae5")
+                        }
+                        onMouseLeave={(e) =>
+                          ((e.currentTarget as HTMLElement).style.background =
+                            "transparent")
+                        }
+                      >
+                        {autoClosingId === r.run_id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                        )}
+                        <span className="hidden xl:inline">Auto-Close</span>
+                      </button>
+                    )}
+                    <button
+                      className="inline-flex items-center gap-1 rounded-xl px-3 py-1.5 text-[12px] font-semibold transition-colors disabled:opacity-50"
+                      style={{
+                        border: "1px solid var(--pg-card-border)",
+                        color: "var(--pg-text-3)",
+                        background: "transparent",
+                      }}
+                      disabled={checkingBalance === r.run_id}
+                      onClick={() => onCheckBalance(r.run_id)}
+                      title="Check balance"
+                      onMouseEnter={(e) =>
+                        ((e.currentTarget as HTMLElement).style.background =
+                          "var(--pg-muted-bg)")
+                      }
+                      onMouseLeave={(e) =>
+                        ((e.currentTarget as HTMLElement).style.background =
+                          "transparent")
+                      }
                     >
-                      {autoClosingId === r.run_id ? (
+                      {checkingBalance === r.run_id ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
                       ) : (
-                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <Scale className="w-3.5 h-3.5" />
                       )}
-                      <span className="ml-1 hidden xl:inline">Auto-Close</span>
-                    </Button>
-                  )}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 text-slate-500 hover:text-slate-700"
-                    disabled={checkingBalance === r.run_id}
-                    onClick={() => onCheckBalance(r.run_id)}
-                    title="Check balance"
-                  >
-                    {checkingBalance === r.run_id ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <Scale className="w-3.5 h-3.5" />
-                    )}
-                    <span className="ml-1 hidden xl:inline">Balance</span>
-                  </Button>
-                </div>
-              </TableCell>
-            </TableRow>
-          );
-        })}
-      </TableBody>
-    </Table>
+                      <span className="hidden xl:inline">Balance</span>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -324,121 +455,208 @@ export default function ReconciliationDashboardPage() {
     toast({ title: "Manual Pull Triggered", description: "All accounts queued for GL sync." });
   }
 
+  const avgMatchColor =
+    avgMatchRate >= 95 ? "#059669" : avgMatchRate >= 80 ? "#d97706" : "#dc2626";
+
   return (
-    <div className="space-y-8 max-w-[1400px] mx-auto">
-      {/* Header */}
+    <div className="space-y-6 max-w-[1400px] mx-auto">
+
+      {/* ── Page Header ──────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900 flex items-center gap-3">
-            <ListChecks className="w-7 h-7 text-slate-400" />
+          <h1
+            className="flex items-center gap-2.5 font-bold"
+            style={{ fontSize: 22, color: "var(--pg-text-1)" }}
+          >
+            <ListChecks className="w-5 h-5" style={{ color: "#FF6600" }} />
             Exception Dashboard
           </h1>
-          <p className="text-slate-500 text-sm mt-1">
+          <p className="mt-1 text-[13px]" style={{ color: "var(--pg-text-3)" }}>
             Monitor reconciliation runs, exceptions, and balance health across all accounts
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Link href="/reconciliation">
-            <Button variant="outline" size="sm">
+            <button
+              className="inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[12px] font-semibold transition-colors"
+              style={{
+                border: "1px solid var(--pg-card-border)",
+                color: "var(--pg-text-2)",
+                background: "transparent",
+              }}
+              onMouseEnter={(e) =>
+                ((e.currentTarget as HTMLElement).style.background =
+                  "var(--pg-muted-bg)")
+              }
+              onMouseLeave={(e) =>
+                ((e.currentTarget as HTMLElement).style.background = "transparent")
+              }
+            >
               Manage Accounts
-            </Button>
+            </button>
           </Link>
-          <Button onClick={handleTriggerAllPulls} size="sm">
-            <RefreshCw className="mr-2 w-4 h-4" />
+          <button
+            onClick={handleTriggerAllPulls}
+            className="inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[12px] font-semibold text-white"
+            style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
             Trigger All Pulls
-          </Button>
+          </button>
         </div>
       </div>
 
-      {/* Summary cards */}
+      {/* ── Metric Cards ─────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="pt-5 pb-5">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-3xl font-bold text-slate-900 tabular-nums">{totalRuns}</p>
-                <p className="text-xs text-slate-500 mt-1">Total Runs</p>
-              </div>
-              <div className="p-2 rounded-lg bg-slate-100">
-                <ListChecks className="w-4 h-4 text-slate-500" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
 
-        <Card>
-          <CardContent className="pt-5 pb-5">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className={`text-3xl font-bold tabular-nums ${openExceptions > 0 ? "text-amber-600" : "text-green-600"}`}>
-                  {openExceptions}
-                </p>
-                <p className="text-xs text-slate-500 mt-1">Open Exceptions</p>
-              </div>
-              <div className={`p-2 rounded-lg ${openExceptions > 0 ? "bg-amber-50" : "bg-green-50"}`}>
-                <AlertTriangle className={`w-4 h-4 ${openExceptions > 0 ? "text-amber-500" : "text-green-500"}`} />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Total Runs */}
+        <div
+          className="p-5 flex items-start justify-between"
+          style={{
+            background: "var(--pg-card)",
+            border: "1px solid var(--pg-card-border)",
+            borderRadius: 16,
+          }}
+        >
+          <div>
+            <p
+              className="tabular-nums font-bold"
+              style={{ fontSize: 28, color: "var(--pg-text-1)" }}
+            >
+              {totalRuns}
+            </p>
+            <p className="mt-1 text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--pg-text-3)" }}>
+              Total Runs
+            </p>
+          </div>
+          <div
+            className="p-2 rounded-lg"
+            style={{ background: "var(--pg-muted-bg)" }}
+          >
+            <ListChecks className="w-4 h-4" style={{ color: "var(--pg-text-3)" }} />
+          </div>
+        </div>
 
-        <Card>
-          <CardContent className="pt-5 pb-5">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className={`text-3xl font-bold tabular-nums ${avgMatchRate >= 95 ? "text-green-600" : avgMatchRate >= 80 ? "text-amber-600" : "text-red-600"}`}>
-                  {avgMatchRate.toFixed(1)}%
-                </p>
-                <p className="text-xs text-slate-500 mt-1">Avg Match Rate</p>
-              </div>
-              <div className="p-2 rounded-lg bg-blue-50">
-                <TrendingUp className="w-4 h-4 text-blue-500" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Open Exceptions */}
+        <div
+          className="p-5 flex items-start justify-between"
+          style={{
+            background: "var(--pg-card)",
+            border: "1px solid var(--pg-card-border)",
+            borderRadius: 16,
+          }}
+        >
+          <div>
+            <p
+              className="tabular-nums font-bold"
+              style={{ fontSize: 28, color: openExceptions > 0 ? "#d97706" : "#059669" }}
+            >
+              {openExceptions}
+            </p>
+            <p className="mt-1 text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--pg-text-3)" }}>
+              Open Exceptions
+            </p>
+          </div>
+          <div
+            className="p-2 rounded-lg"
+            style={{ background: openExceptions > 0 ? "#fef3c7" : "#d1fae5" }}
+          >
+            <AlertTriangle
+              className="w-4 h-4"
+              style={{ color: openExceptions > 0 ? "#d97706" : "#059669" }}
+            />
+          </div>
+        </div>
 
-        <Card>
-          <CardContent className="pt-5 pb-5">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-3xl font-bold text-slate-900 tabular-nums">{autoClosedToday}</p>
-                <p className="text-xs text-slate-500 mt-1">Auto-Closed Today</p>
-              </div>
-              <div className="p-2 rounded-lg bg-green-50">
-                <CheckCircle2 className="w-4 h-4 text-green-500" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Avg Match Rate */}
+        <div
+          className="p-5 flex items-start justify-between"
+          style={{
+            background: "var(--pg-card)",
+            border: "1px solid var(--pg-card-border)",
+            borderRadius: 16,
+          }}
+        >
+          <div>
+            <p
+              className="tabular-nums font-bold"
+              style={{ fontSize: 28, color: avgMatchColor }}
+            >
+              {avgMatchRate.toFixed(1)}%
+            </p>
+            <p className="mt-1 text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--pg-text-3)" }}>
+              Avg Match Rate
+            </p>
+          </div>
+          <div className="p-2 rounded-lg" style={{ background: "#eff6ff" }}>
+            <TrendingUp className="w-4 h-4" style={{ color: "#3b82f6" }} />
+          </div>
+        </div>
+
+        {/* Auto-Closed Today */}
+        <div
+          className="p-5 flex items-start justify-between"
+          style={{
+            background: "var(--pg-card)",
+            border: "1px solid var(--pg-card-border)",
+            borderRadius: 16,
+          }}
+        >
+          <div>
+            <p
+              className="tabular-nums font-bold"
+              style={{ fontSize: 28, color: "var(--pg-text-1)" }}
+            >
+              {autoClosedToday}
+            </p>
+            <p className="mt-1 text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--pg-text-3)" }}>
+              Auto-Closed Today
+            </p>
+          </div>
+          <div className="p-2 rounded-lg" style={{ background: "#d1fae5" }}>
+            <CheckCircle2 className="w-4 h-4" style={{ color: "#059669" }} />
+          </div>
+        </div>
       </div>
 
-      {/* Tabs */}
+      {/* ── Tabs + Table ─────────────────────────────────────────────────────── */}
       <div>
         {/* Tab bar */}
-        <div className="flex gap-1 border-b border-slate-200 mb-4">
+        <div
+          className="flex gap-0 mb-0"
+          style={{ borderBottom: "1px solid var(--pg-row-border)" }}
+        >
           <button
             onClick={() => setActiveTab("exceptions")}
-            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === "exceptions"
-                ? "border-slate-900 text-slate-900"
-                : "border-transparent text-slate-500 hover:text-slate-700"
-            }`}
+            className="inline-flex items-center gap-2 px-4 py-2.5 text-[13px] font-semibold transition-colors"
+            style={{
+              borderBottom: activeTab === "exceptions"
+                ? "2px solid #FF6600"
+                : "2px solid transparent",
+              color: activeTab === "exceptions" ? "#FF6600" : "var(--pg-text-3)",
+              marginBottom: -1,
+            }}
           >
             Exceptions
             {openExceptions > 0 && (
-              <span className="inline-flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold h-4 min-w-[16px] px-1">
+              <span
+                className="inline-flex items-center justify-center rounded-full text-white text-[10px] font-bold h-4 min-w-[16px] px-1"
+                style={{ background: "#ef4444" }}
+              >
                 {openExceptions}
               </span>
             )}
           </button>
           <button
             onClick={() => setActiveTab("all")}
-            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === "all"
-                ? "border-slate-900 text-slate-900"
-                : "border-transparent text-slate-500 hover:text-slate-700"
-            }`}
+            className="inline-flex items-center gap-2 px-4 py-2.5 text-[13px] font-semibold transition-colors"
+            style={{
+              borderBottom: activeTab === "all"
+                ? "2px solid #FF6600"
+                : "2px solid transparent",
+              color: activeTab === "all" ? "#FF6600" : "var(--pg-text-3)",
+              marginBottom: -1,
+            }}
           >
             All Runs
           </button>
@@ -446,53 +664,86 @@ export default function ReconciliationDashboardPage() {
 
         {/* Exceptions tab */}
         {activeTab === "exceptions" && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-amber-500" />
+          <div
+            className="rounded-b-2xl overflow-hidden"
+            style={{
+              background: "var(--pg-card)",
+              border: "1px solid var(--pg-card-border)",
+              borderTop: "none",
+            }}
+          >
+            {/* Panel header */}
+            <div
+              className="flex items-center gap-2 px-5 py-3"
+              style={{ borderBottom: "1px solid var(--pg-row-border)" }}
+            >
+              <AlertTriangle className="w-4 h-4" style={{ color: "#d97706" }} />
+              <span
+                className="text-[12px] font-bold uppercase tracking-widest"
+                style={{ color: "var(--pg-text-2)" }}
+              >
                 Open &amp; Problematic Runs
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              {excLoading ? (
-                <div className="flex justify-center py-10">
-                  <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
-                </div>
-              ) : (
-                <RunsTable
-                  runs={exceptionRuns}
-                  checkingBalance={checkingBalance}
-                  autoClosingId={autoClosingId}
-                  onCheckBalance={handleCheckBalance}
-                  onAutoClose={(id) => autoCloseMutation.mutate(id)}
+              </span>
+            </div>
+            {excLoading ? (
+              <div className="flex justify-center py-12">
+                <Loader2
+                  className="w-5 h-5 animate-spin"
+                  style={{ color: "var(--pg-text-4)" }}
                 />
-              )}
-            </CardContent>
-          </Card>
+              </div>
+            ) : (
+              <RunsTable
+                runs={exceptionRuns}
+                checkingBalance={checkingBalance}
+                autoClosingId={autoClosingId}
+                onCheckBalance={handleCheckBalance}
+                onAutoClose={(id) => autoCloseMutation.mutate(id)}
+              />
+            )}
+          </div>
         )}
 
         {/* All Runs tab */}
         {activeTab === "all" && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">All Reconciliation Runs</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              {allLoading ? (
-                <div className="flex justify-center py-10">
-                  <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
-                </div>
-              ) : (
-                <RunsTable
-                  runs={allRuns}
-                  checkingBalance={checkingBalance}
-                  autoClosingId={autoClosingId}
-                  onCheckBalance={handleCheckBalance}
-                  onAutoClose={(id) => autoCloseMutation.mutate(id)}
+          <div
+            className="rounded-b-2xl overflow-hidden"
+            style={{
+              background: "var(--pg-card)",
+              border: "1px solid var(--pg-card-border)",
+              borderTop: "none",
+            }}
+          >
+            {/* Panel header */}
+            <div
+              className="flex items-center gap-2 px-5 py-3"
+              style={{ borderBottom: "1px solid var(--pg-row-border)" }}
+            >
+              <ListChecks className="w-4 h-4" style={{ color: "var(--pg-text-3)" }} />
+              <span
+                className="text-[12px] font-bold uppercase tracking-widest"
+                style={{ color: "var(--pg-text-2)" }}
+              >
+                All Reconciliation Runs
+              </span>
+            </div>
+            {allLoading ? (
+              <div className="flex justify-center py-12">
+                <Loader2
+                  className="w-5 h-5 animate-spin"
+                  style={{ color: "var(--pg-text-4)" }}
                 />
-              )}
-            </CardContent>
-          </Card>
+              </div>
+            ) : (
+              <RunsTable
+                runs={allRuns}
+                checkingBalance={checkingBalance}
+                autoClosingId={autoClosingId}
+                onCheckBalance={handleCheckBalance}
+                onAutoClose={(id) => autoCloseMutation.mutate(id)}
+              />
+            )}
+          </div>
         )}
       </div>
     </div>
