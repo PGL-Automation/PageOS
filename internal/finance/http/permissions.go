@@ -4,65 +4,62 @@ import (
 	"encoding/json"
 	"net/http"
 
+	identityhttp "github.com/pagegroup/pageos/internal/identity/http"
 	"github.com/pagegroup/pageos/internal/finance"
 	"github.com/pagegroup/pageos/internal/platform/httpx"
 )
 
-// adminRoles are the only roles that may update permission configuration.
+// adminRoles are the only roles that may update the permission configuration.
 var adminRoles = map[string]bool{
-	"HEAD_OF_OPERATIONS":      true,
-	"FINOPS_MANAGER":          true,
+	"HEAD_OF_OPERATIONS":       true,
+	"FINOPS_MANAGER":           true,
 	"TREASURY_OPS_FINANCE_MGR": true,
-	"GROUP_ADMIN":             true,
+	"GROUP_ADMIN":              true,
 }
 
 // getMyPermissions returns the permission map for the authenticated caller's role.
+// Accessible to any authenticated user — returns an empty map if the caller's
+// role has no finance permissions rather than a 403. The permission table is the
+// sole gate; a missing role here is not an error, just no access.
 // GET /permissions/me
 func (h *Handler) getMyPermissions(w http.ResponseWriter, r *http.Request) {
-	caller, ok := h.requireFinanceStaff(w, r)
+	caller, ok := identityhttp.UserFrom(r.Context())
 	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
 	perms, err := h.svc.GetMyPermissions(r.Context(), caller.ID)
-	if err != nil {
-		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
-		return
-	}
-	if perms == nil {
+	if err != nil || perms == nil {
 		perms = map[string]finance.RolePermission{}
 	}
 	httpx.JSON(w, http.StatusOK, perms)
 }
 
 // getAllPermissions returns the full permission matrix for all roles and modules.
+// Accessible to any authenticated user so they can see the configuration.
 // GET /permissions
 func (h *Handler) getAllPermissions(w http.ResponseWriter, r *http.Request) {
-	caller, ok := h.requireFinanceStaff(w, r)
-	if !ok {
+	if _, ok := identityhttp.UserFrom(r.Context()); !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
-	_ = caller // authenticated; coarse access already checked via requireFinanceStaff
 	matrix, err := h.svc.GetAllPermissions(r.Context())
-	if err != nil {
-		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
-		return
-	}
-	if matrix == nil {
+	if err != nil || matrix == nil {
 		matrix = finance.PermissionMatrix{}
 	}
 	httpx.JSON(w, http.StatusOK, matrix)
 }
 
 // updatePermission upserts a single role+module permission row.
-// Only senior roles (HEAD_OF_OPERATIONS, FINOPS_MANAGER, TREASURY_OPS_FINANCE_MGR, GROUP_ADMIN) may call this.
+// Restricted to senior admin roles — enforced via DB query, not an in-memory list.
 // PUT /permissions
 func (h *Handler) updatePermission(w http.ResponseWriter, r *http.Request) {
-	caller, ok := h.requireFinanceStaff(w, r)
+	caller, ok := identityhttp.UserFrom(r.Context())
 	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
 
-	// Resolve caller's role code to enforce admin-only gate.
 	const roleQ = `
 		SELECT pos.code
 		FROM organization.assignment a

@@ -2,7 +2,6 @@
 package financehttp
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -13,7 +12,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/pagegroup/pageos/internal/finance"
-	"github.com/pagegroup/pageos/internal/identity"
 	identityhttp "github.com/pagegroup/pageos/internal/identity/http"
 	"github.com/pagegroup/pageos/internal/platform/httpx"
 )
@@ -27,64 +25,11 @@ func New(svc *finance.Service, pool *pgxpool.Pool) *Handler {
 	return &Handler{svc: svc, pool: pool}
 }
 
-// financeStaffRoles are ALL position codes in the finance family.
-// Coarse gateway: any of these may reach finance endpoints.
-// Fine-grained access is controlled per module/action via finance.role_permission.
-var financeStaffRoles = []string{
-	"HEAD_OF_OPERATIONS",
-	"TREASURY_OPS_FINANCE_MGR",
-	"TL_FINANCIAL_REPORTING",
-	"FINOPS_MANAGER",
-	"FUND_TREASURY_OPERATIONS",
-	"RECONCILIATION_OFFICER",
-	"FINANCE_OFFICER",
-	"FINANCE_OPS_ASSOCIATE",
-	"FINANCE_OPS_INTERN",
-	"TREASURY_ANALYST",
-	"TREASURY_OFFICER",
-	"OPERATIONS_EXECUTIVE",
-	"OPERATIONS_ASSOCIATE",
-	"GROUP_ADMIN",
-}
-
-// isFinanceStaff returns true when the caller holds any finance-staff role.
-func (h *Handler) isFinanceStaff(ctx context.Context, userID uuid.UUID) (bool, error) {
-	const q = `
-		SELECT EXISTS (
-			SELECT 1
-			FROM organization.assignment a
-			JOIN organization.position pos ON pos.id = a.position_id
-			JOIN organization.person   per ON per.id = a.person_id
-			WHERE per.user_id = $1
-			  AND pos.code = ANY($2::text[])
-			  AND a.effective_from <= CURRENT_DATE
-			  AND (a.effective_to IS NULL OR a.effective_to >= CURRENT_DATE)
-		)
-	`
-	var exists bool
-	if err := h.pool.QueryRow(ctx, q, userID, financeStaffRoles).Scan(&exists); err != nil {
-		return false, err
-	}
-	return exists, nil
-}
-
-// requireFinanceStaff extracts the caller, checks role, writes 401/403 on
-// failure, and returns (caller, true) on success so callers can proceed.
-func (h *Handler) requireFinanceStaff(w http.ResponseWriter, r *http.Request) (identity.User, bool) {
-	caller, ok := identityhttp.UserFrom(r.Context())
-	if !ok {
-		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
-		return identity.User{}, false
-	}
-	if ok2, err := h.isFinanceStaff(r.Context(), caller.ID); err != nil || !ok2 {
-		httpx.Error(w, http.StatusForbidden, "forbidden", "finance staff role required")
-		return identity.User{}, false
-	}
-	return caller, true
-}
-
 // withPerm wraps a handler function with a module-level permission check.
-// The caller must have already passed the financeStaffRoles gateway.
+// This is the sole access control gate for all finance endpoints.
+// Access is determined entirely by the finance.role_permission table —
+// no hardcoded role list. Any authenticated user whose role has the
+// required permission is allowed; all others receive 403.
 // action must be one of: "view", "create", "approve", "export".
 func (h *Handler) withPerm(module, action string, fn http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
