@@ -22,7 +22,7 @@ import { usePosition } from "@/lib/position";
 
 // ── Nav tree per role ──────────────────────────────────────────────────────────
 
-type NavItem  = { href: string; label: string; icon: React.ElementType; badge?: string };
+type NavItem  = { href: string; label: string; icon: React.ElementType; badge?: string; visibleTo?: string[] };
 type NavGroup = { id: string; label?: string; items: NavItem[] };
 
 const MICROSOFT_GROUP: NavGroup = {
@@ -136,7 +136,7 @@ const MD_NAV: NavGroup[] = [
     { href: "/finance",               label: "Finance",        icon: TrendingUp },
     { href: "/finance/reconciliation",label: "Reconciliation", icon: RefreshCw },
     { href: "/finance/fx-rates",      label: "FX Rates",       icon: RefreshCw },
-    { href: "/settings/permissions",   label: "Permissions",    icon: Lock },
+    { href: "/settings/permissions", label: "Permissions", icon: Lock, visibleTo: ["TREASURY_OPS_FINANCE_MGR", "TL_FINANCIAL_REPORTING"] },
     { href: "/reconciliation/dashboard",    label: "Recon Dashboard",   icon: LayoutDashboard },
     { href: "/reconciliation/connectivity", label: "Bank Connectivity", icon: Building2 },
   ]},
@@ -184,7 +184,7 @@ const FINANCE_NAV: NavGroup[] = [
     { href: "/finance/assets",        label: "Fixed Assets",   icon: Package },
     { href: "/finance/vendors",       label: "Vendors",        icon: Briefcase },
     { href: "/finance/fx-rates",      label: "FX Rates",       icon: RefreshCw },
-    { href: "/settings/permissions",   label: "Permissions",    icon: Lock },
+    { href: "/settings/permissions", label: "Permissions", icon: Lock, visibleTo: ["TREASURY_OPS_FINANCE_MGR", "TL_FINANCIAL_REPORTING"] },
   ]},
   { id: "connectivity", label: "Banking", items: [
     { href: "/reconciliation/dashboard",    label: "Dashboard",         icon: LayoutDashboard },
@@ -265,7 +265,7 @@ const ADMIN_NAV: NavGroup[] = [
     { href: "/finance/journals",       label: "Journals",         icon: FileText },
     { href: "/finance/assets",         label: "Fixed Assets",     icon: Package },
     { href: "/finance/fx-rates",       label: "FX Rates",         icon: RefreshCw },
-    { href: "/settings/permissions",   label: "Permissions",      icon: Lock },
+    { href: "/settings/permissions", label: "Permissions", icon: Lock, visibleTo: ["TREASURY_OPS_FINANCE_MGR", "TL_FINANCIAL_REPORTING"] },
     { href: "/reconciliation/dashboard",    label: "Recon Dashboard",   icon: LayoutDashboard },
     { href: "/reconciliation/connectivity", label: "Bank Connectivity", icon: Building2 },
   ]},
@@ -864,7 +864,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
                 <p className="px-3 pt-3 pb-1 text-[9.5px] font-bold uppercase tracking-widest" style={{ color: sb.label }}>{group.label}</p>
               )}
               {group.label && collapsed && <div className="my-2 mx-2 h-px" style={{ background: sb.divider }} />}
-              {group.items.map(({ href, label, icon: Icon, badge }) => {
+              {group.items.filter(item => !item.visibleTo || item.visibleTo.includes(primaryCode ?? "")).map(({ href, label, icon: Icon, badge }) => {
                 const active = activeItem?.href === href;
                 return (
                   <Link key={href} href={href} title={collapsed ? label : undefined}

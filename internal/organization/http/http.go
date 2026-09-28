@@ -457,7 +457,8 @@ func (h *Handler) listStaff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	search := r.URL.Query().Get("search")
-	staff, err := h.svc.ListStaff(r.Context(), search)
+	family := r.URL.Query().Get("family")
+	staff, err := h.svc.ListStaff(r.Context(), search, family)
 	if err != nil {
 		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
 		return

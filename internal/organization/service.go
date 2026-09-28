@@ -374,9 +374,10 @@ func toAssignment(row orgdb.OrganizationAssignment) Assignment {
 }
 
 // ListStaff returns a lightweight list of all persons, optionally filtered by
-// name or email. Open to any authenticated caller — used for reliever/assignee search.
-func (s *Service) ListStaff(ctx context.Context, search string) ([]store.StaffRow, error) {
-	return s.store.ListStaff(ctx, search)
+// name/email and position family. Pass family="" for all families.
+// Open to any authenticated caller — used for reliever/assignee search.
+func (s *Service) ListStaff(ctx context.Context, search, family string) ([]store.StaffRow, error) {
+	return s.store.ListStaff(ctx, search, family)
 }
 
 // SetPersonGender updates a person's gender field.

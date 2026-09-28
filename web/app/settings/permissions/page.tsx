@@ -196,7 +196,7 @@ export default function PermissionsPage() {
 
   const { data: staff = [], isLoading: staffLoading } = useQuery<StaffMember[]>({
     queryKey: ["org-staff"],
-    queryFn: () => apiFetch<StaffMember[]>("/org/staff"),
+    queryFn: () => apiFetch<StaffMember[]>("/org/staff?family=finance"),
     staleTime: 2 * 60 * 1000,
   });
 

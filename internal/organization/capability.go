@@ -332,7 +332,7 @@ SELECT EXISTS (
     JOIN organization.assignment a ON a.position_id = pos.id
     JOIN organization.person per ON per.id = a.person_id
     WHERE per.user_id = $1
-      AND pos.code = ANY($2)
+      AND pos.code = ANY($2::text[])
       AND a.effective_from <= CURRENT_DATE
       AND (a.effective_to IS NULL OR a.effective_to >= CURRENT_DATE)
 )`

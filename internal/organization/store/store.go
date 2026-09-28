@@ -607,22 +607,28 @@ type StaffRow struct {
 	Email    string `json:"email"`
 }
 
-// ListStaff returns all persons matching the optional search term.
+// ListStaff returns all persons matching the optional search term and optional
+// position family filter. Pass family="" to return all families.
 // It is intentionally lightweight and open to all authenticated callers.
-func (s *Store) ListStaff(ctx context.Context, search string) ([]StaffRow, error) {
+func (s *Store) ListStaff(ctx context.Context, search, family string) ([]StaffRow, error) {
 	const q = `
-		SELECT p.id::text,
+		SELECT DISTINCT p.id::text,
 		       COALESCE(u.display_name, p.first_name || ' ' || p.last_name) AS full_name,
 		       COALESCE(p.email, '') AS email
 		FROM   organization.person p
 		LEFT   JOIN identity.users u ON u.id = p.user_id
+		LEFT   JOIN organization.assignment a ON a.person_id = p.id
+		            AND a.effective_from <= CURRENT_DATE
+		            AND (a.effective_to IS NULL OR a.effective_to >= CURRENT_DATE)
+		LEFT   JOIN organization.position pos ON pos.id = a.position_id
 		WHERE  ($1 = ''
 		        OR lower(COALESCE(u.display_name, p.first_name || ' ' || p.last_name))
 		               LIKE lower('%' || $1 || '%')
 		        OR lower(COALESCE(p.email,'')) LIKE lower('%' || $1 || '%'))
+		  AND  ($2 = '' OR pos.family = $2)
 		ORDER  BY full_name
-		LIMIT  60`
-	rows, err := s.pool.Query(ctx, q, search)
+		LIMIT  200`
+	rows, err := s.pool.Query(ctx, q, search, family)
 	if err != nil {
 		return nil, err
 	}
