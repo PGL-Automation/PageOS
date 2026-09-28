@@ -27,3 +27,9 @@ crash.log
 
 # Original spec kept locally, not in VCS
 PAGE Account Opening Form.pdf
+
+# Claude Code worktrees — temporary checkout directories, never commit
+.claude/worktrees/
+
+# Compiled API binary
+api
