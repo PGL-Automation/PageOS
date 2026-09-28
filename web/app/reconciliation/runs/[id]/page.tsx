@@ -3,12 +3,8 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Loader2, ArrowLeft, CheckCircle2, Link2, XCircle, Lock, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useParams } from "next/navigation";
@@ -48,11 +44,51 @@ type FullMatchRow = {
   ledger_reference?: string;
 };
 
-const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  matched: "default",
-  unmatched_bank: "secondary",
-  unmatched_internal: "destructive",
+function RunStatusBadge({ status }: { status: string | undefined }) {
+  const s = (status ?? "").toLowerCase();
+  let bg = "rgba(148,163,184,0.15)";
+  let color = "var(--pg-text-3)";
+  if (s === "in_progress" || s === "draft") {
+    bg = "rgba(251,191,36,0.15)"; color = "#B45309";
+  } else if (s === "closed") {
+    bg = "rgba(34,197,94,0.15)"; color = "#15803D";
+  }
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", background: bg, color,
+      borderRadius: "9999px", padding: "2px 10px", fontSize: "11px", fontWeight: 600,
+      textTransform: "uppercase", letterSpacing: "0.03em",
+    }}>
+      {status ?? "—"}
+    </span>
+  );
+}
+
+function DirectionBadge({ direction }: { direction: string | undefined }) {
+  const isCredit = direction === "credit";
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center",
+      background: isCredit ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.12)",
+      color: isCredit ? "#15803D" : "#B91C1C",
+      borderRadius: "9999px", padding: "2px 8px", fontSize: "11px", fontWeight: 600,
+      textTransform: "capitalize",
+    }}>
+      {direction ?? "—"}
+    </span>
+  );
+}
+
+const TABS = ["Matched", "Unmatched Bank", "Unmatched Internal", "Adjustments"] as const;
+type Tab = typeof TABS[number];
+
+const colLabel: React.CSSProperties = {
+  fontSize: "11px", color: "var(--pg-text-3)",
+  textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600,
 };
+const colData: React.CSSProperties = { fontSize: "12px", color: "var(--pg-text-1)" };
+const colMuted: React.CSSProperties = { fontSize: "12px", color: "var(--pg-text-3)" };
+const colMono: React.CSSProperties = { fontSize: "11px", fontFamily: "monospace", color: "var(--pg-text-2)" };
 
 export default function RunPage() {
   const params = useParams();
@@ -64,6 +100,8 @@ export default function RunPage() {
   const [selectedInternalTxn, setSelectedInternalTxn] = useState<string | null>(null);
   const [matchNotes, setMatchNotes] = useState("");
   const [exporting, setExporting] = useState(false);
+  const [activeTab, setActiveTab] = useState<Tab>("Matched");
+  const [hoveredRow, setHoveredRow] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["recon-run", runId],
@@ -192,8 +230,8 @@ export default function RunPage() {
   });
 
   if (isLoading) return (
-    <div className="flex h-[50vh] items-center justify-center">
-      <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
+    <div style={{ display: "flex", height: "50vh", alignItems: "center", justifyContent: "center" }}>
+      <Loader2 style={{ width: "32px", height: "32px", color: "var(--pg-text-3)", animation: "spin 1s linear infinite" }} />
     </div>
   );
 
@@ -201,335 +239,489 @@ export default function RunPage() {
   const bankLines = unmatched?.bank_lines ?? [];
   const internalTxns = unmatched?.internal_txns ?? [];
 
-  // Separate the full rows into tabs for display
   const matchedRows = fullRows.filter(r => r.status === "matched");
   const unmatchedBankRows = fullRows.filter(r => r.status === "unmatched_bank");
   const unmatchedInternalRows = fullRows.filter(r => r.status === "unmatched_internal");
   const adjustmentRows = fullRows.filter(r => r.status === "adjustment");
 
+  const metrics = [
+    { label: "Bank Lines", value: sum?.total_bank_lines ?? 0, color: "var(--pg-text-1)" },
+    { label: "Internal Txns", value: sum?.total_internal_txns ?? 0, color: "var(--pg-text-1)" },
+    { label: "Matched", value: sum?.matched ?? 0, color: "#15803D" },
+    { label: "Unmatched Bank", value: sum?.unmatched_bank ?? 0, color: "#B45309" },
+    { label: "Unmatched Internal", value: sum?.unmatched_internal ?? 0, color: "#B91C1C" },
+  ];
+
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div style={{ display: "flex", flexDirection: "column", gap: "20px", maxWidth: "1280px", margin: "0 auto" }}>
+
       {/* Header */}
-      <div className="flex items-center gap-4">
+      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
         <Link href="/reconciliation">
-          <Button variant="ghost" size="sm"><ArrowLeft className="w-4 h-4 mr-1" /> Back</Button>
+          <button style={{
+            display: "inline-flex", alignItems: "center", gap: "4px",
+            border: "1px solid var(--pg-card-border)", background: "transparent",
+            borderRadius: "8px", padding: "5px 10px", fontSize: "12px",
+            color: "var(--pg-text-2)", cursor: "pointer",
+          }}>
+            <ArrowLeft style={{ width: "13px", height: "13px" }} /> Back
+          </button>
         </Link>
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Reconciliation Run</h1>
-          <p className="text-slate-500 text-sm mt-0.5">
+
+        <div style={{ flex: 1 }}>
+          <h1 style={{ fontSize: "22px", fontWeight: 700, color: "var(--pg-text-1)" }}>Reconciliation Run</h1>
+          <p style={{ fontSize: "13px", color: "var(--pg-text-3)", marginTop: "2px" }}>
             {fmt(data?.run?.period_start as string)} → {fmt(data?.run?.period_end as string)}
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm" onClick={downloadExport} disabled={exporting}>
-            {exporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <RunStatusBadge status={data?.run?.status} />
+          <button
+            onClick={downloadExport}
+            disabled={exporting}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: "6px",
+              border: "1px solid var(--pg-card-border)", background: "transparent",
+              borderRadius: "12px", padding: "6px 14px", fontSize: "13px",
+              color: "var(--pg-text-1)", cursor: exporting ? "not-allowed" : "pointer",
+              opacity: exporting ? 0.6 : 1,
+            }}
+          >
+            {exporting ? <Loader2 style={{ width: "14px", height: "14px" }} /> : <Download style={{ width: "14px", height: "14px" }} />}
             Export Excel
-          </Button>
-          <Badge variant={isClosed ? "default" : "secondary"} className="uppercase text-xs px-3">
-            {data?.run?.status}
-          </Badge>
+          </button>
           {!isClosed && (
-            <Button
+            <button
               onClick={() => closeMutation.mutate()}
               disabled={!canClose || closeMutation.isPending}
               title={!canClose ? "Resolve all unmatched items first" : undefined}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: "6px",
+                background: "linear-gradient(135deg,#FF6600,#E05500)", border: "none",
+                borderRadius: "12px", padding: "6px 14px", fontSize: "13px",
+                color: "#fff", cursor: (!canClose || closeMutation.isPending) ? "not-allowed" : "pointer",
+                opacity: (!canClose || closeMutation.isPending) ? 0.5 : 1,
+              }}
             >
-              {closeMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Lock className="mr-2 h-4 w-4" />}
+              {closeMutation.isPending ? <Loader2 style={{ width: "14px", height: "14px" }} /> : <Lock style={{ width: "14px", height: "14px" }} />}
               Close Run
-            </Button>
+            </button>
           )}
         </div>
       </div>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        {[
-          { label: "Bank Lines", value: sum?.total_bank_lines ?? 0, color: "text-slate-900" },
-          { label: "Internal Txns", value: sum?.total_internal_txns ?? 0, color: "text-slate-900" },
-          { label: "Matched", value: sum?.matched ?? 0, color: "text-green-600" },
-          { label: "Unmatched Bank", value: sum?.unmatched_bank ?? 0, color: "text-amber-600" },
-          { label: "Unmatched Internal", value: sum?.unmatched_internal ?? 0, color: "text-red-600" },
-        ].map(({ label, value, color }) => (
-          <Card key={label} className="text-center">
-            <CardContent className="pt-4 pb-4">
-              <p className={`text-2xl font-bold ${color}`}>{Number(value)}</p>
-              <p className="text-xs text-slate-500 mt-1">{label}</p>
-            </CardContent>
-          </Card>
+      {/* Summary metric chips */}
+      <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+        {metrics.map(({ label, value, color }) => (
+          <div key={label} style={{
+            background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)",
+            borderRadius: "10px", padding: "8px 16px", display: "flex", flexDirection: "column", gap: "2px",
+          }}>
+            <span style={{ fontSize: "18px", fontWeight: 700, color }}>{Number(value)}</span>
+            <span style={{ fontSize: "11px", color: "var(--pg-text-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</span>
+          </div>
         ))}
       </div>
 
-      {/* Unmatched workspace — only when run is open */}
+      {/* Unmatched workspace — two columns, only when open */}
       {!isClosed && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+
           {/* Unmatched bank lines */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Unmatched Bank Lines</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Narration</TableHead>
-                    <TableHead className="text-right">Debit</TableHead>
-                    <TableHead className="text-right">Credit</TableHead>
-                    <TableHead />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {bankLines.length === 0
-                    ? <TableRow><TableCell colSpan={5} className="text-center py-8 text-slate-400 text-sm">All bank lines resolved</TableCell></TableRow>
-                    : (bankLines as Array<{ id: string; txn_date: string; narration: string; debit_kobo: number; credit_kobo: number }>).map(line => (
-                      <TableRow
-                        key={line.id}
-                        className={`cursor-pointer ${selectedBankLine === line.id ? "bg-orange-50 ring-1 ring-orange-400 ring-inset" : "hover:bg-slate-50"}`}
-                        onClick={() => setSelectedBankLine(selectedBankLine === line.id ? null : line.id)}
-                      >
-                        <TableCell className="text-xs text-slate-500">{fmt(line.txn_date)}</TableCell>
-                        <TableCell className="text-sm max-w-[180px] truncate">{line.narration}</TableCell>
-                        <TableCell className="text-right text-xs text-red-600">{line.debit_kobo > 0 ? koboToNaira(line.debit_kobo) : ""}</TableCell>
-                        <TableCell className="text-right text-xs text-green-600">{line.credit_kobo > 0 ? koboToNaira(line.credit_kobo) : ""}</TableCell>
-                        <TableCell>
-                          <Button variant="ghost" size="sm"
-                            onClick={e => { e.stopPropagation(); markBankMutation.mutate(line.id); }}
-                            disabled={markBankMutation.isPending}>
-                            <XCircle className="w-3.5 h-3.5" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+          <div style={{
+            background: "var(--pg-card)", border: "1px solid var(--pg-card-border)",
+            borderRadius: "16px", overflow: "hidden",
+          }}>
+            <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--pg-card-border)" }}>
+              <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--pg-text-1)" }}>Unmatched Bank Lines</span>
+            </div>
+            {/* Column headers */}
+            <div style={{
+              display: "grid", gridTemplateColumns: "80px 1fr 90px 90px 32px",
+              padding: "6px 14px", borderBottom: "1px solid var(--pg-row-border)",
+              background: "var(--pg-muted-bg)",
+            }}>
+              {["Date", "Narration", "Debit", "Credit", ""].map((h, i) => (
+                <span key={i} style={{ ...colLabel, textAlign: i >= 2 && i < 4 ? "right" : "left" }}>{h}</span>
+              ))}
+            </div>
+            {bankLines.length === 0 ? (
+              <div style={{ padding: "32px 16px", textAlign: "center", fontSize: "12px", color: "var(--pg-text-3)" }}>
+                All bank lines resolved
+              </div>
+            ) : (bankLines as Array<{ id: string; txn_date: string; narration: string; debit_kobo: number; credit_kobo: number }>).map(line => {
+              const isSel = selectedBankLine === line.id;
+              return (
+                <div
+                  key={line.id}
+                  onClick={() => setSelectedBankLine(isSel ? null : line.id)}
+                  onMouseEnter={() => setHoveredRow(`bank-${line.id}`)}
+                  onMouseLeave={() => setHoveredRow(null)}
+                  style={{
+                    display: "grid", gridTemplateColumns: "80px 1fr 90px 90px 32px",
+                    padding: "8px 14px", cursor: "pointer", alignItems: "center",
+                    borderBottom: "1px solid var(--pg-row-border)",
+                    borderLeft: isSel ? "2px solid #FF6600" : "2px solid transparent",
+                    background: isSel ? "rgba(255,102,0,0.06)" : hoveredRow === `bank-${line.id}` ? "var(--pg-row-hover)" : "transparent",
+                  }}
+                >
+                  <span style={colMuted}>{fmt(line.txn_date)}</span>
+                  <span style={{ ...colData, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{line.narration}</span>
+                  <span style={{ ...colData, textAlign: "right", color: "#B91C1C", fontSize: "11px" }}>{line.debit_kobo > 0 ? koboToNaira(line.debit_kobo) : ""}</span>
+                  <span style={{ ...colData, textAlign: "right", color: "#15803D", fontSize: "11px" }}>{line.credit_kobo > 0 ? koboToNaira(line.credit_kobo) : ""}</span>
+                  <div style={{ display: "flex", justifyContent: "center" }}>
+                    <button
+                      onClick={e => { e.stopPropagation(); markBankMutation.mutate(line.id); }}
+                      disabled={markBankMutation.isPending}
+                      style={{ background: "none", border: "none", cursor: "pointer", padding: "2px", color: "var(--pg-text-3)" }}
+                    >
+                      <XCircle style={{ width: "13px", height: "13px" }} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
 
           {/* Unmatched internal transactions */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Unmatched Internal Transactions</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Dir</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                    <TableHead />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {internalTxns.length === 0
-                    ? <TableRow><TableCell colSpan={5} className="text-center py-8 text-slate-400 text-sm">All internal transactions resolved</TableCell></TableRow>
-                    : (internalTxns as Array<{ id: string; txn_date: string; type: string; direction: string; amount_kobo: number; reference: string }>).map(txn => (
-                      <TableRow
-                        key={txn.id}
-                        className={`cursor-pointer ${selectedInternalTxn === txn.id ? "bg-orange-50 ring-1 ring-orange-400 ring-inset" : "hover:bg-slate-50"}`}
-                        onClick={() => setSelectedInternalTxn(selectedInternalTxn === txn.id ? null : txn.id)}
-                      >
-                        <TableCell className="text-xs text-slate-500">{fmt(txn.txn_date)}</TableCell>
-                        <TableCell className="text-xs capitalize">{txn.type?.replace("_", " ")}</TableCell>
-                        <TableCell>
-                          <Badge variant={txn.direction === "credit" ? "default" : "secondary"} className="text-xs">
-                            {txn.direction}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right text-xs">{koboToNaira(txn.amount_kobo)}</TableCell>
-                        <TableCell>
-                          <Button variant="ghost" size="sm"
-                            onClick={e => { e.stopPropagation(); markInternalMutation.mutate(txn.id); }}
-                            disabled={markInternalMutation.isPending}>
-                            <XCircle className="w-3.5 h-3.5" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+          <div style={{
+            background: "var(--pg-card)", border: "1px solid var(--pg-card-border)",
+            borderRadius: "16px", overflow: "hidden",
+          }}>
+            <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--pg-card-border)" }}>
+              <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--pg-text-1)" }}>Unmatched Internal Transactions</span>
+            </div>
+            {/* Column headers */}
+            <div style={{
+              display: "grid", gridTemplateColumns: "80px 1fr 70px 90px 32px",
+              padding: "6px 14px", borderBottom: "1px solid var(--pg-row-border)",
+              background: "var(--pg-muted-bg)",
+            }}>
+              {["Date", "Type", "Dir", "Amount", ""].map((h, i) => (
+                <span key={i} style={{ ...colLabel, textAlign: i === 3 ? "right" : "left" }}>{h}</span>
+              ))}
+            </div>
+            {internalTxns.length === 0 ? (
+              <div style={{ padding: "32px 16px", textAlign: "center", fontSize: "12px", color: "var(--pg-text-3)" }}>
+                All internal transactions resolved
+              </div>
+            ) : (internalTxns as Array<{ id: string; txn_date: string; type: string; direction: string; amount_kobo: number; reference: string }>).map(txn => {
+              const isSel = selectedInternalTxn === txn.id;
+              return (
+                <div
+                  key={txn.id}
+                  onClick={() => setSelectedInternalTxn(isSel ? null : txn.id)}
+                  onMouseEnter={() => setHoveredRow(`int-${txn.id}`)}
+                  onMouseLeave={() => setHoveredRow(null)}
+                  style={{
+                    display: "grid", gridTemplateColumns: "80px 1fr 70px 90px 32px",
+                    padding: "8px 14px", cursor: "pointer", alignItems: "center",
+                    borderBottom: "1px solid var(--pg-row-border)",
+                    borderLeft: isSel ? "2px solid #FF6600" : "2px solid transparent",
+                    background: isSel ? "rgba(255,102,0,0.06)" : hoveredRow === `int-${txn.id}` ? "var(--pg-row-hover)" : "transparent",
+                  }}
+                >
+                  <span style={colMuted}>{fmt(txn.txn_date)}</span>
+                  <span style={{ ...colData, textTransform: "capitalize", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {txn.type?.replace("_", " ")}
+                  </span>
+                  <DirectionBadge direction={txn.direction} />
+                  <span style={{ ...colData, textAlign: "right", fontSize: "11px" }}>{koboToNaira(txn.amount_kobo)}</span>
+                  <div style={{ display: "flex", justifyContent: "center" }}>
+                    <button
+                      onClick={e => { e.stopPropagation(); markInternalMutation.mutate(txn.id); }}
+                      disabled={markInternalMutation.isPending}
+                      style={{ background: "none", border: "none", cursor: "pointer", padding: "2px", color: "var(--pg-text-3)" }}
+                    >
+                      <XCircle style={{ width: "13px", height: "13px" }} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
-      {/* Manual match controls */}
+      {/* Manual match bar */}
       {!isClosed && (selectedBankLine || selectedInternalTxn) && (
-        <Card className="border-blue-200 bg-orange-50">
-          <CardContent className="pt-4 flex items-end gap-4">
-            <div className="flex-1 space-y-1">
-              <p className="text-sm font-medium text-blue-800 flex items-center gap-2">
-                <Link2 className="w-4 h-4" /> Manual Match
-              </p>
-              <p className="text-xs text-orange-600">
-                {selectedBankLine ? "✓ Bank line selected" : "Select a bank line"} ·{" "}
-                {selectedInternalTxn ? "✓ Internal txn selected" : "Select an internal transaction"}
-              </p>
-            </div>
-            <div className="w-48">
-              <Label className="text-xs text-orange-700">Notes (optional)</Label>
-              <Input value={matchNotes} onChange={e => setMatchNotes(e.target.value)}
-                placeholder="Reason…" className="mt-1 h-8 text-sm" />
-            </div>
-            <Button onClick={() => manualMatchMutation.mutate()}
-              disabled={!selectedBankLine || !selectedInternalTxn || manualMatchMutation.isPending}
-              className="shrink-0">
-              {manualMatchMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
-              Match Selected
-            </Button>
-          </CardContent>
-        </Card>
+        <div style={{
+          background: "rgba(255,102,0,0.05)", border: "1px solid rgba(255,102,0,0.25)",
+          borderRadius: "12px", padding: "14px 20px",
+          display: "flex", alignItems: "center", gap: "16px",
+        }}>
+          <div style={{ flex: 1 }}>
+            <p style={{ fontSize: "13px", fontWeight: 600, color: "#C05000", display: "flex", alignItems: "center", gap: "6px" }}>
+              <Link2 style={{ width: "14px", height: "14px" }} /> Manual Match
+            </p>
+            <p style={{ fontSize: "11px", color: "var(--pg-text-3)", marginTop: "2px" }}>
+              {selectedBankLine ? "✓ Bank line selected" : "Select a bank line"} ·{" "}
+              {selectedInternalTxn ? "✓ Internal txn selected" : "Select an internal transaction"}
+            </p>
+          </div>
+          <div style={{ width: "180px", display: "flex", flexDirection: "column", gap: "4px" }}>
+            <Label style={{ fontSize: "11px", color: "var(--pg-text-3)" }}>Notes (optional)</Label>
+            <Input value={matchNotes} onChange={e => setMatchNotes(e.target.value)}
+              placeholder="Reason…" style={{ height: "30px", fontSize: "12px" }} />
+          </div>
+          <button
+            onClick={() => manualMatchMutation.mutate()}
+            disabled={!selectedBankLine || !selectedInternalTxn || manualMatchMutation.isPending}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: "6px", flexShrink: 0,
+              background: "linear-gradient(135deg,#FF6600,#E05500)", border: "none",
+              borderRadius: "10px", padding: "7px 16px", fontSize: "13px",
+              color: "#fff", cursor: (!selectedBankLine || !selectedInternalTxn) ? "not-allowed" : "pointer",
+              opacity: (!selectedBankLine || !selectedInternalTxn) ? 0.5 : 1,
+            }}
+          >
+            {manualMatchMutation.isPending ? <Loader2 style={{ width: "14px", height: "14px" }} /> : <CheckCircle2 style={{ width: "14px", height: "14px" }} />}
+            Match Selected
+          </button>
+        </div>
       )}
 
-      {/* Full results — three sections */}
-      {matchedRows.length > 0 && (
-        <Card>
-          <CardHeader><CardTitle className="text-base text-green-700">Matched ({matchedRows.length})</CardTitle></CardHeader>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Bank Date</TableHead>
-                  <TableHead>Narration</TableHead>
-                  <TableHead className="text-right">Bank Amount</TableHead>
-                  <TableHead>Ledger Date</TableHead>
-                  <TableHead>Ledger Ref</TableHead>
-                  <TableHead className="text-right">Ledger Amount</TableHead>
-                  <TableHead>Type</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {matchedRows.map(m => (
-                  <TableRow key={m.match_id}>
-                    <TableCell className="text-xs text-slate-500">{fmt(m.bank_date)}</TableCell>
-                    <TableCell className="text-sm max-w-[200px] truncate">{m.bank_narration || "—"}</TableCell>
-                    <TableCell className="text-right text-xs">
-                      {(m.bank_credit_kobo ?? 0) > 0
-                        ? <span className="text-green-600">{koboToNaira(m.bank_credit_kobo!)}</span>
-                        : <span className="text-red-600">{koboToNaira(m.bank_debit_kobo ?? 0)}</span>}
-                    </TableCell>
-                    <TableCell className="text-xs text-slate-500">{fmt(m.ledger_date)}</TableCell>
-                    <TableCell className="text-xs font-mono truncate max-w-[140px]">{m.ledger_reference || "—"}</TableCell>
-                    <TableCell className="text-right text-xs">{koboToNaira(m.ledger_amount_kobo ?? 0)}</TableCell>
-                    <TableCell className="text-xs capitalize text-slate-500">{m.match_type}</TableCell>
-                  </TableRow>
+      {/* Tab interface for full results */}
+      {fullRows.length > 0 && (
+        <div style={{
+          background: "var(--pg-card)", border: "1px solid var(--pg-card-border)",
+          borderRadius: "16px", overflow: "hidden",
+        }}>
+          {/* Tab bar */}
+          <div style={{
+            display: "flex", borderBottom: "1px solid var(--pg-card-border)",
+            padding: "0 20px",
+          }}>
+            {TABS.map(tab => {
+              const count = tab === "Matched" ? matchedRows.length
+                : tab === "Unmatched Bank" ? unmatchedBankRows.length
+                : tab === "Unmatched Internal" ? unmatchedInternalRows.length
+                : adjustmentRows.length;
+              const isActive = activeTab === tab;
+              return (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  style={{
+                    background: "none", border: "none", cursor: "pointer",
+                    padding: "12px 16px", fontSize: "13px",
+                    color: isActive ? "var(--pg-text-1)" : "var(--pg-text-3)",
+                    fontWeight: isActive ? 600 : 400,
+                    borderBottom: isActive ? "2px solid #FF6600" : "2px solid transparent",
+                    marginBottom: "-1px",
+                    display: "flex", alignItems: "center", gap: "6px",
+                  }}
+                >
+                  {tab}
+                  <span style={{
+                    fontSize: "11px", fontWeight: 600,
+                    background: isActive ? "rgba(255,102,0,0.12)" : "var(--pg-muted-bg)",
+                    color: isActive ? "#FF6600" : "var(--pg-text-3)",
+                    borderRadius: "9999px", padding: "1px 7px",
+                  }}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Matched tab */}
+          {activeTab === "Matched" && (
+            <>
+              <div style={{
+                display: "grid",
+                gridTemplateColumns: "90px 1fr 110px 90px 1fr 110px 90px",
+                padding: "7px 20px", borderBottom: "1px solid var(--pg-row-border)",
+                background: "var(--pg-muted-bg)",
+              }}>
+                {["Bank Date", "Narration", "Bank Amt", "Ledger Date", "Ledger Ref", "Ledger Amt", "Type"].map((h, i) => (
+                  <span key={h} style={{ ...colLabel, textAlign: i === 2 || i === 5 ? "right" : "left" }}>{h}</span>
                 ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
+              </div>
+              {matchedRows.length === 0 ? (
+                <div style={{ padding: "32px", textAlign: "center", fontSize: "12px", color: "var(--pg-text-3)" }}>No matched rows</div>
+              ) : matchedRows.map(m => (
+                <div
+                  key={m.match_id}
+                  onMouseEnter={() => setHoveredRow(m.match_id)}
+                  onMouseLeave={() => setHoveredRow(null)}
+                  style={{
+                    display: "grid", gridTemplateColumns: "90px 1fr 110px 90px 1fr 110px 90px",
+                    padding: "8px 20px", alignItems: "center",
+                    borderBottom: "1px solid var(--pg-row-border)",
+                    background: hoveredRow === m.match_id ? "var(--pg-row-hover)" : "transparent",
+                  }}
+                >
+                  <span style={colMuted}>{fmt(m.bank_date)}</span>
+                  <span style={{ ...colData, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.bank_narration || "—"}</span>
+                  <span style={{ ...colData, textAlign: "right", fontSize: "11px" }}>
+                    {(m.bank_credit_kobo ?? 0) > 0
+                      ? <span style={{ color: "#15803D" }}>{koboToNaira(m.bank_credit_kobo!)}</span>
+                      : <span style={{ color: "#B91C1C" }}>{koboToNaira(m.bank_debit_kobo ?? 0)}</span>}
+                  </span>
+                  <span style={colMuted}>{fmt(m.ledger_date)}</span>
+                  <span style={{ ...colMono, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.ledger_reference || "—"}</span>
+                  <span style={{ ...colData, textAlign: "right", fontSize: "11px" }}>{koboToNaira(m.ledger_amount_kobo ?? 0)}</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span style={{ ...colMuted, textTransform: "capitalize" }}>{m.match_type}</span>
+                    {m.confidence_pct != null && (
+                      <span style={{
+                        fontSize: "10px", fontWeight: 600,
+                        background: "rgba(34,197,94,0.12)", color: "#15803D",
+                        borderRadius: "9999px", padding: "1px 6px",
+                      }}>
+                        {m.confidence_pct}%
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
 
-      {unmatchedBankRows.length > 0 && (
-        <Card>
-          <CardHeader><CardTitle className="text-base text-amber-700">In Bank, Not in Ledger ({unmatchedBankRows.length})</CardTitle></CardHeader>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Reference</TableHead>
-                  <TableHead>Narration</TableHead>
-                  <TableHead className="text-right">Debit</TableHead>
-                  <TableHead className="text-right">Credit</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {unmatchedBankRows.map(m => (
-                  <TableRow key={m.match_id}>
-                    <TableCell className="text-xs text-slate-500">{fmt(m.bank_date)}</TableCell>
-                    <TableCell className="text-xs font-mono">{m.bank_reference || "—"}</TableCell>
-                    <TableCell className="text-sm max-w-[240px] truncate">{m.bank_narration || "—"}</TableCell>
-                    <TableCell className="text-right text-xs text-red-600">{(m.bank_debit_kobo ?? 0) > 0 ? koboToNaira(m.bank_debit_kobo!) : "—"}</TableCell>
-                    <TableCell className="text-right text-xs text-green-600">{(m.bank_credit_kobo ?? 0) > 0 ? koboToNaira(m.bank_credit_kobo!) : "—"}</TableCell>
-                  </TableRow>
+          {/* Unmatched Bank tab */}
+          {activeTab === "Unmatched Bank" && (
+            <>
+              <div style={{
+                display: "grid", gridTemplateColumns: "90px 110px 1fr 110px 110px",
+                padding: "7px 20px", borderBottom: "1px solid var(--pg-row-border)",
+                background: "var(--pg-muted-bg)",
+              }}>
+                {["Date", "Reference", "Narration", "Debit", "Credit"].map((h, i) => (
+                  <span key={h} style={{ ...colLabel, textAlign: i >= 3 ? "right" : "left" }}>{h}</span>
                 ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
+              </div>
+              {unmatchedBankRows.length === 0 ? (
+                <div style={{ padding: "32px", textAlign: "center", fontSize: "12px", color: "var(--pg-text-3)" }}>No unmatched bank lines</div>
+              ) : unmatchedBankRows.map(m => (
+                <div
+                  key={m.match_id}
+                  onMouseEnter={() => setHoveredRow(m.match_id)}
+                  onMouseLeave={() => setHoveredRow(null)}
+                  style={{
+                    display: "grid", gridTemplateColumns: "90px 110px 1fr 110px 110px",
+                    padding: "8px 20px", alignItems: "center",
+                    borderBottom: "1px solid var(--pg-row-border)",
+                    background: hoveredRow === m.match_id ? "var(--pg-row-hover)" : "transparent",
+                  }}
+                >
+                  <span style={colMuted}>{fmt(m.bank_date)}</span>
+                  <span style={colMono}>{m.bank_reference || "—"}</span>
+                  <span style={{ ...colData, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.bank_narration || "—"}</span>
+                  <span style={{ ...colData, textAlign: "right", fontSize: "11px", color: "#B91C1C" }}>
+                    {(m.bank_debit_kobo ?? 0) > 0 ? koboToNaira(m.bank_debit_kobo!) : "—"}
+                  </span>
+                  <span style={{ ...colData, textAlign: "right", fontSize: "11px", color: "#15803D" }}>
+                    {(m.bank_credit_kobo ?? 0) > 0 ? koboToNaira(m.bank_credit_kobo!) : "—"}
+                  </span>
+                </div>
+              ))}
+            </>
+          )}
 
-      {unmatchedInternalRows.length > 0 && (
-        <Card>
-          <CardHeader><CardTitle className="text-base text-red-700">In Ledger, Not in Bank ({unmatchedInternalRows.length})</CardTitle></CardHeader>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Reference</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Direction</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {unmatchedInternalRows.map(m => (
-                  <TableRow key={m.match_id}>
-                    <TableCell className="text-xs text-slate-500">{fmt(m.ledger_date)}</TableCell>
-                    <TableCell className="text-xs font-mono">{m.ledger_reference || "—"}</TableCell>
-                    <TableCell className="text-xs capitalize">{m.ledger_type?.replace("_", " ") || "—"}</TableCell>
-                    <TableCell>
-                      <Badge variant={m.ledger_direction === "credit" ? "default" : "secondary"} className="text-xs">
-                        {m.ledger_direction}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right text-xs">{koboToNaira(m.ledger_amount_kobo ?? 0)}</TableCell>
-                  </TableRow>
+          {/* Unmatched Internal tab */}
+          {activeTab === "Unmatched Internal" && (
+            <>
+              <div style={{
+                display: "grid", gridTemplateColumns: "90px 110px 1fr 80px 110px",
+                padding: "7px 20px", borderBottom: "1px solid var(--pg-row-border)",
+                background: "var(--pg-muted-bg)",
+              }}>
+                {["Date", "Reference", "Type", "Dir", "Amount"].map((h, i) => (
+                  <span key={h} style={{ ...colLabel, textAlign: i === 4 ? "right" : "left" }}>{h}</span>
                 ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+              </div>
+              {unmatchedInternalRows.length === 0 ? (
+                <div style={{ padding: "32px", textAlign: "center", fontSize: "12px", color: "var(--pg-text-3)" }}>No unmatched internal rows</div>
+              ) : unmatchedInternalRows.map(m => (
+                <div
+                  key={m.match_id}
+                  onMouseEnter={() => setHoveredRow(m.match_id)}
+                  onMouseLeave={() => setHoveredRow(null)}
+                  style={{
+                    display: "grid", gridTemplateColumns: "90px 110px 1fr 80px 110px",
+                    padding: "8px 20px", alignItems: "center",
+                    borderBottom: "1px solid var(--pg-row-border)",
+                    background: hoveredRow === m.match_id ? "var(--pg-row-hover)" : "transparent",
+                  }}
+                >
+                  <span style={colMuted}>{fmt(m.ledger_date)}</span>
+                  <span style={colMono}>{m.ledger_reference || "—"}</span>
+                  <span style={{ ...colData, textTransform: "capitalize" }}>{m.ledger_type?.replace("_", " ") || "—"}</span>
+                  <DirectionBadge direction={m.ledger_direction} />
+                  <span style={{ ...colData, textAlign: "right", fontSize: "11px" }}>{koboToNaira(m.ledger_amount_kobo ?? 0)}</span>
+                </div>
+              ))}
+            </>
+          )}
+
+          {/* Adjustments tab */}
+          {activeTab === "Adjustments" && (
+            <>
+              <div style={{
+                display: "grid", gridTemplateColumns: "90px 70px 1fr 110px 1fr",
+                padding: "7px 20px", borderBottom: "1px solid var(--pg-row-border)",
+                background: "var(--pg-muted-bg)",
+              }}>
+                {["Date", "Side", "Narration / Reference", "Amount", "Notes"].map((h, i) => (
+                  <span key={h} style={{ ...colLabel, textAlign: i === 3 ? "right" : "left" }}>{h}</span>
+                ))}
+              </div>
+              {adjustmentRows.length === 0 ? (
+                <div style={{ padding: "32px", textAlign: "center", fontSize: "12px", color: "var(--pg-text-3)" }}>No adjustments</div>
+              ) : adjustmentRows.map(m => {
+                const isBank = Boolean(m.bank_line_id);
+                return (
+                  <div
+                    key={m.match_id}
+                    onMouseEnter={() => setHoveredRow(m.match_id)}
+                    onMouseLeave={() => setHoveredRow(null)}
+                    style={{
+                      display: "grid", gridTemplateColumns: "90px 70px 1fr 110px 1fr",
+                      padding: "8px 20px", alignItems: "center",
+                      borderBottom: "1px solid var(--pg-row-border)",
+                      background: hoveredRow === m.match_id ? "var(--pg-row-hover)" : "transparent",
+                    }}
+                  >
+                    <span style={colMuted}>{fmt(isBank ? m.bank_date : m.ledger_date)}</span>
+                    <span>
+                      <span style={{
+                        display: "inline-flex", alignItems: "center",
+                        border: "1px solid var(--pg-card-border)",
+                        borderRadius: "9999px", padding: "1px 8px",
+                        fontSize: "11px", color: "var(--pg-text-2)",
+                      }}>
+                        {isBank ? "Bank" : "Ledger"}
+                      </span>
+                    </span>
+                    <span style={{ ...colData, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {isBank ? (m.bank_narration || m.bank_reference || "—") : (m.ledger_reference || m.ledger_type || "—")}
+                    </span>
+                    <span style={{ ...colMuted, textAlign: "right", fontSize: "11px" }}>
+                      {isBank
+                        ? ((m.bank_credit_kobo ?? 0) > 0 ? koboToNaira(m.bank_credit_kobo!) : koboToNaira(m.bank_debit_kobo ?? 0))
+                        : koboToNaira(m.ledger_amount_kobo ?? 0)}
+                    </span>
+                    <span style={{ ...colMuted, fontSize: "11px" }}>{m.notes || "—"}</span>
+                  </div>
+                );
+              })}
+            </>
+          )}
+        </div>
       )}
 
-      {adjustmentRows.length > 0 && (
-        <Card>
-          <CardHeader><CardTitle className="text-base text-slate-500">Acknowledged Adjustments ({adjustmentRows.length})</CardTitle></CardHeader>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Side</TableHead>
-                  <TableHead>Narration / Reference</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead>Notes</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {adjustmentRows.map(m => {
-                  const isBank = Boolean(m.bank_line_id);
-                  return (
-                    <TableRow key={m.match_id}>
-                      <TableCell className="text-xs text-slate-500">{fmt(isBank ? m.bank_date : m.ledger_date)}</TableCell>
-                      <TableCell><Badge variant="outline" className="text-xs">{isBank ? "Bank" : "Ledger"}</Badge></TableCell>
-                      <TableCell className="text-sm max-w-[240px] truncate">
-                        {isBank ? (m.bank_narration || m.bank_reference || "—") : (m.ledger_reference || m.ledger_type || "—")}
-                      </TableCell>
-                      <TableCell className="text-right text-xs text-slate-500">
-                        {isBank
-                          ? ((m.bank_credit_kobo ?? 0) > 0 ? koboToNaira(m.bank_credit_kobo!) : koboToNaira(m.bank_debit_kobo ?? 0))
-                          : koboToNaira(m.ledger_amount_kobo ?? 0)}
-                      </TableCell>
-                      <TableCell className="text-xs text-slate-400">{m.notes || "—"}</TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
-
+      {/* Empty state */}
       {fullRows.length === 0 && (
-        <Card>
-          <CardContent className="py-12 text-center text-slate-400 text-sm">
-            No match data yet — run auto-match or match manually above.
-          </CardContent>
-        </Card>
+        <div style={{
+          background: "var(--pg-card)", border: "1px solid var(--pg-card-border)",
+          borderRadius: "16px", padding: "48px", textAlign: "center",
+          fontSize: "13px", color: "var(--pg-text-3)",
+        }}>
+          No match data yet — run auto-match or match manually above.
+        </div>
       )}
     </div>
   );

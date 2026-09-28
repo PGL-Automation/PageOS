@@ -5,22 +5,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api/client";
 import { useAuth } from "@/lib/auth";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { PlusCircle, Loader2, ExternalLink, Scale, Upload, BookOpen } from "lucide-react";
 import { useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
-
-const RUN_STATUS: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
-  draft: "secondary", in_progress: "secondary", closed: "default",
-};
 
 function koboToNaira(k: number) {
   return new Intl.NumberFormat("en-NG", {
@@ -30,6 +22,26 @@ function koboToNaira(k: number) {
 }
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
+
+function RunStatusBadge({ status }: { status: string }) {
+  const s = status?.toLowerCase() ?? "";
+  let bg = "rgba(148,163,184,0.15)";
+  let color = "var(--pg-text-3)";
+  if (s === "in_progress" || s === "draft") {
+    bg = "rgba(251,191,36,0.15)"; color = "#B45309";
+  } else if (s === "closed") {
+    bg = "rgba(34,197,94,0.15)"; color = "#15803D";
+  }
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", background: bg, color,
+      borderRadius: "9999px", padding: "2px 10px", fontSize: "11px", fontWeight: 600,
+      textTransform: "uppercase", letterSpacing: "0.03em",
+    }}>
+      {status}
+    </span>
+  );
+}
 
 export default function ReconciliationPage() {
   const router = useRouter();
@@ -55,6 +67,10 @@ export default function ReconciliationPage() {
   const [selectedAccountId, setSelectedAccountId] = useState("");
   const [periodStart, setPeriodStart] = useState("");
   const [periodEnd, setPeriodEnd] = useState("");
+
+  // Hover state for rows
+  const [hoveredAccount, setHoveredAccount] = useState<string | null>(null);
+  const [hoveredRun, setHoveredRun] = useState<string | null>(null);
 
   const { data: accounts = [], isLoading: accountsLoading } = useQuery({
     queryKey: ["recon-accounts", subsidId],
@@ -166,11 +182,6 @@ export default function ReconciliationPage() {
     e.target.value = "";
   }
 
-  function triggerStatementUpload(accountId: string) {
-    setUploadingStatementFor(accountId);
-    statementInputRef.current?.click();
-  }
-
   // Statement upload needs period dates — use a small prompt via form
   const [stmtFile, setStmtFile] = useState<File | null>(null);
   const [stmtStart, setStmtStart] = useState("");
@@ -199,146 +210,229 @@ export default function ReconciliationPage() {
     onError: (e) => toast({ title: "Error", description: (e as Error).message, variant: "destructive" }),
   });
 
-  return (
-    <div className="space-y-8">
-      {/* Hidden file inputs */}
-      <input ref={ledgerInputRef} type="file" className="hidden" accept=".xlsx,.xls,.csv" onChange={onLedgerFileSelected} />
-      <input ref={statementInputRef} type="file" className="hidden" accept=".xlsx,.xls,.csv" onChange={onStatementFileSelected} />
+  const col = {
+    label: { fontSize: "11px", color: "var(--pg-text-3)", textTransform: "uppercase" as const, letterSpacing: "0.08em", fontWeight: 600 },
+    data: { fontSize: "13px", color: "var(--pg-text-1)" },
+    mono: { fontSize: "12px", fontFamily: "monospace", color: "var(--pg-text-2)" },
+  };
 
-      <div className="flex items-center justify-between">
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+      {/* Hidden file inputs */}
+      <input ref={ledgerInputRef} type="file" style={{ display: "none" }} accept=".xlsx,.xls,.csv" onChange={onLedgerFileSelected} />
+      <input ref={statementInputRef} type="file" style={{ display: "none" }} accept=".xlsx,.xls,.csv" onChange={onStatementFileSelected} />
+
+      {/* Page header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900 flex items-center gap-3">
-            <Scale className="w-7 h-7 text-slate-400" />
+          <h1 style={{ fontSize: "22px", fontWeight: 700, color: "var(--pg-text-1)", display: "flex", alignItems: "center", gap: "10px" }}>
+            <Scale style={{ width: "20px", height: "20px", color: "var(--pg-text-3)" }} />
             Bank Reconciliation
           </h1>
-          <p className="text-slate-500 text-sm mt-1">Match bank statements against the internal ledger</p>
+          <p style={{ fontSize: "13px", color: "var(--pg-text-3)", marginTop: "4px" }}>
+            Match bank statements against the internal ledger
+          </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setAccountSheet(true)}>
-            <PlusCircle className="mr-2 w-4 h-4" /> Add Bank Account
-          </Button>
-          <Button onClick={() => setRunSheet(true)} disabled={accounts.length === 0}>
-            <PlusCircle className="mr-2 w-4 h-4" /> New Run
-          </Button>
+        <div style={{ display: "flex", gap: "8px" }}>
+          <button
+            onClick={() => setAccountSheet(true)}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: "6px",
+              border: "1px solid var(--pg-card-border)", background: "transparent",
+              borderRadius: "12px", padding: "6px 14px", fontSize: "13px",
+              color: "var(--pg-text-1)", cursor: "pointer",
+            }}
+          >
+            <PlusCircle style={{ width: "14px", height: "14px" }} />
+            Add Bank Account
+          </button>
+          <button
+            onClick={() => setRunSheet(true)}
+            disabled={accounts.length === 0}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: "6px",
+              background: "linear-gradient(135deg,#FF6600,#E05500)",
+              border: "none", borderRadius: "12px", padding: "6px 14px",
+              fontSize: "13px", color: "#fff", cursor: accounts.length === 0 ? "not-allowed" : "pointer",
+              opacity: accounts.length === 0 ? 0.5 : 1,
+            }}
+          >
+            <PlusCircle style={{ width: "14px", height: "14px" }} />
+            New Run
+          </button>
         </div>
       </div>
 
-      {/* Bank Accounts */}
-      <Card>
-        <CardHeader><CardTitle>Bank Accounts</CardTitle></CardHeader>
-        <CardContent>
-          {accountsLoading
-            ? <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-slate-400" /></div>
-            : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Bank</TableHead>
-                    <TableHead>Account Number</TableHead>
-                    <TableHead>Account Name</TableHead>
-                    <TableHead>Currency</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {accounts.length === 0
-                    ? <TableRow><TableCell colSpan={6} className="text-center py-10 text-slate-400">No bank accounts yet. Add one to start reconciling.</TableCell></TableRow>
-                    : accounts.map(a => {
-                      const isActive = a.id === activeAccountId;
-                      return (
-                      <TableRow
-                        key={a.id}
-                        className="cursor-pointer"
-                        style={isActive ? { background: "rgba(255,102,0,0.06)", borderLeft: "3px solid #FF6600" } : undefined}
-                        onClick={() => setSelectedAccountId(a.id)}
-                      >
-                        <TableCell className="font-medium">{a.bank_name}</TableCell>
-                        <TableCell className="font-mono text-sm">{a.account_number}</TableCell>
-                        <TableCell>{a.account_name}</TableCell>
-                        <TableCell>{a.currency}</TableCell>
-                        <TableCell><Badge variant="outline" className="text-xs">{a.status}</Badge></TableCell>
-                        <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                          <div className="flex items-center justify-end gap-1">
-                            <Button variant="ghost" size="sm" title="Sync internal transactions from finance journals (primary)"
-                              disabled={syncGLMutation.isPending && syncingGLFor === a.id}
-                              onClick={() => {
-                                setSyncingGLFor(a.id);
-                                syncGLMutation.mutate({ accountId: a.id, from: "", to: "" });
-                              }}>
-                              {syncGLMutation.isPending && syncingGLFor === a.id
-                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                : <BookOpen className="w-3.5 h-3.5" />}
-                              <span className="ml-1 hidden lg:inline">Sync GL</span>
-                            </Button>
-                            <Button variant="ghost" size="sm" title="Upload GL export file (fallback)"
-                              disabled={uploadLedgerMutation.isPending && uploadingLedgerFor === a.id}
-                              className="text-slate-400 hover:text-slate-600"
-                              onClick={() => { setUploadingLedgerFor(a.id); ledgerInputRef.current?.click(); }}>
-                              {uploadLedgerMutation.isPending && uploadingLedgerFor === a.id
-                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                : <Upload className="w-3.5 h-3.5" />}
-                              <span className="ml-1 hidden lg:inline">Upload GL</span>
-                            </Button>
-                            <Button variant="ghost" size="sm" title="Upload bank statement"
-                              onClick={() => { setUploadingStatementFor(a.id); statementInputRef.current?.click(); }}>
-                              <Upload className="w-3.5 h-3.5" />
-                              <span className="ml-1 hidden lg:inline">Statement</span>
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                      );
-                    })}
-                </TableBody>
-              </Table>
-            )}
-        </CardContent>
-      </Card>
+      {/* Bank Accounts card */}
+      <div style={{
+        background: "var(--pg-card)", border: "1px solid var(--pg-card-border)",
+        borderRadius: "16px", overflow: "hidden",
+      }}>
+        <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--pg-card-border)" }}>
+          <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--pg-text-1)" }}>Bank Accounts</span>
+        </div>
 
-      {/* Runs for active account */}
+        {/* Table header */}
+        <div style={{
+          display: "grid", gridTemplateColumns: "1.5fr 1.2fr 1.5fr 80px 90px 1fr",
+          padding: "8px 20px", borderBottom: "1px solid var(--pg-row-border)",
+          background: "var(--pg-muted-bg)",
+        }}>
+          {["Bank", "Account Number", "Account Name", "Currency", "Status", "Actions"].map((h, i) => (
+            <span key={h} style={{ ...col.label, textAlign: i === 5 ? "right" : "left" }}>{h}</span>
+          ))}
+        </div>
+
+        {accountsLoading ? (
+          <div style={{ display: "flex", justifyContent: "center", padding: "40px" }}>
+            <Loader2 style={{ width: "20px", height: "20px", color: "var(--pg-text-3)", animation: "spin 1s linear infinite" }} />
+          </div>
+        ) : accounts.length === 0 ? (
+          <div style={{ padding: "48px", textAlign: "center", fontSize: "13px", color: "var(--pg-text-3)" }}>
+            No bank accounts yet. Add one to start reconciling.
+          </div>
+        ) : accounts.map(a => {
+          const isActive = a.id === activeAccountId;
+          const isHovered = hoveredAccount === a.id;
+          return (
+            <div
+              key={a.id}
+              onClick={() => setSelectedAccountId(a.id)}
+              onMouseEnter={() => setHoveredAccount(a.id)}
+              onMouseLeave={() => setHoveredAccount(null)}
+              style={{
+                display: "grid", gridTemplateColumns: "1.5fr 1.2fr 1.5fr 80px 90px 1fr",
+                padding: "10px 20px", cursor: "pointer",
+                borderBottom: "1px solid var(--pg-row-border)",
+                borderLeft: isActive ? "2px solid #FF6600" : "2px solid transparent",
+                background: isActive
+                  ? "rgba(255,102,0,0.05)"
+                  : isHovered ? "var(--pg-row-hover)" : "transparent",
+                alignItems: "center",
+              }}
+            >
+              <span style={{ ...col.data, fontWeight: 500 }}>{a.bank_name}</span>
+              <span style={col.mono}>{a.account_number}</span>
+              <span style={col.data}>{a.account_name}</span>
+              <span style={col.data}>{a.currency}</span>
+              <span>
+                <RunStatusBadge status={a.status} />
+              </span>
+              <div
+                style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "4px" }}
+                onClick={e => e.stopPropagation()}
+              >
+                <button
+                  title="Sync internal transactions from finance journals (primary)"
+                  disabled={syncGLMutation.isPending && syncingGLFor === a.id}
+                  onClick={() => { setSyncingGLFor(a.id); syncGLMutation.mutate({ accountId: a.id, from: "", to: "" }); }}
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: "4px",
+                    border: "1px solid var(--pg-card-border)", background: "transparent",
+                    borderRadius: "8px", padding: "3px 8px", fontSize: "11px",
+                    color: "var(--pg-text-2)", cursor: "pointer",
+                  }}
+                >
+                  {syncGLMutation.isPending && syncingGLFor === a.id
+                    ? <Loader2 style={{ width: "11px", height: "11px" }} />
+                    : <BookOpen style={{ width: "11px", height: "11px" }} />}
+                  Sync GL
+                </button>
+                <button
+                  title="Upload GL export file (fallback)"
+                  disabled={uploadLedgerMutation.isPending && uploadingLedgerFor === a.id}
+                  onClick={() => { setUploadingLedgerFor(a.id); ledgerInputRef.current?.click(); }}
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: "4px",
+                    border: "1px solid var(--pg-card-border)", background: "transparent",
+                    borderRadius: "8px", padding: "3px 8px", fontSize: "11px",
+                    color: "var(--pg-text-2)", cursor: "pointer",
+                  }}
+                >
+                  {uploadLedgerMutation.isPending && uploadingLedgerFor === a.id
+                    ? <Loader2 style={{ width: "11px", height: "11px" }} />
+                    : <Upload style={{ width: "11px", height: "11px" }} />}
+                  Upload GL
+                </button>
+                <button
+                  title="Upload bank statement"
+                  onClick={() => { setUploadingStatementFor(a.id); statementInputRef.current?.click(); }}
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: "4px",
+                    border: "1px solid var(--pg-card-border)", background: "transparent",
+                    borderRadius: "8px", padding: "3px 8px", fontSize: "11px",
+                    color: "var(--pg-text-2)", cursor: "pointer",
+                  }}
+                >
+                  <Upload style={{ width: "11px", height: "11px" }} />
+                  Statement
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Reconciliation Runs card */}
       {activeAccountId && (
-        <Card>
-          <CardHeader>
-            <CardTitle>
+        <div style={{
+          background: "var(--pg-card)", border: "1px solid var(--pg-card-border)",
+          borderRadius: "16px", overflow: "hidden",
+        }}>
+          <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--pg-card-border)" }}>
+            <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--pg-text-1)" }}>
               Reconciliation Runs — {accounts.find(a => a.id === activeAccountId)?.bank_name}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Period</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {runs.length === 0
-                  ? <TableRow><TableCell colSpan={3} className="text-center py-10 text-slate-400">No runs yet. Create one to start matching.</TableCell></TableRow>
-                  : (runs as Array<{ id: string; period_start: string; period_end: string; status: string }>).map(run => (
-                    <TableRow key={run.id}>
-                      <TableCell className="text-sm">
-                        {run.period_start?.slice(0, 10)} → {run.period_end?.slice(0, 10)}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={RUN_STATUS[run.status] ?? "secondary"} className="uppercase text-xs">
-                          {run.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Link href={`/reconciliation/runs/${run.id}`}>
-                          <Button variant="ghost" size="sm" className="gap-1">
-                            <ExternalLink className="w-3.5 h-3.5" /> Open
-                          </Button>
-                        </Link>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+            </span>
+          </div>
+
+          {/* Table header */}
+          <div style={{
+            display: "grid", gridTemplateColumns: "1fr 140px 100px",
+            padding: "8px 20px", borderBottom: "1px solid var(--pg-row-border)",
+            background: "var(--pg-muted-bg)",
+          }}>
+            {["Period", "Status", ""].map((h, i) => (
+              <span key={i} style={{ ...col.label, textAlign: i === 2 ? "right" : "left" }}>{h}</span>
+            ))}
+          </div>
+
+          {runs.length === 0 ? (
+            <div style={{ padding: "48px", textAlign: "center", fontSize: "13px", color: "var(--pg-text-3)" }}>
+              No runs yet. Create one to start matching.
+            </div>
+          ) : (runs as Array<{ id: string; period_start: string; period_end: string; status: string }>).map(run => (
+            <div
+              key={run.id}
+              onMouseEnter={() => setHoveredRun(run.id)}
+              onMouseLeave={() => setHoveredRun(null)}
+              style={{
+                display: "grid", gridTemplateColumns: "1fr 140px 100px",
+                padding: "10px 20px", alignItems: "center",
+                borderBottom: "1px solid var(--pg-row-border)",
+                background: hoveredRun === run.id ? "var(--pg-row-hover)" : "transparent",
+              }}
+            >
+              <span style={{ ...col.data, fontFamily: "monospace", fontSize: "12px" }}>
+                {run.period_start?.slice(0, 10)} → {run.period_end?.slice(0, 10)}
+              </span>
+              <span>
+                <RunStatusBadge status={run.status} />
+              </span>
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <Link href={`/reconciliation/runs/${run.id}`}>
+                  <button style={{
+                    display: "inline-flex", alignItems: "center", gap: "4px",
+                    border: "1px solid var(--pg-card-border)", background: "transparent",
+                    borderRadius: "8px", padding: "4px 10px", fontSize: "12px",
+                    color: "var(--pg-text-2)", cursor: "pointer",
+                  }}>
+                    <ExternalLink style={{ width: "11px", height: "11px" }} /> Open
+                  </button>
+                </Link>
+              </div>
+            </div>
+          ))}
+        </div>
       )}
 
       {/* Statement upload: period Sheet (shows after file is picked) */}
@@ -347,21 +441,30 @@ export default function ReconciliationPage() {
           <SheetHeader>
             <SheetTitle>Upload Bank Statement</SheetTitle>
             <SheetDescription>
-              File selected: <span className="font-mono text-xs">{stmtFile?.name}</span>.
+              File selected: <span style={{ fontFamily: "monospace", fontSize: "11px" }}>{stmtFile?.name}</span>.
               Enter the statement period before uploading.
             </SheetDescription>
           </SheetHeader>
-          <form className="mt-6 space-y-4" onSubmit={e => {
+          <form style={{ marginTop: "24px", display: "flex", flexDirection: "column", gap: "16px" }} onSubmit={e => {
             e.preventDefault();
             if (!stmtFile || !uploadingStatementFor) return;
             uploadStatementMutation.mutate({ accountId: uploadingStatementFor, file: stmtFile, periodStart: stmtStart, periodEnd: stmtEnd });
           }}>
-            <div className="space-y-2"><Label>Period Start</Label><Input type="date" value={stmtStart} onChange={e => setStmtStart(e.target.value)} required /></div>
-            <div className="space-y-2"><Label>Period End</Label><Input type="date" value={stmtEnd} onChange={e => setStmtEnd(e.target.value)} required /></div>
-            <Button type="submit" className="w-full" disabled={uploadStatementMutation.isPending}>
-              {uploadStatementMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}><Label>Period Start</Label><Input type="date" value={stmtStart} onChange={e => setStmtStart(e.target.value)} required /></div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}><Label>Period End</Label><Input type="date" value={stmtEnd} onChange={e => setStmtEnd(e.target.value)} required /></div>
+            <button
+              type="submit"
+              disabled={uploadStatementMutation.isPending}
+              style={{
+                width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "8px",
+                background: "linear-gradient(135deg,#FF6600,#E05500)", border: "none",
+                borderRadius: "12px", padding: "8px 16px", fontSize: "13px",
+                color: "#fff", cursor: "pointer", opacity: uploadStatementMutation.isPending ? 0.7 : 1,
+              }}
+            >
+              {uploadStatementMutation.isPending ? <Loader2 style={{ width: "16px", height: "16px" }} /> : <Upload style={{ width: "16px", height: "16px" }} />}
               Upload Statement
-            </Button>
+            </button>
           </form>
         </SheetContent>
       </Sheet>
@@ -373,14 +476,23 @@ export default function ReconciliationPage() {
             <SheetTitle>Add Bank Account</SheetTitle>
             <SheetDescription>Register a bank account for reconciliation. You can configure the CSV column map after creation.</SheetDescription>
           </SheetHeader>
-          <form className="mt-6 space-y-4" onSubmit={e => { e.preventDefault(); createAccountMutation.mutate(); }}>
-            <div className="space-y-2"><Label>Bank Name</Label><Input placeholder="GTBank" value={bankName} onChange={e => setBankName(e.target.value)} required /></div>
-            <div className="space-y-2"><Label>Account Number</Label><Input placeholder="0123456789" value={accountNumber} onChange={e => setAccountNumber(e.target.value)} required /></div>
-            <div className="space-y-2"><Label>Account Name</Label><Input placeholder="Page Capital Ltd" value={accountName} onChange={e => setAccountName(e.target.value)} required /></div>
-            <Button type="submit" className="w-full" disabled={createAccountMutation.isPending}>
-              {createAccountMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+          <form style={{ marginTop: "24px", display: "flex", flexDirection: "column", gap: "16px" }} onSubmit={e => { e.preventDefault(); createAccountMutation.mutate(); }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}><Label>Bank Name</Label><Input placeholder="GTBank" value={bankName} onChange={e => setBankName(e.target.value)} required /></div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}><Label>Account Number</Label><Input placeholder="0123456789" value={accountNumber} onChange={e => setAccountNumber(e.target.value)} required /></div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}><Label>Account Name</Label><Input placeholder="Page Capital Ltd" value={accountName} onChange={e => setAccountName(e.target.value)} required /></div>
+            <button
+              type="submit"
+              disabled={createAccountMutation.isPending}
+              style={{
+                width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "8px",
+                background: "linear-gradient(135deg,#FF6600,#E05500)", border: "none",
+                borderRadius: "12px", padding: "8px 16px", fontSize: "13px",
+                color: "#fff", cursor: "pointer", opacity: createAccountMutation.isPending ? 0.7 : 1,
+              }}
+            >
+              {createAccountMutation.isPending ? <Loader2 style={{ width: "16px", height: "16px" }} /> : null}
               Add Account
-            </Button>
+            </button>
           </form>
         </SheetContent>
       </Sheet>
@@ -392,8 +504,8 @@ export default function ReconciliationPage() {
             <SheetTitle>New Reconciliation Run</SheetTitle>
             <SheetDescription>Select a bank account and period. Auto-matching runs immediately after creation.</SheetDescription>
           </SheetHeader>
-          <form className="mt-6 space-y-4" onSubmit={e => { e.preventDefault(); createRunMutation.mutate(); }}>
-            <div className="space-y-2">
+          <form style={{ marginTop: "24px", display: "flex", flexDirection: "column", gap: "16px" }} onSubmit={e => { e.preventDefault(); createRunMutation.mutate(); }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
               <Label>Bank Account</Label>
               <Select value={selectedAccountId || activeAccountId} onValueChange={v => setSelectedAccountId(v ?? "")}>
                 <SelectTrigger><SelectValue placeholder="Select account…" /></SelectTrigger>
@@ -402,12 +514,22 @@ export default function ReconciliationPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2"><Label>Period Start</Label><Input type="date" value={periodStart} onChange={e => setPeriodStart(e.target.value)} required /></div>
-            <div className="space-y-2"><Label>Period End</Label><Input type="date" value={periodEnd} onChange={e => setPeriodEnd(e.target.value)} required /></div>
-            <Button type="submit" className="w-full" disabled={createRunMutation.isPending || !activeAccountId}>
-              {createRunMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}><Label>Period Start</Label><Input type="date" value={periodStart} onChange={e => setPeriodStart(e.target.value)} required /></div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}><Label>Period End</Label><Input type="date" value={periodEnd} onChange={e => setPeriodEnd(e.target.value)} required /></div>
+            <button
+              type="submit"
+              disabled={createRunMutation.isPending || !activeAccountId}
+              style={{
+                width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "8px",
+                background: "linear-gradient(135deg,#FF6600,#E05500)", border: "none",
+                borderRadius: "12px", padding: "8px 16px", fontSize: "13px",
+                color: "#fff", cursor: "pointer",
+                opacity: (createRunMutation.isPending || !activeAccountId) ? 0.5 : 1,
+              }}
+            >
+              {createRunMutation.isPending ? <Loader2 style={{ width: "16px", height: "16px" }} /> : null}
               Create Run &amp; Auto-Match
-            </Button>
+            </button>
           </form>
         </SheetContent>
       </Sheet>

@@ -306,7 +306,7 @@ export default function ConnectivityPage() {
                   <button
                     onClick={() => triggerPull(account.id)}
                     disabled={pullingIds.has(account.id)}
-                    className="inline-flex items-center gap-1.5 h-7 px-3 rounded-xl text-[12px] font-medium disabled:opacity-50 transition-opacity"
+                    className="inline-flex items-center gap-1.5 h-7 px-3 rounded-xl text-[12px] font-medium disabled:opacity-50 transition-opacity whitespace-nowrap"
                     style={{
                       border: "1px solid var(--pg-card-border)",
                       color: "var(--pg-text-2)",
