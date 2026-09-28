@@ -18,11 +18,19 @@ import (
 const dateLayout = "2006-01-02"
 
 type Handler struct {
-	svc *organization.Service
+	svc    *organization.Service
+	capSvc *organization.CapabilityService
 }
 
 func New(svc *organization.Service) *Handler {
 	return &Handler{svc: svc}
+}
+
+// WithCapabilityService attaches a CapabilityService to the handler so that
+// the capability management endpoints are available.
+func (h *Handler) WithCapabilityService(capSvc *organization.CapabilityService) *Handler {
+	h.capSvc = capSvc
+	return h
 }
 
 // Routes returns the organization router. authMW guards every endpoint.
@@ -57,6 +65,18 @@ func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	r.Get("/staff", h.listStaff)
 	// Gender update — HR / admin only.
 	r.Patch("/persons/{personId}/gender", h.setPersonGender)
+
+	// Capability management — only mounted when a CapabilityService is wired in.
+	if h.capSvc != nil {
+		r.Get("/capabilities", h.listCapabilities)
+		r.Get("/capabilities/me", h.getMyCapabilities)
+		r.Get("/capabilities/domains", h.getMyDomains)
+		r.Get("/capabilities/person/{personId}", h.getPersonCapabilities)
+		r.Post("/capabilities/person/{personId}/grant", h.grantCapability)
+		r.Post("/capabilities/person/{personId}/revoke", h.revokeCapability)
+		r.Post("/capabilities/person/{personId}/reset", h.resetToRoleDefault)
+	}
+
 	return r
 }
 
