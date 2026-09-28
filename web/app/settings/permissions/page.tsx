@@ -50,15 +50,21 @@ async function apiFetch<T>(path: string, opts?: RequestInit): Promise<T> {
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-// All known domains — backend enforces who can actually grant/revoke.
+// Reconciliation is merged under the Finance tab — same staff, same managers.
 const ALL_DOMAINS = [
-  { id: "finance",        label: "Finance" },
-  { id: "reconciliation", label: "Reconciliation" },
-  { id: "portfolio",      label: "Portfolio" },
+  { id: "finance",   label: "Finance & Reconciliation" },
+  { id: "portfolio", label: "Portfolio" },
 ];
 
-function hasAnyCapabilityInDomain(caps: ResolvedCapability[], domain: string): boolean {
-  return caps.some((c) => c.domain === domain && c.granted);
+// Domains that are combined and shown together under the Finance tab.
+const FINANCE_COMBINED_DOMAINS = ["finance", "reconciliation"];
+
+function activeDomains(tabId: string): string[] {
+  return tabId === "finance" ? FINANCE_COMBINED_DOMAINS : [tabId];
+}
+
+function hasAnyCapabilityInDomain(caps: ResolvedCapability[], tabId: string): boolean {
+  return caps.some((c) => activeDomains(tabId).includes(c.domain) && c.granted);
 }
 
 // ── Source badge ───────────────────────────────────────────────────────────────
@@ -233,11 +239,17 @@ export default function PermissionsPage() {
 
   // ── Filtered domain caps for selected person ─────────────────────────────────
 
+  // For the Finance tab, combine finance + reconciliation capabilities.
+  // Within each domain, sort by sort_order; finance comes before reconciliation.
   const personDomainCaps = useMemo(() => {
     if (!personCaps || !effectiveDomain) return [];
+    const domains = activeDomains(effectiveDomain);
     return personCaps
-      .filter((c) => c.domain === effectiveDomain)
-      .sort((a, b) => a.sort_order - b.sort_order);
+      .filter((c) => domains.includes(c.domain))
+      .sort((a, b) => {
+        const di = domains.indexOf(a.domain) - domains.indexOf(b.domain);
+        return di !== 0 ? di : a.sort_order - b.sort_order;
+      });
   }, [personCaps, effectiveDomain]);
 
   // ── Filtered + sorted staff list for sidebar ─────────────────────────────────
@@ -673,15 +685,34 @@ export default function PermissionsPage() {
                     </p>
                   </div>
                 ) : (
-                  personDomainCaps.map((cap) => (
-                    <CapabilityRow
-                      key={cap.code}
-                      cap={cap}
-                      isChanging={changing.has(cap.code)}
-                      onToggle={handleToggle}
-                      onReset={handleReset}
-                    />
-                  ))
+                  personDomainCaps.map((cap, i) => {
+                    // Insert a section header when switching from finance → reconciliation
+                    const prevDomain = i > 0 ? personDomainCaps[i - 1].domain : null;
+                    const showSeparator = prevDomain !== null && prevDomain !== cap.domain;
+                    return (
+                      <div key={cap.code}>
+                        {showSeparator && (
+                          <div
+                            className="px-6 py-2 text-[10px] font-bold uppercase tracking-widest"
+                            style={{
+                              color: "var(--pg-text-3)",
+                              background: "var(--pg-muted-bg)",
+                              borderTop: "1px solid var(--pg-row-border)",
+                              borderBottom: "1px solid var(--pg-row-border)",
+                            }}
+                          >
+                            Reconciliation
+                          </div>
+                        )}
+                        <CapabilityRow
+                          cap={cap}
+                          isChanging={changing.has(cap.code)}
+                          onToggle={handleToggle}
+                          onReset={handleReset}
+                        />
+                      </div>
+                    );
+                  })
                 )}
               </div>
 

@@ -48,7 +48,9 @@ var domainManagers = map[string][]string{
 	},
 	"reconciliation": {
 		"HEAD_OF_OPERATIONS",
+		"TREASURY_OPS_FINANCE_MGR",
 		"FINOPS_MANAGER",
+		"TL_FINANCIAL_REPORTING",
 		"GROUP_ADMIN",
 	},
 	"portfolio": {
