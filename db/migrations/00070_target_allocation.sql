@@ -14,9 +14,13 @@ CREATE TABLE portfolio.target_allocation (
     is_active       BOOLEAN     NOT NULL DEFAULT true,
     created_by      UUID        NOT NULL,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (fund_id, allocation_type, COALESCE(instrument_id, '00000000-0000-0000-0000-000000000000'::uuid), label)
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Expressions in UNIQUE constraints are not supported in CREATE TABLE;
+-- use a unique index instead. COALESCE handles the nullable instrument_id.
+CREATE UNIQUE INDEX idx_target_allocation_unique
+    ON portfolio.target_allocation (fund_id, allocation_type, COALESCE(instrument_id, '00000000-0000-0000-0000-000000000000'::uuid), label);
 
 CREATE INDEX idx_target_allocation_fund_id
     ON portfolio.target_allocation (fund_id);
@@ -26,6 +30,7 @@ CREATE INDEX idx_target_allocation_fund_id_is_active
 
 -- +goose Down
 
+DROP INDEX IF EXISTS portfolio.idx_target_allocation_unique;
 DROP INDEX IF EXISTS portfolio.idx_target_allocation_fund_id_is_active;
 DROP INDEX IF EXISTS portfolio.idx_target_allocation_fund_id;
 DROP TABLE IF EXISTS portfolio.target_allocation;
