@@ -24,20 +24,11 @@ type ResolvedCapability = {
   source: "role_default" | "individual_grant" | "individual_revoke";
 };
 
-type Assignment = {
-  position_code: string;
-  position_title: string;
-  is_primary: boolean;
-  employment_type?: string;
-};
-
-type OrgUser = {
-  user_id: string;
+// StaffMember comes from GET /org/staff — open to all authenticated users.
+type StaffMember = {
+  person_id: string;
+  full_name: string;
   email: string;
-  display_name: string;
-  user_status: "active" | "inactive" | "no_account";
-  person_id?: string;
-  assignments: Assignment[];
 };
 
 // ── API base ───────────────────────────────────────────────────────────────────
@@ -59,12 +50,12 @@ async function apiFetch<T>(path: string, opts?: RequestInit): Promise<T> {
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-const NIL_UUID = "00000000-0000-0000-0000-000000000000";
-
-function primaryTitle(user: OrgUser): string {
-  const primary = user.assignments?.find((a) => a.is_primary);
-  return primary?.position_title ?? user.assignments?.[0]?.position_title ?? "—";
-}
+// All known domains — backend enforces who can actually grant/revoke.
+const ALL_DOMAINS = [
+  { id: "finance",        label: "Finance" },
+  { id: "reconciliation", label: "Reconciliation" },
+  { id: "portfolio",      label: "Portfolio" },
+];
 
 function hasAnyCapabilityInDomain(caps: ResolvedCapability[], domain: string): boolean {
   return caps.some((c) => c.domain === domain && c.granted);
@@ -198,22 +189,14 @@ export default function PermissionsPage() {
   // Track which capability codes are currently mutating
   const [changing, setChanging] = useState<Set<string>>(new Set());
 
-  // ── Fetch manageable domains ─────────────────────────────────────────────────
+  // Auto-select first domain
+  const effectiveDomain = selectedDomain ?? ALL_DOMAINS[0].id;
 
-  const { data: domains = [], isLoading: domainsLoading } = useQuery<string[]>({
-    queryKey: ["capabilities-domains"],
-    queryFn: () => apiFetch<string[]>("/org/capabilities/domains"),
-    staleTime: 5 * 60 * 1000,
-  });
+  // ── Fetch all staff — open to any authenticated user ─────────────────────────
 
-  // Auto-select first domain once loaded
-  const effectiveDomain = selectedDomain ?? domains[0] ?? null;
-
-  // ── Fetch all org users ──────────────────────────────────────────────────────
-
-  const { data: users = [], isLoading: usersLoading } = useQuery<OrgUser[]>({
-    queryKey: ["org-users"],
-    queryFn: () => apiFetch<OrgUser[]>("/org/users"),
+  const { data: staff = [], isLoading: staffLoading } = useQuery<StaffMember[]>({
+    queryKey: ["org-staff"],
+    queryFn: () => apiFetch<StaffMember[]>("/org/staff"),
     staleTime: 2 * 60 * 1000,
   });
 
@@ -255,27 +238,24 @@ export default function PermissionsPage() {
       .sort((a, b) => a.sort_order - b.sort_order);
   }, [personCaps, effectiveDomain]);
 
-  // ── Filtered + sorted user list for sidebar ──────────────────────────────────
+  // ── Filtered + sorted staff list for sidebar ─────────────────────────────────
 
-  const filteredUsers = useMemo(() => {
+  const filteredStaff = useMemo(() => {
     const q = search.toLowerCase().trim();
-    return users
-      .filter((u) => {
-        if (!u.person_id || u.user_id === NIL_UUID) return false;
-        if (u.user_status === "no_account" && !u.person_id) return false;
+    return staff
+      .filter((s) => {
+        if (!s.person_id) return false;
         if (!q) return true;
         return (
-          u.display_name.toLowerCase().includes(q) ||
-          u.email.toLowerCase().includes(q) ||
-          primaryTitle(u).toLowerCase().includes(q)
+          s.full_name.toLowerCase().includes(q) ||
+          s.email.toLowerCase().includes(q)
         );
-      })
-      .sort((a, b) => a.display_name.localeCompare(b.display_name));
-  }, [users, search]);
+      });
+  }, [staff, search]);
 
-  // ── Selected user ─────────────────────────────────────────────────────────────
+  // ── Selected person ───────────────────────────────────────────────────────────
 
-  const selectedUser = users.find((u) => u.person_id === selectedPersonId) ?? null;
+  const selectedPerson = staff.find((s) => s.person_id === selectedPersonId) ?? null;
 
   // ── Mutations ─────────────────────────────────────────────────────────────────
 
@@ -387,37 +367,35 @@ export default function PermissionsPage() {
         </div>
 
         {/* Domain tabs */}
-        {!domainsLoading && domains.length > 0 && (
-          <div
-            className="flex items-center gap-1 p-1 rounded-xl"
-            style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)" }}
-          >
-            {domains.map((d) => {
-              const isActive = effectiveDomain === d;
-              return (
-                <button
-                  key={d}
-                  onClick={() => {
-                    setSelectedDomain(d);
-                    setSelectedPersonId(null);
-                  }}
-                  className="h-7 px-3 rounded-lg text-[12px] font-semibold transition-all"
-                  style={
-                    isActive
-                      ? {
-                          background: "linear-gradient(135deg,#FF6600,#E05500)",
-                          color: "#fff",
-                          boxShadow: "0 1px 4px rgba(255,102,0,0.35)",
-                        }
-                      : { color: "var(--pg-text-2)" }
-                  }
-                >
-                  {domainLabel(d)}
-                </button>
-              );
-            })}
-          </div>
-        )}
+        <div
+          className="flex items-center gap-1 p-1 rounded-xl"
+          style={{ background: "var(--pg-muted-bg)", border: "1px solid var(--pg-card-border)" }}
+        >
+          {ALL_DOMAINS.map(({ id, label }) => {
+            const isActive = effectiveDomain === id;
+            return (
+              <button
+                key={id}
+                onClick={() => {
+                  setSelectedDomain(id);
+                  setSelectedPersonId(null);
+                }}
+                className="h-7 px-3 rounded-lg text-[12px] font-semibold transition-all"
+                style={
+                  isActive
+                    ? {
+                        background: "linear-gradient(135deg,#FF6600,#E05500)",
+                        color: "#fff",
+                        boxShadow: "0 1px 4px rgba(255,102,0,0.35)",
+                      }
+                    : { color: "var(--pg-text-2)" }
+                }
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Two-panel layout */}
@@ -460,22 +438,21 @@ export default function PermissionsPage() {
             </div>
           </div>
 
-          {/* User list */}
+          {/* Staff list */}
           <div className="flex-1 overflow-y-auto">
-            {usersLoading ? (
+            {staffLoading ? (
               <div className="flex justify-center py-12">
                 <Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--pg-text-4)" }} />
               </div>
-            ) : filteredUsers.length === 0 ? (
+            ) : filteredStaff.length === 0 ? (
               <div className="px-4 py-8 text-center">
                 <p className="text-[12px]" style={{ color: "var(--pg-text-3)" }}>
                   {search ? "No staff match your search." : "No staff found."}
                 </p>
               </div>
             ) : (
-              filteredUsers.map((user) => {
-                const isSelected = selectedPersonId === user.person_id;
-                const title = primaryTitle(user);
+              filteredStaff.map((person) => {
+                const isSelected = selectedPersonId === person.person_id;
 
                 // We use a simple heuristic for the dot:
                 // if this person is selected and we have their caps, use those.
@@ -490,8 +467,8 @@ export default function PermissionsPage() {
 
                 return (
                   <button
-                    key={user.person_id}
-                    onClick={() => setSelectedPersonId(user.person_id ?? null)}
+                    key={person.person_id}
+                    onClick={() => setSelectedPersonId(person.person_id ?? null)}
                     className="w-full text-left px-4 py-3 transition-all"
                     style={{
                       borderBottom: "1px solid var(--pg-row-border)",
@@ -518,7 +495,7 @@ export default function PermissionsPage() {
                           color: isSelected ? "#FF6600" : "var(--pg-text-3)",
                         }}
                       >
-                        {user.display_name.charAt(0).toUpperCase()}
+                        {person.full_name.charAt(0).toUpperCase()}
                       </div>
 
                       <div className="flex-1 min-w-0">
@@ -527,7 +504,7 @@ export default function PermissionsPage() {
                             className="text-[12px] font-semibold truncate"
                             style={{ color: isSelected ? "#FF6600" : "var(--pg-text-1)" }}
                           >
-                            {user.display_name}
+                            {person.full_name}
                           </p>
                           {/* Access dot */}
                           {showDot && (
@@ -542,7 +519,7 @@ export default function PermissionsPage() {
                           className="text-[10px] truncate"
                           style={{ color: "var(--pg-text-3)" }}
                         >
-                          {title}
+                          {person.email}
                         </p>
                       </div>
                     </div>
@@ -561,7 +538,7 @@ export default function PermissionsPage() {
             }}
           >
             <p className="text-[10px]" style={{ color: "var(--pg-text-4)" }}>
-              {filteredUsers.length} staff member{filteredUsers.length !== 1 ? "s" : ""}
+              {filteredStaff.length} staff member{filteredStaff.length !== 1 ? "s" : ""}
             </p>
           </div>
         </div>
@@ -608,17 +585,17 @@ export default function PermissionsPage() {
                     className="w-9 h-9 rounded-xl flex items-center justify-center text-[14px] font-bold shrink-0"
                     style={{ background: "rgba(255,102,0,0.12)", color: "#FF6600" }}
                   >
-                    {selectedUser?.display_name.charAt(0).toUpperCase()}
+                    {selectedPerson?.full_name.charAt(0).toUpperCase()}
                   </div>
                   <div>
                     <p
                       className="text-[14px] font-bold"
                       style={{ color: "var(--pg-text-1)" }}
                     >
-                      {selectedUser?.display_name}
+                      {selectedPerson?.full_name}
                     </p>
                     <p className="text-[11px]" style={{ color: "var(--pg-text-3)" }}>
-                      {primaryTitle(selectedUser!)}
+                      {selectedPerson?.email ?? ""}
                       {effectiveDomain && (
                         <span
                           className="ml-2 text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
