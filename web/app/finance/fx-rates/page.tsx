@@ -111,7 +111,7 @@ function AddRateModal({ onClose }: { onClose: () => void }) {
         body: JSON.stringify({
           from_currency: from,
           to_currency: to,
-          date,
+          rate_date: date,
           rate: parseFloat(rate),
           source,
         }),

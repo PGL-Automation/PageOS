@@ -127,25 +127,20 @@ func (s *Service) GetPayable(ctx context.Context, id uuid.UUID) (PayableWithLine
 		JOIN   finance.vendor  v ON v.id = p.vendor_id
 		WHERE  p.id = $1
 	`
-	payables, err := scanPayables(s.pool.QueryRow(ctx, hq, id).(pgx.Rows))
-	if err != nil || len(payables) == 0 {
-		// fallback: single row scan
-		var p Payable
-		if err := s.pool.QueryRow(ctx, hq, id).Scan(
-			&p.ID, &p.Reference, &p.VendorID, &p.VendorName,
-			&p.SubsidiaryID, &p.VendorInvoiceNo, &p.InvoiceDate, &p.DueDate,
-			&p.Description, &p.Status, &p.GrossAmount, &p.WHTAmount,
-			&p.NetPayable, &p.AmountPaid, &p.Outstanding, &p.BankAccountCode,
-			&p.CreatedBy, &p.CreatedByName, &p.ApprovedBy, &p.ApprovedAt,
-			&p.JournalID, &p.PaymentJournalID, &p.CreatedAt, &p.DaysOverdue,
-		); err != nil {
-			return PayableWithLines{}, fmt.Errorf("finance: payable not found: %w", err)
-		}
-		lines, _ := s.getPayableLines(ctx, id)
-		vendor, _ := s.GetVendor(ctx, p.VendorID)
-		return PayableWithLines{Payable: p, Lines: lines, Vendor: vendor}, nil
+	var p Payable
+	if err := s.pool.QueryRow(ctx, hq, id).Scan(
+		&p.ID, &p.Reference, &p.VendorID, &p.VendorName,
+		&p.SubsidiaryID, &p.VendorInvoiceNo, &p.InvoiceDate, &p.DueDate,
+		&p.Description, &p.Status, &p.GrossAmount, &p.WHTAmount,
+		&p.NetPayable, &p.AmountPaid, &p.Outstanding, &p.BankAccountCode,
+		&p.CreatedBy, &p.CreatedByName, &p.ApprovedBy, &p.ApprovedAt,
+		&p.JournalID, &p.PaymentJournalID, &p.CreatedAt, &p.DaysOverdue,
+	); err != nil {
+		return PayableWithLines{}, fmt.Errorf("finance: payable not found: %w", err)
 	}
-	return PayableWithLines{}, nil
+	lines, _ := s.getPayableLines(ctx, id)
+	vendor, _ := s.GetVendor(ctx, p.VendorID)
+	return PayableWithLines{Payable: p, Lines: lines, Vendor: vendor}, nil
 }
 
 func (s *Service) getPayableLines(ctx context.Context, payableID uuid.UUID) ([]PayableLine, error) {

@@ -106,7 +106,7 @@ function CreatePayableModal({ vendors, accounts, onClose }: { vendors: Vendor[];
           invoice_date: invoiceDate,
           due_date: dueDate,
           description,
-          lines: lines.filter(l => l.description && l.unitPrice).map(l => ({
+          lines: lines.filter(l => l.description && l.accountCode && l.unitPrice).map(l => ({
             description: l.description,
             account_code: l.accountCode,
             account_name: l.accountName,

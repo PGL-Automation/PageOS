@@ -232,7 +232,7 @@ function CreateJournalModal({ onClose }: { onClose: () => void }) {
       const payload = {
         date, type, description,
         lines: lines
-          .filter(l => l.accountCode || l.debit || l.credit)
+          .filter(l => l.accountCode && (parseFloat(l.debit) > 0 || parseFloat(l.credit) > 0))
           .map(l => ({
             account_code: l.accountCode,
             account_name: l.accountName,
