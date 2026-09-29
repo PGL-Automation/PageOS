@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import { useAuth } from "@/lib/auth";
-import { Loader2, Wifi, WifiOff, RefreshCw, X, Settings2 } from "lucide-react";
+import { Loader2, Wifi, WifiOff, RefreshCw, X, Settings2, Plus } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import { ConnectivityForm } from "./components/ConnectivityForm";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
@@ -103,10 +104,18 @@ function PullStatusBadge({ status }: { status?: string | null }) {
 export default function ConnectivityPage() {
   const { subsidiary } = useAuth();
   const subsidId = subsidiary?.ID ?? "";
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
 
   const [configOpen, setConfigOpen] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState<AccountWithConnectivity | null>(null);
   const [pullingIds, setPullingIds] = useState<Set<string>>(new Set());
+
+  // Activate bank form state
+  const [activateOpen, setActivateOpen] = useState(false);
+  const [selectedGLCode, setSelectedGLCode] = useState("");
+  const [accountNumber, setAccountNumber] = useState("");
+  const [accountName, setAccountName] = useState("");
 
   async function triggerPull(accountId: string) {
     setPullingIds((prev) => new Set(prev).add(accountId));
@@ -161,6 +170,49 @@ export default function ConnectivityPage() {
     },
   });
 
+  // Available GL bank accounts (not yet registered for reconciliation)
+  const { data: availableGL = [] } = useQuery<{ code: string; name: string }[]>({
+    queryKey: ["recon-available-gl", subsidId],
+    enabled: Boolean(subsidId) && activateOpen,
+    queryFn: async () => {
+      const res = await fetch(
+        `${BASE}/api/v1/reconciliation/accounts/available-gl?subsidiary_id=${subsidId}`,
+        { credentials: "include" }
+      );
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const activateMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedGLCode) throw new Error("Please select a bank");
+      if (!accountNumber) throw new Error("Account number is required");
+      const res = await fetch(`${BASE}/api/v1/reconciliation/accounts`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subsidiary_id: subsidId,
+          gl_account_code: selectedGLCode,
+          account_number: accountNumber,
+          account_name: accountName,
+          currency: "NGN",
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error?.message ?? "Failed to activate bank");
+      return json;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["recon-accounts-connectivity"] });
+      queryClient.invalidateQueries({ queryKey: ["recon-available-gl"] });
+      setActivateOpen(false);
+      setSelectedGLCode(""); setAccountNumber(""); setAccountName("");
+      toast({ title: "Bank activated", description: "Configure Mono/Okra via the Configure button." });
+    },
+    onError: (e) => toast({ title: "Error", description: (e as Error).message }),
+  });
+
   function openConfig(account: AccountWithConnectivity) {
     setSelectedAccount(account);
     setConfigOpen(true);
@@ -178,22 +230,30 @@ export default function ConnectivityPage() {
       {/* Page header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1
-            className="text-[22px] font-bold flex items-center gap-2.5"
-            style={{ color: "var(--pg-text-1)" }}
-          >
-            <Wifi className="w-5 h-5 shrink-0" style={{ color: "var(--pg-text-3)" }} />
-            Bank Connectivity
+          <h1 className="text-[22px] font-bold" style={{ color: "var(--pg-text-1)" }}>
+            Bank Accounts
           </h1>
           <p className="text-[13px] mt-1" style={{ color: "var(--pg-text-3)" }}>
-            Configure Mono, Okra, SFTP or manual feeds per bank account
+            Activate banks from your General Ledger and configure automated statement feeds
           </p>
         </div>
-        {accounts.length > 0 && (
-          <span className="text-[12px] mt-1" style={{ color: "var(--pg-text-3)" }}>
-            {configuredCount}/{accounts.length} account{accounts.length !== 1 ? "s" : ""} configured
-          </span>
-        )}
+        <div className="flex items-center gap-3">
+          {accounts.length > 0 && (
+            <span className="text-[12px]" style={{ color: "var(--pg-text-3)" }}>
+              {configuredCount}/{accounts.length} configured
+            </span>
+          )}
+          <button
+            onClick={() => setActivateOpen(true)}
+            className="inline-flex items-center gap-2 h-8 px-3 rounded-xl text-[13px] font-semibold text-white transition-opacity whitespace-nowrap"
+            style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}
+            onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.opacity = "0.9")}
+            onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.opacity = "1")}
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Activate Bank
+          </button>
+        </div>
       </div>
 
       {/* Accounts card */}
@@ -231,16 +291,20 @@ export default function ConnectivityPage() {
             />
           </div>
         ) : accounts.length === 0 ? (
-          <div className="py-14 text-center text-[13px]" style={{ color: "var(--pg-text-3)" }}>
-            No bank accounts found. Add one on the{" "}
-            <a
-              href="/reconciliation"
-              className="underline"
-              style={{ color: "var(--pg-text-2)" }}
+          <div className="py-16 flex flex-col items-center gap-4" style={{ color: "var(--pg-text-3)" }}>
+            <WifiOff className="w-8 h-8" style={{ color: "var(--pg-text-4)" }} />
+            <div className="text-center">
+              <p className="text-[14px] font-semibold" style={{ color: "var(--pg-text-2)" }}>No banks activated yet</p>
+              <p className="text-[12px] mt-1">Select a bank from your General Ledger to start reconciling.</p>
+            </div>
+            <button
+              onClick={() => setActivateOpen(true)}
+              className="inline-flex items-center gap-2 h-8 px-4 rounded-xl text-[13px] font-semibold text-white"
+              style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}
             >
-              Reconciliation
-            </a>{" "}
-            page first.
+              <Plus className="w-3.5 h-3.5" />
+              Activate First Bank
+            </button>
           </div>
         ) : (
           accounts.map((account, idx) => {
@@ -407,6 +471,135 @@ export default function ConnectivityPage() {
                 />
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Activate Bank Modal ────────────────────────────────────────────── */}
+      {activateOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.5)" }}
+          onClick={(e) => { if (e.target === e.currentTarget) setActivateOpen(false); }}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl shadow-xl"
+            style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}
+          >
+            {/* Header */}
+            <div
+              className="flex items-center justify-between px-5 py-4"
+              style={{ borderBottom: "1px solid var(--pg-row-border)" }}
+            >
+              <div>
+                <p className="text-[15px] font-bold" style={{ color: "var(--pg-text-1)" }}>
+                  Activate Bank for Reconciliation
+                </p>
+                <p className="text-[12px] mt-0.5" style={{ color: "var(--pg-text-3)" }}>
+                  Select from your General Ledger — only registered banks can be reconciled
+                </p>
+              </div>
+              <button onClick={() => setActivateOpen(false)}>
+                <X className="w-4 h-4" style={{ color: "var(--pg-text-3)" }} />
+              </button>
+            </div>
+
+            {/* Form */}
+            <form
+              className="px-5 py-5 flex flex-col gap-4"
+              onSubmit={(e) => { e.preventDefault(); activateMutation.mutate(); }}
+            >
+              {/* GL account selector */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[12px] font-semibold" style={{ color: "var(--pg-text-2)" }}>
+                  Bank (from General Ledger)
+                </label>
+                <select
+                  value={selectedGLCode}
+                  onChange={(e) => setSelectedGLCode(e.target.value)}
+                  required
+                  style={{
+                    height: "36px", padding: "0 10px", borderRadius: "8px",
+                    border: "1px solid var(--pg-card-border)",
+                    background: "var(--pg-card)", color: "var(--pg-text-1)",
+                    fontSize: "13px", outline: "none", width: "100%",
+                  }}
+                >
+                  <option value="">— Select a bank —</option>
+                  {availableGL.map((opt) => (
+                    <option key={opt.code} value={opt.code}>
+                      {opt.code} – {opt.name}
+                    </option>
+                  ))}
+                </select>
+                {availableGL.length === 0 && (
+                  <p className="text-[11px]" style={{ color: "#f59e0b" }}>
+                    All GL bank accounts are already activated.
+                  </p>
+                )}
+              </div>
+
+              {/* Account number */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[12px] font-semibold" style={{ color: "var(--pg-text-2)" }}>
+                  Account Number
+                </label>
+                <input
+                  type="text"
+                  value={accountNumber}
+                  onChange={(e) => setAccountNumber(e.target.value)}
+                  placeholder="0044456789"
+                  required
+                  style={{
+                    height: "36px", padding: "0 10px", borderRadius: "8px",
+                    border: "1px solid var(--pg-card-border)",
+                    background: "var(--pg-card)", color: "var(--pg-text-1)",
+                    fontSize: "13px", outline: "none", width: "100%",
+                    fontFamily: "monospace",
+                  }}
+                />
+              </div>
+
+              {/* Account name (optional) */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[12px] font-semibold" style={{ color: "var(--pg-text-2)" }}>
+                  Account Name <span style={{ color: "var(--pg-text-4)", fontWeight: 400 }}>(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={accountName}
+                  onChange={(e) => setAccountName(e.target.value)}
+                  placeholder="Page Asset Management Limited"
+                  style={{
+                    height: "36px", padding: "0 10px", borderRadius: "8px",
+                    border: "1px solid var(--pg-card-border)",
+                    background: "var(--pg-card)", color: "var(--pg-text-1)",
+                    fontSize: "13px", outline: "none", width: "100%",
+                  }}
+                />
+              </div>
+
+              {/* Actions */}
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setActivateOpen(false)}
+                  className="h-8 px-4 rounded-xl text-[13px] font-semibold"
+                  style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={activateMutation.isPending}
+                  className="inline-flex items-center gap-2 h-8 px-4 rounded-xl text-[13px] font-semibold text-white disabled:opacity-60"
+                  style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}
+                >
+                  {activateMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Activate Bank
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
