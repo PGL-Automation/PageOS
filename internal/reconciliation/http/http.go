@@ -56,6 +56,7 @@ func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 
 	r.Post("/accounts", h.withCap("recon.configure", h.createAccount))
 	r.Get("/accounts", h.withCap("recon.view", h.listAccounts))
+	r.Get("/accounts/available-gl", h.withCap("recon.view", h.listAvailableGL))
 	r.Patch("/accounts/{id}/gl-code", h.withCap("recon.configure", h.setGLCode))
 	r.Get("/accounts/{id}/statements", h.withCap("recon.view", h.listStatements))
 	r.Post("/accounts/{id}/statements", h.withCap("recon.run", h.uploadStatement))
@@ -94,23 +95,48 @@ func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 
 // ── Accounts ──────────────────────────────────────────────────────────────────
 
+// listAvailableGL returns GL bank accounts (1100–1199) not yet registered for
+// reconciliation in this subsidiary — used to populate the "Activate bank" dropdown.
+func (h *Handler) listAvailableGL(w http.ResponseWriter, r *http.Request) {
+	sidStr := r.URL.Query().Get("subsidiary_id")
+	sid, err := uuid.Parse(sidStr)
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "subsidiary_id required")
+		return
+	}
+	opts, err := h.svc.GetAvailableGLAccounts(r.Context(), sid)
+	if err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		return
+	}
+	httpx.JSON(w, http.StatusOK, opts)
+}
+
 func (h *Handler) createAccount(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		SubsidiaryID  uuid.UUID         `json:"subsidiary_id"`
-		BankName      string            `json:"bank_name"`
-		AccountNumber string            `json:"account_number"`
-		AccountName   string            `json:"account_name"`
+		GLAccountCode string            `json:"gl_account_code"` // required — must exist in finance.account
+		AccountNumber string            `json:"account_number"`  // physical bank account number
+		AccountName   string            `json:"account_name"`    // optional — defaults to GL account name
 		Currency      string            `json:"currency"`
-		GLAccountCode string            `json:"gl_account_code"`
 		ColMap        map[string]string `json:"parser_column_map"`
 	}
 	if !decode(w, r, &in) {
 		return
 	}
+	if in.GLAccountCode == "" {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "gl_account_code is required — select a bank from the General Ledger")
+		return
+	}
+	if in.AccountNumber == "" {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "account_number is required")
+		return
+	}
 	if in.Currency == "" {
 		in.Currency = "NGN"
 	}
-	acct, err := h.svc.CreateBankAccount(r.Context(), in.SubsidiaryID, in.BankName, in.AccountNumber, in.AccountName, in.Currency, in.GLAccountCode, in.ColMap)
+	// bank_name is derived from the GL account inside CreateBankAccount.
+	acct, err := h.svc.CreateBankAccount(r.Context(), in.SubsidiaryID, "", in.AccountNumber, in.AccountName, in.Currency, in.GLAccountCode, in.ColMap)
 	if err != nil {
 		httpx.Error(w, http.StatusBadRequest, "create_failed", err.Error())
 		return

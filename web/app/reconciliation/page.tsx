@@ -58,8 +58,8 @@ export default function ReconciliationPage() {
   const ledgerInputRef = useRef<HTMLInputElement>(null);
   const statementInputRef = useRef<HTMLInputElement>(null);
 
-  // Account form
-  const [bankName, setBankName] = useState("");
+  // Account form — GL-driven: user picks from Chart of Accounts, enters physical account number
+  const [selectedGLCode, setSelectedGLCode] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
   const [accountName, setAccountName] = useState("");
 
@@ -98,19 +98,45 @@ export default function ReconciliationPage() {
     },
   });
 
+  // GL bank accounts available for reconciliation (not yet registered)
+  const { data: availableGL = [] } = useQuery<{ code: string; name: string }[]>({
+    queryKey: ["recon-available-gl", subsidId],
+    enabled: Boolean(subsidId) && accountSheet,
+    queryFn: async () => {
+      const res = await fetch(
+        `${BASE}/api/v1/reconciliation/accounts/available-gl?subsidiary_id=${subsidId}`,
+        { credentials: "include" }
+      );
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
   const createAccountMutation = useMutation({
     mutationFn: async () => {
-      const { data, error } = await api.POST("/reconciliation/accounts", {
-        body: { subsidiary_id: subsidId, bank_name: bankName, account_number: accountNumber, account_name: accountName, currency: "NGN" },
+      if (!selectedGLCode) throw new Error("Please select a bank from the General Ledger");
+      if (!accountNumber) throw new Error("Account number is required");
+      const res = await fetch(`${BASE}/api/v1/reconciliation/accounts`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subsidiary_id: subsidId,
+          gl_account_code: selectedGLCode,
+          account_number: accountNumber,
+          account_name: accountName,
+          currency: "NGN",
+        }),
       });
-      if (error || !data) throw new Error("Failed to create account");
-      return data;
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error?.message ?? "Failed to activate bank");
+      return json;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["recon-accounts"] });
+      queryClient.invalidateQueries({ queryKey: ["recon-available-gl"] });
       setAccountSheet(false);
-      setBankName(""); setAccountNumber(""); setAccountName("");
-      toast({ title: "Account Added" });
+      setSelectedGLCode(""); setAccountNumber(""); setAccountName("");
+      toast({ title: "Bank Activated for Reconciliation" });
     },
     onError: (e) => toast({ title: "Error", description: (e as Error).message, variant: "destructive" }),
   });
@@ -473,13 +499,46 @@ export default function ReconciliationPage() {
       <Sheet open={accountSheet} onOpenChange={setAccountSheet}>
         <SheetContent>
           <SheetHeader>
-            <SheetTitle>Add Bank Account</SheetTitle>
-            <SheetDescription>Register a bank account for reconciliation. You can configure the CSV column map after creation.</SheetDescription>
+            <SheetTitle>Activate Bank for Reconciliation</SheetTitle>
+            <SheetDescription>Select a bank from your General Ledger and provide the physical account number. The GL link is set automatically.</SheetDescription>
           </SheetHeader>
           <form style={{ marginTop: "24px", display: "flex", flexDirection: "column", gap: "16px" }} onSubmit={e => { e.preventDefault(); createAccountMutation.mutate(); }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}><Label>Bank Name</Label><Input placeholder="GTBank" value={bankName} onChange={e => setBankName(e.target.value)} required /></div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}><Label>Account Number</Label><Input placeholder="0123456789" value={accountNumber} onChange={e => setAccountNumber(e.target.value)} required /></div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}><Label>Account Name</Label><Input placeholder="Page Capital Ltd" value={accountName} onChange={e => setAccountName(e.target.value)} required /></div>
+            {/* Bank selector — sourced from Chart of Accounts (1100–1199 range) */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              <Label>Bank</Label>
+              <p style={{ fontSize: "11px", color: "var(--pg-text-3)", marginTop: "-2px" }}>
+                Select from your Chart of Accounts. Only banks not yet registered are shown.
+              </p>
+              <select
+                value={selectedGLCode}
+                onChange={e => setSelectedGLCode(e.target.value)}
+                required
+                style={{
+                  height: "36px", padding: "0 10px", borderRadius: "8px",
+                  border: "1px solid var(--pg-card-border)",
+                  background: "var(--pg-card)", color: "var(--pg-text-1)",
+                  fontSize: "13px", outline: "none",
+                }}
+              >
+                <option value="">— Select a bank —</option>
+                {availableGL.map(opt => (
+                  <option key={opt.code} value={opt.code}>{opt.code} – {opt.name}</option>
+                ))}
+              </select>
+              {availableGL.length === 0 && (
+                <p style={{ fontSize: "11px", color: "#f59e0b" }}>
+                  All GL bank accounts are already registered. Add new banks via Finance → General Ledger first.
+                </p>
+              )}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              <Label>Account Number</Label>
+              <Input placeholder="0123456789" value={accountNumber} onChange={e => setAccountNumber(e.target.value)} required />
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              <Label>Account Name <span style={{ color: "var(--pg-text-4)", fontSize: "11px" }}>(optional — defaults to GL account name)</span></Label>
+              <Input placeholder="Page Asset Management Limited" value={accountName} onChange={e => setAccountName(e.target.value)} />
+            </div>
             <button
               type="submit"
               disabled={createAccountMutation.isPending}

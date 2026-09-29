@@ -129,6 +129,17 @@ func NewService(db *pgxpool.Pool, a *audit.Writer) *Service {
 // ── Bank accounts ─────────────────────────────────────────────────────────────
 
 func (s *Service) CreateBankAccount(ctx context.Context, subsidiaryID uuid.UUID, bankName, accountNumber, accountName, currency, glAccountCode string, colMap map[string]string) (BankAccount, error) {
+	// If a GL account code is provided, derive the bank name from the GL account
+	// so the reconciliation record stays in sync with the Chart of Accounts.
+	if glAccountCode != "" {
+		var glName string
+		if err := s.store.Pool().QueryRow(ctx,
+			`SELECT name FROM finance.account WHERE code = $1`, glAccountCode,
+		).Scan(&glName); err == nil && glName != "" {
+			bankName = glName
+		}
+	}
+
 	colMapJSON := []byte("{}")
 	if len(colMap) > 0 {
 		colMapJSON, _ = json.Marshal(colMap)
@@ -207,6 +218,51 @@ func (s *Service) SetGLAccountCode(ctx context.Context, bankAccountID uuid.UUID,
 		code, bankAccountID,
 	)
 	return err
+}
+
+// GLBankOption is a GL account available to be activated for reconciliation.
+type GLBankOption struct {
+	Code string `json:"code"`
+	Name string `json:"name"`
+}
+
+// GetAvailableGLAccounts returns finance.account entries in the 1100–1199 bank
+// range that are not yet registered as a reconciliation bank account for the
+// given subsidiary. Used to populate the "Activate bank" dropdown so users can
+// only select banks that are already in the Chart of Accounts.
+func (s *Service) GetAvailableGLAccounts(ctx context.Context, subsidiaryID uuid.UUID) ([]GLBankOption, error) {
+	const q = `
+		SELECT a.code, a.name
+		FROM   finance.account a
+		WHERE  a.code ~ '^\d+$'
+		  AND  a.code::int BETWEEN 1100 AND 1199
+		  AND  a.is_header  = false
+		  AND  a.is_active  = true
+		  AND  NOT EXISTS (
+		           SELECT 1 FROM reconciliation.bank_account ra
+		           WHERE  ra.gl_account_code = a.code
+		             AND  ra.subsidiary_id   = $1
+		             AND  ra.status          = 'active'
+		       )
+		ORDER  BY a.code::int
+	`
+	rows, err := s.store.Pool().Query(ctx, q, subsidiaryID)
+	if err != nil {
+		return nil, fmt.Errorf("reconciliation: available gl accounts: %w", err)
+	}
+	defer rows.Close()
+	var out []GLBankOption
+	for rows.Next() {
+		var o GLBankOption
+		if err := rows.Scan(&o.Code, &o.Name); err != nil {
+			return nil, fmt.Errorf("reconciliation: scan gl option: %w", err)
+		}
+		out = append(out, o)
+	}
+	if out == nil {
+		out = []GLBankOption{}
+	}
+	return out, rows.Err()
 }
 
 func (s *Service) ListBankAccounts(ctx context.Context, subsidiaryID uuid.UUID) ([]BankAccount, error) {
