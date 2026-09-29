@@ -50,7 +50,6 @@ export default function ReconciliationPage() {
   const { subsidiary } = useAuth();
   const subsidId = subsidiary?.ID ?? "";
 
-  const [accountSheet, setAccountSheet] = useState(false);
   const [runSheet, setRunSheet] = useState(false);
   const [syncingGLFor, setSyncingGLFor] = useState<string | null>(null);
   const [uploadingLedgerFor, setUploadingLedgerFor] = useState<string | null>(null);
@@ -58,10 +57,6 @@ export default function ReconciliationPage() {
   const ledgerInputRef = useRef<HTMLInputElement>(null);
   const statementInputRef = useRef<HTMLInputElement>(null);
 
-  // Account form — GL-driven: user picks from Chart of Accounts, enters physical account number
-  const [selectedGLCode, setSelectedGLCode] = useState("");
-  const [accountNumber, setAccountNumber] = useState("");
-  const [accountName, setAccountName] = useState("");
 
   // Run form
   const [selectedAccountId, setSelectedAccountId] = useState("");
@@ -99,48 +94,6 @@ export default function ReconciliationPage() {
   });
 
   // GL bank accounts available for reconciliation (not yet registered)
-  const { data: availableGL = [] } = useQuery<{ code: string; name: string }[]>({
-    queryKey: ["recon-available-gl", subsidId],
-    enabled: Boolean(subsidId) && accountSheet,
-    queryFn: async () => {
-      const res = await fetch(
-        `${BASE}/api/v1/reconciliation/accounts/available-gl?subsidiary_id=${subsidId}`,
-        { credentials: "include" }
-      );
-      if (!res.ok) return [];
-      return res.json();
-    },
-  });
-
-  const createAccountMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedGLCode) throw new Error("Please select a bank from the General Ledger");
-      if (!accountNumber) throw new Error("Account number is required");
-      const res = await fetch(`${BASE}/api/v1/reconciliation/accounts`, {
-        method: "POST", credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          subsidiary_id: subsidId,
-          gl_account_code: selectedGLCode,
-          account_number: accountNumber,
-          account_name: accountName,
-          currency: "NGN",
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error?.message ?? "Failed to activate bank");
-      return json;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["recon-accounts"] });
-      queryClient.invalidateQueries({ queryKey: ["recon-available-gl"] });
-      setAccountSheet(false);
-      setSelectedGLCode(""); setAccountNumber(""); setAccountName("");
-      toast({ title: "Bank Activated for Reconciliation" });
-    },
-    onError: (e) => toast({ title: "Error", description: (e as Error).message, variant: "destructive" }),
-  });
-
   const syncGLMutation = useMutation({
     mutationFn: async ({ accountId, from, to }: { accountId: string; from: string; to: string }) => {
       const res = await fetch(
@@ -260,18 +213,18 @@ export default function ReconciliationPage() {
           </p>
         </div>
         <div style={{ display: "flex", gap: "8px" }}>
-          <button
-            onClick={() => setAccountSheet(true)}
+          <a
+            href="/reconciliation/connectivity"
             style={{
               display: "inline-flex", alignItems: "center", gap: "6px",
               border: "1px solid var(--pg-card-border)", background: "transparent",
               borderRadius: "12px", padding: "6px 14px", fontSize: "13px",
-              color: "var(--pg-text-1)", cursor: "pointer",
+              color: "var(--pg-text-1)", cursor: "pointer", textDecoration: "none",
             }}
           >
-            <PlusCircle style={{ width: "14px", height: "14px" }} />
-            Add Bank Account
-          </button>
+            <BookOpen style={{ width: "14px", height: "14px" }} />
+            Bank Accounts
+          </a>
           <button
             onClick={() => setRunSheet(true)}
             disabled={accounts.length === 0}
@@ -490,67 +443,6 @@ export default function ReconciliationPage() {
             >
               {uploadStatementMutation.isPending ? <Loader2 style={{ width: "16px", height: "16px" }} /> : <Upload style={{ width: "16px", height: "16px" }} />}
               Upload Statement
-            </button>
-          </form>
-        </SheetContent>
-      </Sheet>
-
-      {/* Add Account Sheet */}
-      <Sheet open={accountSheet} onOpenChange={setAccountSheet}>
-        <SheetContent>
-          <SheetHeader>
-            <SheetTitle>Activate Bank for Reconciliation</SheetTitle>
-            <SheetDescription>Select a bank from your General Ledger and provide the physical account number. The GL link is set automatically.</SheetDescription>
-          </SheetHeader>
-          <form style={{ marginTop: "24px", display: "flex", flexDirection: "column", gap: "16px" }} onSubmit={e => { e.preventDefault(); createAccountMutation.mutate(); }}>
-            {/* Bank selector — sourced from Chart of Accounts (1100–1199 range) */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-              <Label>Bank</Label>
-              <p style={{ fontSize: "11px", color: "var(--pg-text-3)", marginTop: "-2px" }}>
-                Select from your Chart of Accounts. Only banks not yet registered are shown.
-              </p>
-              <select
-                value={selectedGLCode}
-                onChange={e => setSelectedGLCode(e.target.value)}
-                required
-                style={{
-                  height: "36px", padding: "0 10px", borderRadius: "8px",
-                  border: "1px solid var(--pg-card-border)",
-                  background: "var(--pg-card)", color: "var(--pg-text-1)",
-                  fontSize: "13px", outline: "none",
-                }}
-              >
-                <option value="">— Select a bank —</option>
-                {availableGL.map(opt => (
-                  <option key={opt.code} value={opt.code}>{opt.code} – {opt.name}</option>
-                ))}
-              </select>
-              {availableGL.length === 0 && (
-                <p style={{ fontSize: "11px", color: "#f59e0b" }}>
-                  All GL bank accounts are already registered. Add new banks via Finance → General Ledger first.
-                </p>
-              )}
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-              <Label>Account Number</Label>
-              <Input placeholder="0123456789" value={accountNumber} onChange={e => setAccountNumber(e.target.value)} required />
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-              <Label>Account Name <span style={{ color: "var(--pg-text-4)", fontSize: "11px" }}>(optional — defaults to GL account name)</span></Label>
-              <Input placeholder="Page Asset Management Limited" value={accountName} onChange={e => setAccountName(e.target.value)} />
-            </div>
-            <button
-              type="submit"
-              disabled={createAccountMutation.isPending}
-              style={{
-                width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "8px",
-                background: "linear-gradient(135deg,#FF6600,#E05500)", border: "none",
-                borderRadius: "12px", padding: "8px 16px", fontSize: "13px",
-                color: "#fff", cursor: "pointer", opacity: createAccountMutation.isPending ? 0.7 : 1,
-              }}
-            >
-              {createAccountMutation.isPending ? <Loader2 style={{ width: "16px", height: "16px" }} /> : null}
-              Add Account
             </button>
           </form>
         </SheetContent>
