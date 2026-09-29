@@ -144,6 +144,19 @@ func (s *Service) CreateBankAccount(ctx context.Context, subsidiaryID uuid.UUID,
 	if err != nil {
 		return BankAccount{}, fmt.Errorf("reconciliation: create bank account: %w", err)
 	}
+
+	// Auto-assign a GL account code when none is provided.
+	// Finds the next available code in the 1100–1199 bank-account range of the
+	// Chart of Accounts and creates a matching ASSET entry for this bank.
+	if glAccountCode == "" {
+		glAccountCode, err = s.autoCreateGLAccount(ctx, bankName)
+		if err != nil {
+			// Non-fatal: bank account is created but GL linkage is missing.
+			// Operator can set it manually via SetGLAccountCode.
+			_ = err
+		}
+	}
+
 	// Persist the GL account code (added in migration 00033; sqlc model predates it).
 	if _, err := s.store.Pool().Exec(ctx,
 		`UPDATE reconciliation.bank_account SET gl_account_code = $1 WHERE id = $2`,
@@ -154,6 +167,37 @@ func (s *Service) CreateBankAccount(ctx context.Context, subsidiaryID uuid.UUID,
 	acc := toBankAccount(row)
 	acc.GLAccountCode = glAccountCode
 	return acc, nil
+}
+
+// autoCreateGLAccount finds the next unused numeric code in the 1100–1199
+// range of finance.account and inserts a new ASSET bank account entry for
+// the given bank name. Returns the assigned code.
+func (s *Service) autoCreateGLAccount(ctx context.Context, bankName string) (string, error) {
+	// Find the highest existing numeric code in the 1100–1199 range.
+	var maxCode int
+	_ = s.store.Pool().QueryRow(ctx, `
+		SELECT COALESCE(MAX(code::int), 1109)
+		FROM   finance.account
+		WHERE  code ~ '^\d+$'
+		  AND  code::int BETWEEN 1100 AND 1199
+		  AND  is_header = false
+	`).Scan(&maxCode)
+
+	nextCode := fmt.Sprintf("%d", maxCode+1)
+	if maxCode+1 > 1199 {
+		return "", fmt.Errorf("reconciliation: no available GL codes in 1100–1199 range")
+	}
+
+	_, err := s.store.Pool().Exec(ctx, `
+		INSERT INTO finance.account
+		    (code, name, account_type, account_group, parent_code, normal_balance, is_header)
+		VALUES ($1, $2, 'ASSET', 'Current Assets', '1100', 'DR', false)
+		ON CONFLICT (code) DO NOTHING
+	`, nextCode, "Cash at Bank – "+bankName)
+	if err != nil {
+		return "", fmt.Errorf("reconciliation: create GL account %s: %w", nextCode, err)
+	}
+	return nextCode, nil
 }
 
 // SetGLAccountCode updates the gl_account_code on an existing bank account.
