@@ -125,6 +125,13 @@ export default function RunPage() {
   // Review state
   const [reviewNotes, setReviewNotes] = useState("");
 
+  // Pagination & search
+  const PAGE_SIZE = 50;
+  const [tabPage, setTabPage] = useState(1);
+  const [bankSearch, setBankSearch] = useState("");
+  const [bankWorkspacePage, setBankWorkspacePage] = useState(1);
+  const [internalSearch, setInternalSearch] = useState("");
+
   const { data, isLoading } = useQuery({
     queryKey: ["recon-run", runId],
     queryFn: async () => {
@@ -165,6 +172,9 @@ export default function RunPage() {
       return ((await res.json()) ?? []) as FullMatchRow[];
     },
   });
+
+  // Reset to page 1 when tab changes
+  const handleTabChange = (tab: Tab) => { setActiveTab(tab); setTabPage(1); };
 
   const runStatus = data?.run?.status ?? "";
   const isClosed = runStatus === "closed";
@@ -346,6 +356,14 @@ export default function RunPage() {
   const unmatchedInternalRows = fullRows.filter(r => r.status === "unmatched_internal");
   const adjustmentRows = fullRows.filter(r => r.status === "adjustment");
 
+  // Pagination for the bottom tab panel
+  const activeTabRows = activeTab === "Matched" ? matchedRows
+    : activeTab === "Unmatched Bank" ? unmatchedBankRows
+    : activeTab === "Unmatched Internal" ? unmatchedInternalRows
+    : adjustmentRows;
+  const totalTabPages = Math.ceil(activeTabRows.length / PAGE_SIZE);
+  const pagedTabRows = activeTabRows.slice((tabPage - 1) * PAGE_SIZE, tabPage * PAGE_SIZE) as typeof fullRows;
+
   const metrics = [
     { label: "Bank Lines", value: sum?.total_bank_lines ?? 0, color: "var(--pg-text-1)" },
     { label: "Internal Txns", value: sum?.total_internal_txns ?? 0, color: "var(--pg-text-1)" },
@@ -445,6 +463,56 @@ export default function RunPage() {
         </div>
       </div>
 
+      {/* Closed run notice */}
+      {isClosed && (
+        <div style={{
+          background: "rgba(34,197,94,0.07)", border: "1px solid rgba(34,197,94,0.3)",
+          borderRadius: "12px", padding: "12px 20px",
+          display: "flex", alignItems: "center", gap: "12px",
+        }}>
+          <CheckCircle2 style={{ width: "16px", height: "16px", color: "#15803D", flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
+            <p style={{ fontSize: "13px", fontWeight: 600, color: "#15803D" }}>Reconciliation closed</p>
+            <p style={{ fontSize: "12px", color: "var(--pg-text-3)", marginTop: "2px" }}>
+              This run is sealed. Use the tabs below to view matched items, posted journal entries, and adjustments.
+            </p>
+          </div>
+          <button onClick={downloadExport} disabled={exporting} style={{
+            display: "inline-flex", alignItems: "center", gap: "6px",
+            border: "1px solid var(--pg-card-border)", background: "transparent",
+            borderRadius: "10px", padding: "6px 14px", fontSize: "12px",
+            color: "var(--pg-text-1)", cursor: exporting ? "not-allowed" : "pointer",
+          }}>
+            {exporting ? <Loader2 style={{ width: "13px", height: "13px" }} /> : <Download style={{ width: "13px", height: "13px" }} />}
+            Export Excel
+          </button>
+        </div>
+      )}
+
+      {/* How-to guide for open runs */}
+      {!isClosed && !isPendingReview && (sum?.unmatched_bank ?? 0) > 0 && (
+        <div style={{
+          background: "rgba(255,102,0,0.05)", border: "1px solid rgba(255,102,0,0.2)",
+          borderRadius: "12px", padding: "12px 20px",
+          display: "flex", alignItems: "center", gap: "20px",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <span style={{ width: "20px", height: "20px", borderRadius: "50%", background: "#FF6600", color: "#fff", fontSize: "11px", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>1</span>
+            <span style={{ fontSize: "12px", color: "var(--pg-text-2)" }}>Select <strong>Unmatched Bank</strong> tab → click <strong>Classify</strong> on each item</span>
+          </div>
+          <span style={{ color: "var(--pg-text-3)", fontSize: "16px" }}>→</span>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <span style={{ width: "20px", height: "20px", borderRadius: "50%", background: "#FF6600", color: "#fff", fontSize: "11px", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>2</span>
+            <span style={{ fontSize: "12px", color: "var(--pg-text-2)" }}>Click <strong>Post JE</strong> to create a draft journal entry in Finance</span>
+          </div>
+          <span style={{ color: "var(--pg-text-3)", fontSize: "16px" }}>→</span>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <span style={{ width: "20px", height: "20px", borderRadius: "50%", background: "#FF6600", color: "#fff", fontSize: "11px", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>3</span>
+            <span style={{ fontSize: "12px", color: "var(--pg-text-2)" }}>When all resolved → <strong>Submit for Review</strong></span>
+          </div>
+        </div>
+      )}
+
       {/* Summary metric chips */}
       <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
         {metrics.map(({ label, value, color }) => (
@@ -467,8 +535,14 @@ export default function RunPage() {
             background: "var(--pg-card)", border: "1px solid var(--pg-card-border)",
             borderRadius: "16px", overflow: "hidden",
           }}>
-            <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--pg-card-border)" }}>
-              <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--pg-text-1)" }}>Unmatched Bank Lines</span>
+            <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--pg-card-border)", display: "flex", alignItems: "center", gap: "10px" }}>
+              <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--pg-text-1)", flex: 1 }}>Unmatched Bank Lines</span>
+              <Input
+                value={bankSearch}
+                onChange={e => { setBankSearch(e.target.value); setBankWorkspacePage(1); }}
+                placeholder="Search narration…"
+                style={{ height: "26px", fontSize: "11px", width: "160px" }}
+              />
             </div>
             {/* Column headers */}
             <div style={{
@@ -480,11 +554,19 @@ export default function RunPage() {
                 <span key={i} style={{ ...colLabel, textAlign: i >= 2 && i < 4 ? "right" : "left" }}>{h}</span>
               ))}
             </div>
-            {bankLines.length === 0 ? (
-              <div style={{ padding: "32px 16px", textAlign: "center", fontSize: "12px", color: "var(--pg-text-3)" }}>
-                All bank lines resolved
-              </div>
-            ) : (bankLines as Array<{ id: string; txn_date: string; narration: string; debit_kobo: number; credit_kobo: number }>).map(line => {
+            {(() => {
+              type BankLine = { id: string; txn_date: string; narration: string; debit_kobo: number; credit_kobo: number };
+              const allLines = bankLines as BankLine[];
+              const filtered = bankSearch ? allLines.filter(l => l.narration?.toLowerCase().includes(bankSearch.toLowerCase())) : allLines;
+              const totalBankPages = Math.ceil(filtered.length / PAGE_SIZE);
+              const visible = filtered.slice((bankWorkspacePage - 1) * PAGE_SIZE, bankWorkspacePage * PAGE_SIZE);
+              if (filtered.length === 0) return (
+                <div style={{ padding: "32px 16px", textAlign: "center", fontSize: "12px", color: "var(--pg-text-3)" }}>
+                  {bankSearch ? "No matching bank lines" : "All bank lines resolved"}
+                </div>
+              );
+              return (<>
+              {visible.map((line) => {
               const isSel = selectedBankLine === line.id;
               return (
                 <div
@@ -515,7 +597,22 @@ export default function RunPage() {
                   </div>
                 </div>
               );
-            })}
+              })}
+              {totalBankPages > 1 && (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 14px", borderTop: "1px solid var(--pg-row-border)" }}>
+                  <span style={{ fontSize: "11px", color: "var(--pg-text-3)" }}>
+                    {(bankWorkspacePage - 1) * PAGE_SIZE + 1}–{Math.min(bankWorkspacePage * PAGE_SIZE, filtered.length)} of {filtered.length}
+                  </span>
+                  <div style={{ display: "flex", gap: "6px" }}>
+                    <button onClick={() => setBankWorkspacePage(p => Math.max(1, p - 1))} disabled={bankWorkspacePage === 1}
+                      style={{ fontSize: "11px", padding: "2px 8px", border: "1px solid var(--pg-card-border)", borderRadius: "6px", background: "transparent", cursor: bankWorkspacePage === 1 ? "not-allowed" : "pointer", opacity: bankWorkspacePage === 1 ? 0.4 : 1 }}>← Prev</button>
+                    <button onClick={() => setBankWorkspacePage(p => Math.min(totalBankPages, p + 1))} disabled={bankWorkspacePage === totalBankPages}
+                      style={{ fontSize: "11px", padding: "2px 8px", border: "1px solid var(--pg-card-border)", borderRadius: "6px", background: "transparent", cursor: bankWorkspacePage === totalBankPages ? "not-allowed" : "pointer", opacity: bankWorkspacePage === totalBankPages ? 0.4 : 1 }}>Next →</button>
+                  </div>
+                </div>
+              )}
+              </>);
+            })()}
           </div>
 
           {/* Unmatched internal transactions */}
@@ -636,7 +733,7 @@ export default function RunPage() {
               return (
                 <button
                   key={tab}
-                  onClick={() => setActiveTab(tab)}
+                  onClick={() => handleTabChange(tab)}
                   style={{
                     background: "none", border: "none", cursor: "pointer",
                     padding: "12px 16px", fontSize: "13px",
@@ -674,9 +771,9 @@ export default function RunPage() {
                   <span key={h} style={{ ...colLabel, textAlign: i === 2 || i === 5 ? "right" : "left" }}>{h}</span>
                 ))}
               </div>
-              {matchedRows.length === 0 ? (
+              {activeTabRows.length === 0 ? (
                 <div style={{ padding: "32px", textAlign: "center", fontSize: "12px", color: "var(--pg-text-3)" }}>No matched rows</div>
-              ) : matchedRows.map(m => (
+              ) : pagedTabRows.map(m => (
                 <div
                   key={m.match_id}
                   onMouseEnter={() => setHoveredRow(m.match_id)}
@@ -737,9 +834,9 @@ export default function RunPage() {
                   <span key={i} style={{ ...colLabel, textAlign: i >= 3 && i < 5 ? "right" : "left" }}>{h}</span>
                 ))}
               </div>
-              {unmatchedBankRows.length === 0 ? (
+              {activeTabRows.length === 0 ? (
                 <div style={{ padding: "32px", textAlign: "center", fontSize: "12px", color: "var(--pg-text-3)" }}>No unmatched bank lines</div>
-              ) : unmatchedBankRows.map(m => (
+              ) : pagedTabRows.map(m => (
                 <div
                   key={m.match_id}
                   onMouseEnter={() => setHoveredRow(m.match_id)}
@@ -820,9 +917,9 @@ export default function RunPage() {
                   <span key={h} style={{ ...colLabel, textAlign: i === 4 ? "right" : "left" }}>{h}</span>
                 ))}
               </div>
-              {unmatchedInternalRows.length === 0 ? (
-                <div style={{ padding: "32px", textAlign: "center", fontSize: "12px", color: "var(--pg-text-3)" }}>No unmatched internal rows</div>
-              ) : unmatchedInternalRows.map(m => (
+              {activeTabRows.length === 0 ? (
+                <div style={{ padding: "32px", textAlign: "center", fontSize: "12px", color: "var(--pg-text-3)" }}>No unmatched GL rows</div>
+              ) : pagedTabRows.map(m => (
                 <div
                   key={m.match_id}
                   onMouseEnter={() => setHoveredRow(m.match_id)}
@@ -856,9 +953,9 @@ export default function RunPage() {
                   <span key={h} style={{ ...colLabel, textAlign: i === 3 ? "right" : "left" }}>{h}</span>
                 ))}
               </div>
-              {adjustmentRows.length === 0 ? (
+              {activeTabRows.length === 0 ? (
                 <div style={{ padding: "32px", textAlign: "center", fontSize: "12px", color: "var(--pg-text-3)" }}>No adjustments</div>
-              ) : adjustmentRows.map(m => {
+              ) : pagedTabRows.map(m => {
                 const isBank = Boolean(m.bank_line_id);
                 return (
                   <div
@@ -896,6 +993,32 @@ export default function RunPage() {
                 );
               })}
             </>
+          )}
+
+          {/* Shared pagination footer for all tabs */}
+          {totalTabPages > 1 && (
+            <div style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: "10px 20px", borderTop: "1px solid var(--pg-card-border)",
+              background: "var(--pg-muted-bg)",
+            }}>
+              <span style={{ fontSize: "11px", color: "var(--pg-text-3)" }}>
+                Showing {(tabPage - 1) * PAGE_SIZE + 1}–{Math.min(tabPage * PAGE_SIZE, activeTabRows.length)} of {activeTabRows.length} items
+              </span>
+              <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                <button onClick={() => setTabPage(p => Math.max(1, p - 1))} disabled={tabPage === 1}
+                  style={{ fontSize: "12px", padding: "4px 12px", border: "1px solid var(--pg-card-border)", borderRadius: "8px", background: "transparent", cursor: tabPage === 1 ? "not-allowed" : "pointer", opacity: tabPage === 1 ? 0.4 : 1, color: "var(--pg-text-1)" }}>
+                  ← Prev
+                </button>
+                <span style={{ fontSize: "12px", color: "var(--pg-text-3)", minWidth: "80px", textAlign: "center" }}>
+                  Page {tabPage} of {totalTabPages}
+                </span>
+                <button onClick={() => setTabPage(p => Math.min(totalTabPages, p + 1))} disabled={tabPage === totalTabPages}
+                  style={{ fontSize: "12px", padding: "4px 12px", border: "1px solid var(--pg-card-border)", borderRadius: "8px", background: "transparent", cursor: tabPage === totalTabPages ? "not-allowed" : "pointer", opacity: tabPage === totalTabPages ? 0.4 : 1, color: "var(--pg-text-1)" }}>
+                  Next →
+                </button>
+              </div>
+            </div>
           )}
         </div>
       )}
