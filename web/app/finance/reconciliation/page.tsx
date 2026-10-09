@@ -900,22 +900,32 @@ export default function ReconciliationPage() {
     },
     onSuccess: () => {
       setClassifySheet(false);
-      toast({ title: "Classified", description: "Now click Post JE to create the journal entry." });
+      queryClient.invalidateQueries({ queryKey: ["recon-full", selectedRunId] });
+      toast({ title: "Classified — now click Post JE", description: "The DR/CR accounts are set. Click Post JE on the same row to create the journal entry." });
     },
     onError: (e) => toast({ title: "Classify Failed", description: (e as Error).message, variant: "destructive" }),
   });
 
   // Post a journal entry from a classified bank-not-in-GL match
   async function postJE(matchId: string) {
+    if (!selectedRunId) return;
     setPostingJEId(matchId);
     try {
-      await reconFetch(`/runs/${selectedRunId}/matches/${matchId}/post-journal`, {
+      const jh = await reconFetch(`/runs/${selectedRunId}/matches/${matchId}/post-journal`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
-      });
-      toast({ title: "Journal Created", description: "Draft journal entry created in Finance → Journals." });
+      }) as { id?: string; reference?: string };
       queryClient.invalidateQueries({ queryKey: ["recon-full", selectedRunId] });
+      toast({
+        title: "Journal Entry Created",
+        description: `Draft journal ${jh?.reference ?? ""} created. Go to Finance → Journals to review and post it.`,
+      });
     } catch (e) {
-      toast({ title: "Post Failed", description: (e as Error).message, variant: "destructive" });
+      const msg = (e as Error).message;
+      toast({
+        title: "Post JE Failed",
+        description: msg.includes("classify") ? "You must classify this item first before posting." : msg,
+        variant: "destructive",
+      });
     } finally {
       setPostingJEId(null);
     }

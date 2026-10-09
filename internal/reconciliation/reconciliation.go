@@ -210,7 +210,8 @@ func (s *Service) CreateJournalFromBankLine(ctx context.Context, runID, matchID,
 		journalID   *uuid.UUID
 	)
 	err := s.store.Pool().QueryRow(ctx, `
-		SELECT posting_type, dr_gl_code, cr_gl_code, notes, bank_line_id, journal_id
+		SELECT COALESCE(posting_type,''), COALESCE(dr_gl_code,''), COALESCE(cr_gl_code,''),
+		       COALESCE(notes,''), bank_line_id, journal_id
 		FROM   reconciliation.reconciliation_match
 		WHERE  id = $1 AND run_id = $2
 	`, matchID, runID).Scan(&postingType, &drGLCode, &crGLCode, &notes, &bankLineID, &journalID)
