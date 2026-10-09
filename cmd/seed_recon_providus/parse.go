@@ -3,12 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
-	"math"
 	"os"
-	"strings"
 	"time"
 
-	"github.com/extrame/xls"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -16,114 +13,14 @@ import (
 	"github.com/pagegroup/pageos/internal/reconciliation"
 )
 
-// parseBankStatement reads the Providus bank statement — supports both
-// .xlsx (excelize) and the old .xls binary format (extrame/xls).
+// parseBankStatement reads the Providus bank statement Excel (.xlsx).
 func parseBankStatement(path string) ([]reconciliation.ParsedLine, error) {
-	if strings.HasSuffix(strings.ToLower(path), ".xls") {
-		return parseBankStatementXLS(path)
-	}
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open %s: %w", path, err)
 	}
 	defer f.Close()
 	return reconciliation.ProvidusStatementParser{}.Parse(f)
-}
-
-// parseBankStatementXLS reads an old Excel 97-2003 .xls bank statement.
-// It scans sheets for the row containing "Transaction Date" then parses data rows.
-func parseBankStatementXLS(path string) ([]reconciliation.ParsedLine, error) {
-	wb, err := xls.Open(path, "utf-8")
-	if err != nil {
-		return nil, fmt.Errorf("open xls %s: %w", path, err)
-	}
-
-	sheet := wb.GetSheet(0)
-	if sheet == nil {
-		return nil, fmt.Errorf("xls: no sheets found in %s", path)
-	}
-
-	// Find the header row containing "Transaction Date".
-	headerRow := -1
-	var dateCol, narrationCol, debitCol, creditCol, balanceCol, refCol int
-	dateCol, narrationCol, debitCol, creditCol, balanceCol, refCol = -1, -1, -1, -1, -1, -1
-
-	for i := 0; i <= int(sheet.MaxRow); i++ {
-		row := sheet.Row(i)
-		if row == nil {
-			continue
-		}
-		for j := 0; j < row.LastCol(); j++ {
-			cell := strings.TrimSpace(row.Col(j))
-			switch cell {
-			case "Transaction Date":
-				dateCol = j
-				headerRow = i
-			case "Transaction Details":
-				narrationCol = j
-			case "Debit Amount":
-				debitCol = j
-			case "Credit Amount":
-				creditCol = j
-			case "Current Balance":
-				balanceCol = j
-			case "DOC-NUM":
-				refCol = j
-			}
-		}
-		if headerRow >= 0 {
-			break
-		}
-	}
-	if headerRow < 0 || dateCol < 0 {
-		return nil, fmt.Errorf("xls: could not find 'Transaction Date' header in %s", path)
-	}
-
-	var lines []reconciliation.ParsedLine
-	for i := headerRow + 1; i <= int(sheet.MaxRow); i++ {
-		row := sheet.Row(i)
-		if row == nil {
-			continue
-		}
-
-		dateStr := strings.TrimSpace(row.Col(dateCol))
-		if dateStr == "" {
-			continue
-		}
-		txnDate, err := reconciliation.ParseDate(dateStr)
-		if err != nil {
-			continue
-		}
-
-		pl := reconciliation.ParsedLine{
-			TxnDate:    txnDate,
-			DebitKobo:  xlsAmount(row, debitCol),
-			CreditKobo: xlsAmount(row, creditCol),
-			Reference:  strings.TrimSpace(row.Col(refCol)),
-			Narration:  strings.TrimSpace(row.Col(narrationCol)),
-		}
-		if bal := xlsAmount(row, balanceCol); bal != 0 {
-			pl.BalanceKobo = &bal
-		}
-		lines = append(lines, pl)
-	}
-	return lines, nil
-}
-
-func xlsAmount(row *xls.Row, col int) int64 {
-	if col < 0 || col >= row.LastCol() {
-		return 0
-	}
-	s := strings.TrimSpace(row.Col(col))
-	s = strings.ReplaceAll(s, ",", "")
-	if s == "" || s == "-" {
-		return 0
-	}
-	var f float64
-	if _, err := fmt.Sscanf(s, "%f", &f); err != nil {
-		return 0
-	}
-	return int64(math.Round(f * 100))
 }
 
 // parseGLLedger reads the Providus GL ledger Excel.

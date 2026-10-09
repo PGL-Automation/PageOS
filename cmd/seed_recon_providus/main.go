@@ -33,7 +33,9 @@ const (
 	providusNUBAN = "5401732286"
 
 	// Paths relative to working directory (/opt/pageos on the VPS).
-	bankStmFile  = "files/STATEMENT - 2026-09-30T135049.445 (1).xls"
+	// Sept bank statement (xlsx — covers 01/09/2026 to 29/09/2026).
+	bankStmFile  = "files/Providus_client_bank Stm Sept 29th (2).xlsx"
+	// GL ledger covers Apr–Sept 2026 in full.
 	glLedgerFile = "files/Providus CLient_Ledger (1).xlsx"
 )
 
@@ -106,6 +108,9 @@ func main() {
 	logger.Info("GL ledger parsed", "total_lines", len(glLines))
 
 	// ── Process one calendar month at a time ──────────────────────────────────
+	// Bank statement xlsx covers September only.
+	// GL ledger covers May–September so GL-side internal transactions are
+	// seeded for all 5 months even though bank matching is Sept only.
 	months := []struct{ year, month int }{
 		{2026, 5},
 		{2026, 6},
@@ -113,6 +118,7 @@ func main() {
 		{2026, 8},
 		{2026, 9},
 	}
+	bankStmMonths := map[int]bool{9: true} // only September has a bank statement
 
 	for _, m := range months {
 		periodStart := time.Date(m.year, time.Month(m.month), 1, 0, 0, 0, 0, time.UTC)
@@ -131,31 +137,7 @@ func main() {
 			continue
 		}
 
-		// Filter lines for this month.
-		monthStm := filterByMonth(stmLines, m.year, m.month)
-		if len(monthStm) == 0 {
-			log.Warn("no bank statement lines for this month — skipping")
-			continue
-		}
-		log.Info("lines for period", "bank_lines", len(monthStm))
-
-		openingBalance := computeOpening(stmLines, m.year, m.month)
-		closingBalance := computeClosing(stmLines, m.year, m.month)
-		log.Info("balances",
-			"opening_NGN", fmt.Sprintf("%.2f", float64(openingBalance)/100),
-			"closing_NGN", fmt.Sprintf("%.2f", float64(closingBalance)/100),
-		)
-
-		// Insert bank statement.
-		stmResult, err := insertBankStatement(ctx, pool, bankAccountID, systemUserID,
-			periodStart, periodEnd, openingBalance, closingBalance, monthStm)
-		if err != nil {
-			log.Error("insert bank statement", "err", err)
-			continue
-		}
-		log.Info("bank statement inserted", "statement_id", stmResult.id, "lines", len(monthStm))
-
-		// Insert GL internal transactions.
+		// Insert GL internal transactions for all months (GL covers May–Sept).
 		monthGL := filterGLByMonth(glLines, m.year, m.month)
 		log.Info("GL lines for period", "count", len(monthGL))
 		if len(monthGL) > 0 {
@@ -167,7 +149,35 @@ func main() {
 			}
 		}
 
-		// Create reconciliation run.
+		// Only create a bank statement + run for months that have bank data.
+		if !bankStmMonths[m.month] {
+			log.Info("no bank statement for this month — GL lines seeded, no run created")
+			continue
+		}
+
+		monthStm := filterByMonth(stmLines, m.year, m.month)
+		if len(monthStm) == 0 {
+			log.Warn("no bank statement lines for this month — skipping run")
+			continue
+		}
+		log.Info("bank lines for period", "count", len(monthStm))
+
+		openingBalance := computeOpening(stmLines, m.year, m.month)
+		closingBalance := computeClosing(stmLines, m.year, m.month)
+		log.Info("balances",
+			"opening_NGN", fmt.Sprintf("%.2f", float64(openingBalance)/100),
+			"closing_NGN", fmt.Sprintf("%.2f", float64(closingBalance)/100),
+		)
+
+		stmResult, err := insertBankStatement(ctx, pool, bankAccountID, systemUserID,
+			periodStart, periodEnd, openingBalance, closingBalance, monthStm)
+		if err != nil {
+			log.Error("insert bank statement", "err", err)
+			continue
+		}
+		log.Info("bank statement inserted", "statement_id", stmResult.id, "lines", len(monthStm))
+
+		// Create reconciliation run and auto-match.
 		run, err := svc.CreateRun(ctx, bankAccountID, systemUserID, periodStart, periodEnd)
 		if err != nil {
 			log.Error("create run", "err", err)
@@ -175,14 +185,12 @@ func main() {
 		}
 		log.Info("reconciliation run created", "run_id", run.ID)
 
-		// Auto-match.
 		_, err = svc.AutoMatch(ctx, run.ID, systemUserID)
 		if err != nil {
 			log.Error("auto-match", "err", err)
 			continue
 		}
 
-		// Print summary.
 		var matched, unmatchedBank, unmatchedInternal int64
 		_ = pool.QueryRow(ctx, `
 			SELECT
