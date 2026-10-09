@@ -40,6 +40,7 @@ jobs:
               -e "ssh -o ConnectTimeout=15 -o ConnectionAttempts=1" \
               --exclude '.git' --exclude '.env' --exclude '.env.prod' \
               --exclude 'node_modules' --exclude '.next' --exclude 'bin' \
+              --exclude 'files/' \
               ./ root@${{ secrets.VPS_HOST }}:/opt/pageos-dev/ && exit 0
             echo "rsync attempt $i failed; retrying in 20s..."; sleep 20
           done
