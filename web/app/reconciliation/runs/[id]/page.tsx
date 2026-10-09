@@ -5,7 +5,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, ArrowLeft, CheckCircle2, Link2, XCircle, Lock, Download } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { Loader2, ArrowLeft, CheckCircle2, Link2, XCircle, Lock, Download, BookOpen, Send, ThumbsUp, ThumbsDown, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useParams } from "next/navigation";
 import Link from "next/link";
@@ -82,6 +84,15 @@ function DirectionBadge({ direction }: { direction: string | undefined }) {
 const TABS = ["Matched", "Unmatched Bank", "Unmatched Internal", "Adjustments"] as const;
 type Tab = typeof TABS[number];
 
+type PostingType = {
+  code: string;
+  label: string;
+  description: string;
+  dr_gl_code: string;
+  cr_gl_code: string;
+  direction: string;
+};
+
 const colLabel: React.CSSProperties = {
   fontSize: "11px", color: "var(--pg-text-3)",
   textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600,
@@ -102,6 +113,17 @@ export default function RunPage() {
   const [exporting, setExporting] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("Matched");
   const [hoveredRow, setHoveredRow] = useState<string | null>(null);
+
+  // Classify & post state
+  const [classifySheet, setClassifySheet] = useState(false);
+  const [classifyMatchId, setClassifyMatchId] = useState<string>("");
+  const [postingType, setPostingType] = useState("");
+  const [drCode, setDrCode] = useState("");
+  const [crCode, setCrCode] = useState("");
+  const [classifyNotes, setClassifyNotes] = useState("");
+
+  // Review state
+  const [reviewNotes, setReviewNotes] = useState("");
 
   const { data, isLoading } = useQuery({
     queryKey: ["recon-run", runId],
@@ -124,6 +146,15 @@ export default function RunPage() {
     },
   });
 
+  const { data: postingTypes = [] } = useQuery<PostingType[]>({
+    queryKey: ["recon-posting-types"],
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/v1/reconciliation/posting-types`, { credentials: "include" });
+      if (!res.ok) return [];
+      return (await res.json()) ?? [];
+    },
+  });
+
   const { data: fullRows = [] } = useQuery<FullMatchRow[]>({
     queryKey: ["recon-run-full", runId],
     queryFn: async () => {
@@ -135,7 +166,9 @@ export default function RunPage() {
     },
   });
 
-  const isClosed = data?.run?.status === "closed";
+  const runStatus = data?.run?.status ?? "";
+  const isClosed = runStatus === "closed";
+  const isPendingReview = runStatus === "pending_review";
   const canClose = (data?.summary?.unmatched_bank ?? 0) + (data?.summary?.unmatched_internal ?? 0) === 0;
 
   async function downloadExport() {
@@ -229,6 +262,75 @@ export default function RunPage() {
     onError: (e) => toast({ title: "Close Failed", description: (e as Error).message, variant: "destructive" }),
   });
 
+  const classifyMutation = useMutation({
+    mutationFn: async () => {
+      if (!classifyMatchId) throw new Error("No match selected");
+
+      const res = await fetch(`${BASE}/api/v1/reconciliation/runs/${runId}/matches/${classifyMatchId}/classify`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ posting_type: postingType, dr_gl_code: drCode, cr_gl_code: crCode, notes: classifyNotes }),
+      });
+      if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as Record<string,string>).message ?? "Classify failed"); }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["recon-run-full", runId] });
+      setClassifySheet(false);
+      toast({ title: "Classified", description: "Bank line classified. You can now create the journal entry." });
+    },
+    onError: (e) => toast({ title: "Classify Failed", description: (e as Error).message, variant: "destructive" }),
+  });
+
+  const postJournalMutation = useMutation({
+    mutationFn: async (matchId: string) => {
+      const res = await fetch(`${BASE}/api/v1/reconciliation/runs/${runId}/matches/${matchId}/post-journal`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as Record<string,string>).message ?? "Post failed"); }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["recon-run-full", runId] });
+      toast({ title: "Journal Created", description: "Draft journal entry created in the Finance module." });
+    },
+    onError: (e) => toast({ title: "Post Failed", description: (e as Error).message, variant: "destructive" }),
+  });
+
+  const submitMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`${BASE}/api/v1/reconciliation/runs/${runId}/submit`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify({}),
+      });
+      if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as Record<string,string>).message ?? "Submit failed"); }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["recon-run", runId] });
+      toast({ title: "Submitted for Review", description: "A reviewer can now approve or reject this run." });
+    },
+    onError: (e) => toast({ title: "Submit Failed", description: (e as Error).message, variant: "destructive" }),
+  });
+
+  const reviewMutation = useMutation({
+    mutationFn: async (approved: boolean) => {
+      const res = await fetch(`${BASE}/api/v1/reconciliation/runs/${runId}/review`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approved, notes: reviewNotes }),
+      });
+      if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as Record<string,string>).message ?? "Review failed"); }
+    },
+    onSuccess: (_d, approved) => {
+      queryClient.invalidateQueries({ queryKey: ["recon-run", runId] });
+      toast({ title: approved ? "Run Approved & Closed" : "Run Rejected", description: approved ? "Reconciliation sealed." : "Sent back to preparer." });
+    },
+    onError: (e) => toast({ title: "Review Failed", description: (e as Error).message, variant: "destructive" }),
+  });
+
   if (isLoading) return (
     <div style={{ display: "flex", height: "50vh", alignItems: "center", justifyContent: "center" }}>
       <Loader2 style={{ width: "32px", height: "32px", color: "var(--pg-text-3)", animation: "spin 1s linear infinite" }} />
@@ -291,22 +393,54 @@ export default function RunPage() {
             {exporting ? <Loader2 style={{ width: "14px", height: "14px" }} /> : <Download style={{ width: "14px", height: "14px" }} />}
             Export Excel
           </button>
-          {!isClosed && (
+          {/* Preparer: submit for review */}
+          {!isClosed && !isPendingReview && (
             <button
-              onClick={() => closeMutation.mutate()}
-              disabled={!canClose || closeMutation.isPending}
-              title={!canClose ? "Resolve all unmatched items first" : undefined}
+              onClick={() => submitMutation.mutate()}
+              disabled={!canClose || submitMutation.isPending}
+              title={!canClose ? "Resolve all unmatched items first" : "Submit for reviewer sign-off"}
               style={{
                 display: "inline-flex", alignItems: "center", gap: "6px",
                 background: "linear-gradient(135deg,#FF6600,#E05500)", border: "none",
                 borderRadius: "12px", padding: "6px 14px", fontSize: "13px",
-                color: "#fff", cursor: (!canClose || closeMutation.isPending) ? "not-allowed" : "pointer",
-                opacity: (!canClose || closeMutation.isPending) ? 0.5 : 1,
+                color: "#fff", cursor: (!canClose || submitMutation.isPending) ? "not-allowed" : "pointer",
+                opacity: (!canClose || submitMutation.isPending) ? 0.5 : 1,
               }}
             >
-              {closeMutation.isPending ? <Loader2 style={{ width: "14px", height: "14px" }} /> : <Lock style={{ width: "14px", height: "14px" }} />}
-              Close Run
+              {submitMutation.isPending ? <Loader2 style={{ width: "14px", height: "14px" }} /> : <Send style={{ width: "14px", height: "14px" }} />}
+              Submit for Review
             </button>
+          )}
+          {/* Reviewer: approve or reject */}
+          {isPendingReview && (
+            <>
+              <button
+                onClick={() => reviewMutation.mutate(false)}
+                disabled={reviewMutation.isPending}
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: "6px",
+                  background: "transparent", border: "1px solid #B91C1C",
+                  borderRadius: "12px", padding: "6px 14px", fontSize: "13px",
+                  color: "#B91C1C", cursor: reviewMutation.isPending ? "not-allowed" : "pointer",
+                }}
+              >
+                {reviewMutation.isPending ? <Loader2 style={{ width: "14px", height: "14px" }} /> : <ThumbsDown style={{ width: "14px", height: "14px" }} />}
+                Reject
+              </button>
+              <button
+                onClick={() => reviewMutation.mutate(true)}
+                disabled={reviewMutation.isPending}
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: "6px",
+                  background: "linear-gradient(135deg,#16A34A,#15803D)", border: "none",
+                  borderRadius: "12px", padding: "6px 14px", fontSize: "13px",
+                  color: "#fff", cursor: reviewMutation.isPending ? "not-allowed" : "pointer",
+                }}
+              >
+                {reviewMutation.isPending ? <Loader2 style={{ width: "14px", height: "14px" }} /> : <ThumbsUp style={{ width: "14px", height: "14px" }} />}
+                Approve & Close
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -585,12 +719,22 @@ export default function RunPage() {
           {activeTab === "Unmatched Bank" && (
             <>
               <div style={{
-                display: "grid", gridTemplateColumns: "90px 110px 1fr 110px 110px",
+                display: "flex", alignItems: "center", gap: "8px",
+                padding: "8px 20px", borderBottom: "1px solid var(--pg-card-border)",
+                background: "rgba(251,191,36,0.06)",
+              }}>
+                <AlertCircle style={{ width: "13px", height: "13px", color: "#B45309", flexShrink: 0 }} />
+                <span style={{ fontSize: "11px", color: "#B45309" }}>
+                  These items are in the bank but not in the GL. Classify each one and create a journal entry to post it.
+                </span>
+              </div>
+              <div style={{
+                display: "grid", gridTemplateColumns: "90px 110px 1fr 110px 110px 160px",
                 padding: "7px 20px", borderBottom: "1px solid var(--pg-row-border)",
                 background: "var(--pg-muted-bg)",
               }}>
-                {["Date", "Reference", "Narration", "Debit", "Credit"].map((h, i) => (
-                  <span key={h} style={{ ...colLabel, textAlign: i >= 3 ? "right" : "left" }}>{h}</span>
+                {["Date", "Reference", "Narration", "Debit", "Credit", ""].map((h, i) => (
+                  <span key={i} style={{ ...colLabel, textAlign: i >= 3 && i < 5 ? "right" : "left" }}>{h}</span>
                 ))}
               </div>
               {unmatchedBankRows.length === 0 ? (
@@ -601,7 +745,7 @@ export default function RunPage() {
                   onMouseEnter={() => setHoveredRow(m.match_id)}
                   onMouseLeave={() => setHoveredRow(null)}
                   style={{
-                    display: "grid", gridTemplateColumns: "90px 110px 1fr 110px 110px",
+                    display: "grid", gridTemplateColumns: "90px 110px 1fr 110px 110px 160px",
                     padding: "8px 20px", alignItems: "center",
                     borderBottom: "1px solid var(--pg-row-border)",
                     background: hoveredRow === m.match_id ? "var(--pg-row-hover)" : "transparent",
@@ -616,6 +760,39 @@ export default function RunPage() {
                   <span style={{ ...colData, textAlign: "right", fontSize: "11px", color: "#15803D" }}>
                     {(m.bank_credit_kobo ?? 0) > 0 ? koboToNaira(m.bank_credit_kobo!) : "—"}
                   </span>
+                  <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
+                    <button
+                      onClick={() => {
+                        setClassifyMatchId(m.match_id ?? "");
+                        setPostingType(""); setDrCode(""); setCrCode(""); setClassifyNotes("");
+                        setClassifySheet(true);
+                      }}
+                      style={{
+                        display: "inline-flex", alignItems: "center", gap: "4px",
+                        fontSize: "11px", padding: "3px 10px",
+                        border: "1px solid var(--pg-card-border)", borderRadius: "8px",
+                        background: "transparent", cursor: "pointer", color: "var(--pg-text-2)",
+                      }}
+                    >
+                      <BookOpen style={{ width: "11px", height: "11px" }} /> Classify
+                    </button>
+                    <button
+                      onClick={() => postJournalMutation.mutate(m.match_id)}
+                      disabled={postJournalMutation.isPending}
+                      title="Create journal entry (classify first)"
+                      style={{
+                        display: "inline-flex", alignItems: "center", gap: "4px",
+                        fontSize: "11px", padding: "3px 10px",
+                        border: "1px solid #FF6600", borderRadius: "8px",
+                        background: "rgba(255,102,0,0.07)", cursor: "pointer", color: "#C05000",
+                      }}
+                    >
+                      {postJournalMutation.isPending
+                        ? <Loader2 style={{ width: "11px", height: "11px" }} />
+                        : <Send style={{ width: "11px", height: "11px" }} />}
+                      Post JE
+                    </button>
+                  </div>
                 </div>
               ))}
             </>
@@ -624,6 +801,16 @@ export default function RunPage() {
           {/* Unmatched Internal tab */}
           {activeTab === "Unmatched Internal" && (
             <>
+              <div style={{
+                display: "flex", alignItems: "center", gap: "8px",
+                padding: "8px 20px", borderBottom: "1px solid var(--pg-card-border)",
+                background: "rgba(148,163,184,0.06)",
+              }}>
+                <AlertCircle style={{ width: "13px", height: "13px", color: "var(--pg-text-3)", flexShrink: 0 }} />
+                <span style={{ fontSize: "11px", color: "var(--pg-text-3)" }}>
+                  These items are in the GL but have no matching bank transaction. Read-only — no posting required. Acknowledge via the workspace above.
+                </span>
+              </div>
               <div style={{
                 display: "grid", gridTemplateColumns: "90px 110px 1fr 80px 110px",
                 padding: "7px 20px", borderBottom: "1px solid var(--pg-row-border)",
@@ -723,6 +910,153 @@ export default function RunPage() {
           No match data yet — run auto-match or match manually above.
         </div>
       )}
+
+      {/* Pending review banner */}
+      {isPendingReview && (
+        <div style={{
+          background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.35)",
+          borderRadius: "14px", padding: "16px 20px",
+          display: "flex", alignItems: "flex-start", gap: "14px",
+        }}>
+          <AlertCircle style={{ width: "18px", height: "18px", color: "#B45309", flexShrink: 0, marginTop: "1px" }} />
+          <div style={{ flex: 1 }}>
+            <p style={{ fontSize: "13px", fontWeight: 600, color: "#B45309" }}>Awaiting Reviewer Sign-off</p>
+            <p style={{ fontSize: "12px", color: "var(--pg-text-3)", marginTop: "4px" }}>
+              This run has been submitted by the preparer and is pending approval. Add a note and approve or reject below.
+            </p>
+            <div style={{ marginTop: "10px", display: "flex", gap: "10px", alignItems: "center" }}>
+              <Input
+                value={reviewNotes}
+                onChange={e => setReviewNotes(e.target.value)}
+                placeholder="Reviewer notes (optional)…"
+                style={{ height: "32px", fontSize: "12px", maxWidth: "340px" }}
+              />
+              <button
+                onClick={() => reviewMutation.mutate(false)}
+                disabled={reviewMutation.isPending}
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: "6px",
+                  fontSize: "12px", padding: "5px 14px",
+                  border: "1px solid #B91C1C", borderRadius: "10px",
+                  background: "transparent", cursor: "pointer", color: "#B91C1C",
+                }}
+              >
+                <ThumbsDown style={{ width: "13px", height: "13px" }} /> Reject
+              </button>
+              <button
+                onClick={() => reviewMutation.mutate(true)}
+                disabled={reviewMutation.isPending}
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: "6px",
+                  fontSize: "12px", padding: "5px 14px",
+                  background: "linear-gradient(135deg,#16A34A,#15803D)", border: "none",
+                  borderRadius: "10px", cursor: "pointer", color: "#fff",
+                }}
+              >
+                {reviewMutation.isPending
+                  ? <Loader2 style={{ width: "13px", height: "13px" }} />
+                  : <ThumbsUp style={{ width: "13px", height: "13px" }} />}
+                Approve & Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Classify bank line sheet */}
+      <Sheet open={classifySheet} onOpenChange={setClassifySheet}>
+        <SheetContent side="right" style={{ width: "420px", padding: "28px 24px" }}>
+          <SheetHeader>
+            <SheetTitle style={{ fontSize: "16px" }}>Classify Bank Line</SheetTitle>
+            <SheetDescription style={{ fontSize: "12px" }}>
+              Select the transaction type and confirm GL codes. A draft journal entry will be created in Finance.
+            </SheetDescription>
+          </SheetHeader>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "18px", marginTop: "24px" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              <Label style={{ fontSize: "12px" }}>Transaction Type</Label>
+              <Select
+                value={postingType}
+                onValueChange={(v: string | null) => {
+                  if (!v) return;
+                  setPostingType(v);
+                  const pt = postingTypes.find(p => p.code === v);
+                  if (pt) { setDrCode(pt.dr_gl_code); setCrCode(pt.cr_gl_code); }
+                }}
+              >
+                <SelectTrigger style={{ height: "36px", fontSize: "12px" }}>
+                  <SelectValue placeholder="Select type…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {postingTypes.map(pt => (
+                    <SelectItem key={pt.code} value={pt.code} style={{ fontSize: "12px" }}>
+                      {pt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {postingType && (
+                <p style={{ fontSize: "11px", color: "var(--pg-text-3)", marginTop: "2px" }}>
+                  {postingTypes.find(p => p.code === postingType)?.description}
+                </p>
+              )}
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <Label style={{ fontSize: "12px" }}>DR Account Code</Label>
+                <Input
+                  value={drCode}
+                  onChange={e => setDrCode(e.target.value)}
+                  placeholder="e.g. 1123"
+                  style={{ height: "36px", fontSize: "12px", fontFamily: "monospace" }}
+                />
+                <p style={{ fontSize: "10px", color: "var(--pg-text-3)" }}>
+                  {drCode === "BANK" ? "Will use bank account GL code" : ""}
+                </p>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <Label style={{ fontSize: "12px" }}>CR Account Code</Label>
+                <Input
+                  value={crCode}
+                  onChange={e => setCrCode(e.target.value)}
+                  placeholder="e.g. 2110"
+                  style={{ height: "36px", fontSize: "12px", fontFamily: "monospace" }}
+                />
+                <p style={{ fontSize: "10px", color: "var(--pg-text-3)" }}>
+                  {crCode === "BANK" ? "Will use bank account GL code" : ""}
+                </p>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              <Label style={{ fontSize: "12px" }}>Notes (optional)</Label>
+              <Input
+                value={classifyNotes}
+                onChange={e => setClassifyNotes(e.target.value)}
+                placeholder="Additional context…"
+                style={{ height: "36px", fontSize: "12px" }}
+              />
+            </div>
+
+            <button
+              onClick={() => classifyMutation.mutate()}
+              disabled={!postingType || !drCode || !crCode || classifyMutation.isPending}
+              style={{
+                display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "6px",
+                background: "linear-gradient(135deg,#FF6600,#E05500)", border: "none",
+                borderRadius: "10px", padding: "9px 0", fontSize: "13px",
+                color: "#fff", cursor: (!postingType || !drCode || !crCode) ? "not-allowed" : "pointer",
+                opacity: (!postingType || !drCode || !crCode) ? 0.5 : 1, width: "100%",
+              }}
+            >
+              {classifyMutation.isPending ? <Loader2 style={{ width: "14px", height: "14px" }} /> : <CheckCircle2 style={{ width: "14px", height: "14px" }} />}
+              Save Classification
+            </button>
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

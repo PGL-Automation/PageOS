@@ -28,18 +28,18 @@ func NewReconScheduler(svc *Service, monoKey string, logger *slog.Logger) *Recon
 // cancelled and should be called in a dedicated goroutine.
 //
 // Schedule (Lagos time, UTC+1):
-//   - 06:00 (6 AM): for each active bank_connectivity record with
-//     provider = 'mono', call PullStatementFromMono for yesterday's date.
+//   - 17:00 (5 PM / COB): for each active bank_connectivity record with
+//     provider = 'mono', call PullStatementFromMono for today's date.
 //
-// On first start the scheduler sleeps until the next 06:00 WAT occurrence,
+// On first start the scheduler sleeps until the next 17:00 WAT occurrence,
 // then fires every 24 hours so the wall-clock time stays stable.
 func (s *ReconScheduler) Run(ctx context.Context) {
 	s.logger.Info("reconciliation scheduler started")
 
 	for {
-		delay := timeUntilHourWAT(6)
+		delay := timeUntilHourWAT(17)
 		s.logger.Info("reconciliation scheduler: next pull",
-			"target_hour_WAT", 6,
+			"target_hour_WAT", 17,
 			"delay", delay.Round(time.Second))
 
 		select {
@@ -49,7 +49,7 @@ func (s *ReconScheduler) Run(ctx context.Context) {
 		case <-time.After(delay):
 		}
 
-		s.runDailyPull(ctx)
+		s.runDailyPull(ctx, false)
 
 		// Sleep the remainder of the 24-hour window so the next tick lands at
 		// the same wall-clock time tomorrow.
@@ -62,14 +62,18 @@ func (s *ReconScheduler) Run(ctx context.Context) {
 	}
 }
 
-// runDailyPull fetches yesterday's transactions from Mono for every active
-// bank_connectivity record configured with provider = 'mono'.
-func (s *ReconScheduler) runDailyPull(ctx context.Context) {
-	yesterday := time.Now().UTC().AddDate(0, 0, -1)
-	yesterday = time.Date(yesterday.Year(), yesterday.Month(), yesterday.Day(), 0, 0, 0, 0, time.UTC)
+// runDailyPull fetches today's (or yesterday's, if yesterday=true) transactions
+// from Mono for every active bank_connectivity record with provider = 'mono'.
+// At COB (17:00 WAT) we pull today so the full day's data is captured.
+func (s *ReconScheduler) runDailyPull(ctx context.Context, useYesterday bool) {
+	forDate := time.Now().UTC()
+	if useYesterday {
+		forDate = forDate.AddDate(0, 0, -1)
+	}
+	forDate = time.Date(forDate.Year(), forDate.Month(), forDate.Day(), 0, 0, 0, 0, time.UTC)
 
 	s.logger.Info("reconciliation scheduler: running daily reconciliation pull for all active bank accounts",
-		"for_date", yesterday.Format("2006-01-02"))
+		"for_date", forDate.Format("2006-01-02"))
 
 	// Load all active Mono connectivity records.
 	type connRow struct {
@@ -104,7 +108,7 @@ func (s *ReconScheduler) runDailyPull(ctx context.Context) {
 	}
 
 	s.logger.Info("reconciliation scheduler: pulling statements",
-		"for_date", yesterday.Format("2006-01-02"),
+		"for_date", forDate.Format("2006-01-02"),
 		"account_count", len(conns))
 
 	monoClient := NewMonoClient(s.monoKey)
@@ -120,12 +124,12 @@ func (s *ReconScheduler) runDailyPull(ctx context.Context) {
 			continue
 		}
 
-		runID, err := s.svc.PullStatementFromMono(ctx, bankAccountID, monoClient, yesterday)
+		runID, err := s.svc.PullStatementFromMono(ctx, bankAccountID, monoClient, forDate)
 		if err != nil {
 			s.logger.Warn("reconciliation scheduler: pull failed",
 				"bank_account_id", c.bankAccountID,
 				"provider_account_id", c.providerAccountID,
-				"for_date", yesterday.Format("2006-01-02"),
+				"for_date", forDate.Format("2006-01-02"),
 				"err", err)
 			failed++
 			continue
@@ -133,7 +137,7 @@ func (s *ReconScheduler) runDailyPull(ctx context.Context) {
 
 		s.logger.Info("reconciliation scheduler: pull succeeded",
 			"bank_account_id", c.bankAccountID,
-			"for_date", yesterday.Format("2006-01-02"),
+			"for_date", forDate.Format("2006-01-02"),
 			"run_id", runID)
 		succeeded++
 
@@ -158,7 +162,7 @@ func (s *ReconScheduler) runDailyPull(ctx context.Context) {
 	}
 
 	s.logger.Info("reconciliation scheduler: daily pull complete",
-		"for_date", yesterday.Format("2006-01-02"),
+		"for_date", forDate.Format("2006-01-02"),
 		"succeeded", succeeded,
 		"failed", failed)
 }

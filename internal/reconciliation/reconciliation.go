@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/pagegroup/pageos/internal/audit"
+	"github.com/pagegroup/pageos/internal/finance"
 	"github.com/pagegroup/pageos/internal/reconciliation/store"
 	recondb "github.com/pagegroup/pageos/internal/reconciliation/store/gen"
 )
@@ -117,13 +118,263 @@ type FullMatchRow = store.FullMatchRow
 // ── Service ───────────────────────────────────────────────────────────────────
 
 type Service struct {
-	store   *store.Store
-	audit   *audit.Writer
-	matcher MatchingStrategy
+	store      *store.Store
+	audit      *audit.Writer
+	matcher    MatchingStrategy
+	financeSvc *finance.Service
 }
 
 func NewService(db *pgxpool.Pool, a *audit.Writer) *Service {
 	return &Service{store: store.New(db), audit: a, matcher: DefaultSmartMatcher()}
+}
+
+// SetFinanceService wires the finance service for journal creation from
+// bank-not-in-GL items. Called after both services are initialised in main.
+func (s *Service) SetFinanceService(f *finance.Service) { s.financeSvc = f }
+
+// PostingType describes a transaction classification template for bank-not-in-GL items.
+type PostingType struct {
+	Code        string `json:"code"`
+	Label       string `json:"label"`
+	Description string `json:"description"`
+	DrGLCode    string `json:"dr_gl_code"`
+	CrGLCode    string `json:"cr_gl_code"`
+	Direction   string `json:"direction"`
+}
+
+// ListPostingTypes returns all available transaction classification templates.
+func (s *Service) ListPostingTypes(ctx context.Context) ([]PostingType, error) {
+	rows, err := s.store.Pool().Query(ctx,
+		`SELECT code, label, description, dr_gl_code, cr_gl_code, direction
+		 FROM reconciliation.posting_type ORDER BY direction, label`)
+	if err != nil {
+		return nil, fmt.Errorf("reconciliation: list posting types: %w", err)
+	}
+	defer rows.Close()
+	var out []PostingType
+	for rows.Next() {
+		var p PostingType
+		if err := rows.Scan(&p.Code, &p.Label, &p.Description, &p.DrGLCode, &p.CrGLCode, &p.Direction); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// ClassifyBankLine sets the posting type and GL codes on an unmatched bank
+// line so it can later be posted as a journal entry.
+func (s *Service) ClassifyBankLine(ctx context.Context, runID, matchID, userID uuid.UUID, postingType, drGLCode, crGLCode, notes string) error {
+	_, err := s.store.Pool().Exec(ctx, `
+		UPDATE reconciliation.reconciliation_match
+		SET    posting_type = $1,
+		       dr_gl_code   = $2,
+		       cr_gl_code   = $3,
+		       notes        = $4,
+		       matched_by   = $5
+		WHERE  id     = $6
+		  AND  run_id = $7
+		  AND  status IN ('unmatched_bank', 'adjustment')
+	`, postingType, drGLCode, crGLCode, notes, userID, matchID, runID)
+	if err != nil {
+		return fmt.Errorf("reconciliation: classify bank line: %w", err)
+	}
+	_ = s.audit.Write(ctx, audit.Entry{
+		Actor:        audit.Actor{Type: "user", ID: userID.String()},
+		Action:       "reconciliation.match.classified",
+		ResourceType: "reconciliation_match", ResourceID: matchID.String(),
+		Context: map[string]any{"posting_type": postingType, "dr": drGLCode, "cr": crGLCode},
+	})
+	return nil
+}
+
+// CreateJournalFromBankLine creates a draft journal entry in the finance module
+// for a classified bank-not-in-GL match. The bank account's GL code is
+// substituted wherever the template has 'BANK'.
+func (s *Service) CreateJournalFromBankLine(ctx context.Context, runID, matchID, userID uuid.UUID, createdByName string) (finance.JournalHeader, error) {
+	if s.financeSvc == nil {
+		return finance.JournalHeader{}, fmt.Errorf("reconciliation: finance service not wired")
+	}
+
+	// Fetch the match + bank line details.
+	var (
+		postingType string
+		drGLCode    string
+		crGLCode    string
+		notes       string
+		bankLineID  *uuid.UUID
+		journalID   *uuid.UUID
+	)
+	err := s.store.Pool().QueryRow(ctx, `
+		SELECT posting_type, dr_gl_code, cr_gl_code, notes, bank_line_id, journal_id
+		FROM   reconciliation.reconciliation_match
+		WHERE  id = $1 AND run_id = $2
+	`, matchID, runID).Scan(&postingType, &drGLCode, &crGLCode, &notes, &bankLineID, &journalID)
+	if err != nil {
+		return finance.JournalHeader{}, fmt.Errorf("reconciliation: match not found: %w", err)
+	}
+	if journalID != nil {
+		return finance.JournalHeader{}, fmt.Errorf("reconciliation: journal already created for this item")
+	}
+	if postingType == "" || drGLCode == "" || crGLCode == "" {
+		return finance.JournalHeader{}, fmt.Errorf("reconciliation: classify the item before posting (posting_type, dr_gl_code, cr_gl_code required)")
+	}
+	if bankLineID == nil {
+		return finance.JournalHeader{}, fmt.Errorf("reconciliation: no bank line associated with this match")
+	}
+
+	// Fetch bank line amount and date.
+	var debitKobo, creditKobo int64
+	var txnDate pgtype.Date
+	var narration, reference string
+	err = s.store.Pool().QueryRow(ctx, `
+		SELECT debit_kobo, credit_kobo, txn_date, narration, reference
+		FROM   reconciliation.bank_statement_line WHERE id = $1
+	`, *bankLineID).Scan(&debitKobo, &creditKobo, &txnDate, &narration, &reference)
+	if err != nil {
+		return finance.JournalHeader{}, fmt.Errorf("reconciliation: fetch bank line: %w", err)
+	}
+
+	// Resolve the bank account GL code for 'BANK' placeholder.
+	var bankGLCode string
+	err = s.store.Pool().QueryRow(ctx, `
+		SELECT ba.gl_account_code
+		FROM   reconciliation.reconciliation_run rr
+		JOIN   reconciliation.bank_account ba ON ba.id = rr.bank_account_id
+		WHERE  rr.id = $1
+	`, runID).Scan(&bankGLCode)
+	if err != nil || bankGLCode == "" {
+		return finance.JournalHeader{}, fmt.Errorf("reconciliation: bank account has no GL code set")
+	}
+
+	drCode := drGLCode
+	crCode := crGLCode
+	if drCode == "BANK" {
+		drCode = bankGLCode
+	}
+	if crCode == "BANK" {
+		crCode = bankGLCode
+	}
+
+	// Amount: use whichever side is non-zero (bank statement lines are always one-sided).
+	amountKobo := debitKobo
+	if creditKobo > 0 {
+		amountKobo = creditKobo
+	}
+	amount := float64(amountKobo) / 100.0
+
+	desc := narration
+	if desc == "" {
+		desc = notes
+	}
+	if reference != "" {
+		desc = fmt.Sprintf("%s [ref: %s]", desc, reference)
+	}
+
+	// Resolve account names for the journal lines.
+	var drName, crName string
+	_ = s.store.Pool().QueryRow(ctx, `SELECT name FROM finance.account WHERE code = $1`, drCode).Scan(&drName)
+	_ = s.store.Pool().QueryRow(ctx, `SELECT name FROM finance.account WHERE code = $1`, crCode).Scan(&crName)
+
+	jh, err := s.financeSvc.CreateJournal(ctx, userID, createdByName, finance.CreateJournalInput{
+		Date:        txnDate.Time.Format("2006-01-02"),
+		Type:        "bank_recon",
+		Description: fmt.Sprintf("Bank recon posting: %s", desc),
+		Lines: []finance.JournalLineInput{
+			{AccountCode: drCode, AccountName: drName, Narration: desc, Debit: amount, Credit: 0},
+			{AccountCode: crCode, AccountName: crName, Narration: desc, Debit: 0, Credit: amount},
+		},
+	})
+	if err != nil {
+		return finance.JournalHeader{}, fmt.Errorf("reconciliation: create journal: %w", err)
+	}
+
+	// Link the journal back to the match.
+	_, _ = s.store.Pool().Exec(ctx,
+		`UPDATE reconciliation.reconciliation_match SET journal_id = $1 WHERE id = $2`,
+		jh.ID, matchID)
+
+	_ = s.audit.Write(ctx, audit.Entry{
+		Actor:        audit.Actor{Type: "user", ID: userID.String()},
+		Action:       "reconciliation.match.journal_created",
+		ResourceType: "reconciliation_match", ResourceID: matchID.String(),
+		Context: map[string]any{"journal_id": jh.ID, "amount": amount},
+	})
+	return jh, nil
+}
+
+// SubmitRun marks a run as pending review. The preparer calls this when all
+// unmatched items have been resolved. Fails if genuine unmatched items remain.
+func (s *Service) SubmitRun(ctx context.Context, runID, userID uuid.UUID) (ReconciliationRun, error) {
+	sum, err := s.store.GetRunSummary(ctx, runID)
+	if err != nil {
+		return ReconciliationRun{}, err
+	}
+	if sum.UnmatchedBank+sum.UnmatchedInternal > 0 {
+		return ReconciliationRun{}, ErrOpenUnmatched
+	}
+	now := pgtype.Timestamptz{Time: time.Now(), Valid: true}
+	row, err := s.store.UpdateRunStatus(ctx, recondb.UpdateRunStatusParams{
+		ID: runID, Status: "pending_review", ReconciledBy: &userID, ReconciledAt: now,
+	})
+	if err != nil {
+		return ReconciliationRun{}, fmt.Errorf("reconciliation: submit run: %w", err)
+	}
+	_, _ = s.store.Pool().Exec(ctx,
+		`UPDATE reconciliation.reconciliation_run SET submitted_by = $1, submitted_at = $2, review_status = 'pending' WHERE id = $3`,
+		userID, time.Now(), runID)
+	_ = s.audit.Write(ctx, audit.Entry{
+		Actor:        audit.Actor{Type: "user", ID: userID.String()},
+		Action:       "reconciliation.run.submitted",
+		ResourceType: "reconciliation_run", ResourceID: runID.String(),
+	})
+	return toRun(row), nil
+}
+
+// ReviewRun approves or rejects a submitted run.
+// Approval closes the run. Rejection sends it back to in_progress for the preparer.
+func (s *Service) ReviewRun(ctx context.Context, runID, reviewerID uuid.UUID, approved bool, notes string) (ReconciliationRun, error) {
+	// Ensure it is actually pending review.
+	var reviewStatus string
+	_ = s.store.Pool().QueryRow(ctx,
+		`SELECT COALESCE(review_status,'') FROM reconciliation.reconciliation_run WHERE id = $1`, runID,
+	).Scan(&reviewStatus)
+	if reviewStatus != "pending" {
+		return ReconciliationRun{}, fmt.Errorf("reconciliation: run is not pending review")
+	}
+
+	newStatus := "in_progress"
+	newReviewStatus := "rejected"
+	if approved {
+		newStatus = "closed"
+		newReviewStatus = "approved"
+	}
+
+	now := time.Now()
+	nowPG := pgtype.Timestamptz{Time: now, Valid: true}
+	row, err := s.store.UpdateRunStatus(ctx, recondb.UpdateRunStatusParams{
+		ID: runID, Status: newStatus, ReconciledBy: &reviewerID, ReconciledAt: nowPG,
+	})
+	if err != nil {
+		return ReconciliationRun{}, fmt.Errorf("reconciliation: review run: %w", err)
+	}
+	_, _ = s.store.Pool().Exec(ctx,
+		`UPDATE reconciliation.reconciliation_run
+		 SET review_status = $1, reviewed_by = $2, reviewed_at = $3, reviewer_notes = $4
+		 WHERE id = $5`,
+		newReviewStatus, reviewerID, now, notes, runID)
+
+	action := "reconciliation.run.rejected"
+	if approved {
+		action = "reconciliation.run.approved"
+	}
+	_ = s.audit.Write(ctx, audit.Entry{
+		Actor:        audit.Actor{Type: "user", ID: reviewerID.String()},
+		Action:       action,
+		ResourceType: "reconciliation_run", ResourceID: runID.String(),
+		Context: map[string]any{"notes": notes},
+	})
+	return toRun(row), nil
 }
 
 // ── Bank accounts ─────────────────────────────────────────────────────────────

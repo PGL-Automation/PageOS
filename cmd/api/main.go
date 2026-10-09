@@ -167,6 +167,7 @@ func run() error {
 
 	financeSvc := finance.NewService(pool)
 	financeH   := financehttp.New(financeSvc, pool, capSvc)
+	reconSvc.SetFinanceService(financeSvc)
 
 	payrollSvc := payroll.NewService(pool, financeSvc)
 	payrollH   := payrollhttp.New(payrollSvc, pool)

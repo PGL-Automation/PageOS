@@ -80,12 +80,22 @@ func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	r.Post("/runs/{id}/close", h.withCap("recon.close", h.closeRun))
 	// Un-match a previously matched pair, returning both sides to unmatched state.
 	r.Post("/runs/{id}/matches/{matchId}/unmatch", h.withCap("recon.match", h.unmatchRecord))
+	// Classify a bank-not-in-GL match with a posting type and DR/CR GL codes.
+	r.Post("/runs/{id}/matches/{matchId}/classify", h.withCap("recon.match", h.classifyBankLine))
+	// Create a draft journal entry from a classified bank-not-in-GL match.
+	r.Post("/runs/{id}/matches/{matchId}/post-journal", h.withCap("recon.match", h.postJournal))
+	// Submit a completed run for reviewer sign-off.
+	r.Post("/runs/{id}/submit", h.withCap("recon.close", h.submitRun))
+	// Reviewer approves or rejects a submitted run.
+	r.Post("/runs/{id}/review", h.withCap("recon.close", h.reviewRun))
 	// Export a full reconciliation result as an Excel workbook.
 	r.Get("/runs/{id}/export", h.withCap("recon.view", h.exportRun))
 	// Validate that the run's matched totals balance against statement balances.
 	r.Get("/runs/{id}/balance", h.withCap("recon.view", h.validateBalance))
 	// Attempt to auto-close a run when all items are matched.
 	r.Post("/runs/{id}/auto-close", h.withCap("recon.close", h.tryAutoClose))
+	// List all posting type classification templates.
+	r.Get("/posting-types", h.withCap("recon.view", h.listPostingTypes))
 	// Exception summary across all accounts for a subsidiary.
 	r.Get("/exceptions", h.withCap("recon.view", h.getExceptions))
 	// Dashboard: all run summaries for a subsidiary.
@@ -643,6 +653,138 @@ func (h *Handler) getDashboard(w http.ResponseWriter, r *http.Request) {
 		summaries = []reconciliation.RunSummaryFull{}
 	}
 	httpx.JSON(w, http.StatusOK, summaries)
+}
+
+// ── Posting types ─────────────────────────────────────────────────────────────
+
+func (h *Handler) listPostingTypes(w http.ResponseWriter, r *http.Request) {
+	types, err := h.svc.ListPostingTypes(r.Context())
+	if err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		return
+	}
+	if types == nil {
+		types = []reconciliation.PostingType{}
+	}
+	httpx.JSON(w, http.StatusOK, types)
+}
+
+// ── Classification and posting ────────────────────────────────────────────────
+
+// classifyBankLine sets the posting type and GL accounts on an unmatched bank
+// line, enabling it to be posted as a journal entry.
+func (h *Handler) classifyBankLine(w http.ResponseWriter, r *http.Request) {
+	runID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid run id")
+		return
+	}
+	matchID, err := uuid.Parse(chi.URLParam(r, "matchId"))
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid match id")
+		return
+	}
+	caller, ok := identityhttp.UserFrom(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+		return
+	}
+	var in struct {
+		PostingType string `json:"posting_type"`
+		DrGLCode    string `json:"dr_gl_code"`
+		CrGLCode    string `json:"cr_gl_code"`
+		Notes       string `json:"notes"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if in.PostingType == "" {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "posting_type is required")
+		return
+	}
+	if in.DrGLCode == "" || in.CrGLCode == "" {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "dr_gl_code and cr_gl_code are required")
+		return
+	}
+	if err := h.svc.ClassifyBankLine(r.Context(), runID, matchID, caller.ID, in.PostingType, in.DrGLCode, in.CrGLCode, in.Notes); err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "classify_failed", err.Error())
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]string{"status": "classified"})
+}
+
+// postJournal creates a draft journal entry from a classified bank-not-in-GL match.
+func (h *Handler) postJournal(w http.ResponseWriter, r *http.Request) {
+	runID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid run id")
+		return
+	}
+	matchID, err := uuid.Parse(chi.URLParam(r, "matchId"))
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid match id")
+		return
+	}
+	caller, ok := identityhttp.UserFrom(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+		return
+	}
+	jh, err := h.svc.CreateJournalFromBankLine(r.Context(), runID, matchID, caller.ID, caller.DisplayName)
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "post_failed", err.Error())
+		return
+	}
+	httpx.JSON(w, http.StatusCreated, jh)
+}
+
+// ── Sign-off workflow ─────────────────────────────────────────────────────────
+
+// submitRun marks a run as pending review once the preparer has resolved all items.
+func (h *Handler) submitRun(w http.ResponseWriter, r *http.Request) {
+	runID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid run id")
+		return
+	}
+	caller, ok := identityhttp.UserFrom(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+		return
+	}
+	run, err := h.svc.SubmitRun(r.Context(), runID, caller.ID)
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "submit_failed", err.Error())
+		return
+	}
+	httpx.JSON(w, http.StatusOK, run)
+}
+
+// reviewRun allows a reviewer to approve or reject a submitted run.
+func (h *Handler) reviewRun(w http.ResponseWriter, r *http.Request) {
+	runID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid run id")
+		return
+	}
+	caller, ok := identityhttp.UserFrom(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+		return
+	}
+	var in struct {
+		Approved bool   `json:"approved"`
+		Notes    string `json:"notes"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	run, err := h.svc.ReviewRun(r.Context(), runID, caller.ID, in.Approved, in.Notes)
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "review_failed", err.Error())
+		return
+	}
+	httpx.JSON(w, http.StatusOK, run)
 }
 
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {
