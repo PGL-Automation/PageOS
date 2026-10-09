@@ -752,14 +752,14 @@ function MatchRowContent({
         )}
         {/* Bank-only: classify then post */}
         {m.status === "unmatched_bank" && onClassify && (
-          <div className="flex gap-1 mt-1.5 justify-center" onClick={e => e.stopPropagation()}>
+          <div className="flex flex-col gap-1 mt-1.5 items-center" onClick={e => e.stopPropagation()}>
             <button onClick={onClassify}
-              className="h-6 px-2 rounded text-[10px] font-semibold"
+              className="h-6 w-20 rounded text-[10px] font-semibold"
               style={{ background: "#ede9fe", color: "#6d28d9", border: "1px solid #c4b5fd" }}>
               Classify
             </button>
             <button onClick={onPostJE} disabled={postingJE}
-              className="h-6 px-2 rounded text-[10px] font-semibold disabled:opacity-40"
+              className="h-6 w-20 rounded text-[10px] font-semibold disabled:opacity-40"
               style={{ background: "#fff7ed", color: "#c2410c", border: "1px solid #fed7aa" }}>
               {postingJE ? "…" : "Post JE"}
             </button>
@@ -908,7 +908,10 @@ export default function ReconciliationPage() {
 
   // Post a journal entry from a classified bank-not-in-GL match
   async function postJE(matchId: string) {
-    if (!selectedRunId) return;
+    if (!selectedRunId) {
+      toast({ title: "No run selected", description: "Select a reconciliation run first.", variant: "destructive" });
+      return;
+    }
     setPostingJEId(matchId);
     try {
       const jh = await reconFetch(`/runs/${selectedRunId}/matches/${matchId}/post-journal`, {
@@ -916,16 +919,17 @@ export default function ReconciliationPage() {
       }) as { id?: string; reference?: string };
       queryClient.invalidateQueries({ queryKey: ["recon-full", selectedRunId] });
       toast({
-        title: "Journal Entry Created",
-        description: `Draft journal ${jh?.reference ?? ""} created. Go to Finance → Journals to review and post it.`,
+        title: `✓ Journal ${jh?.reference ?? "entry"} created`,
+        description: "Go to Finance → Journals to review and post it to the ledger.",
       });
     } catch (e) {
-      const msg = (e as Error).message;
-      toast({
-        title: "Post JE Failed",
-        description: msg.includes("classify") ? "You must classify this item first before posting." : msg,
-        variant: "destructive",
-      });
+      const msg = (e as Error).message ?? "Unknown error";
+      const friendly = msg.toLowerCase().includes("classify")
+        ? "Classify this item first — click Classify, pick a transaction type, then click Post JE."
+        : msg;
+      toast({ title: "Post JE Failed", description: friendly, variant: "destructive" });
+      // Belt-and-suspenders: also alert so it's never silent
+      alert(`Post JE Failed: ${friendly}`);
     } finally {
       setPostingJEId(null);
     }
