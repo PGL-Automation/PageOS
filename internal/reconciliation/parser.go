@@ -752,6 +752,9 @@ var dateFormats = []string{
 // parseDateOrExcel handles both plain string dates and the numeric serial
 // dates that excelize returns when a cell has a date format but is read as
 // a raw value string (e.g. "46051" for 2026-01-01).
+// ParseDate is the exported alias for parseDateOrExcel, used by seed scripts.
+func ParseDate(s string) (time.Time, error) { return parseDateOrExcel(s) }
+
 func parseDateOrExcel(s string) (time.Time, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {

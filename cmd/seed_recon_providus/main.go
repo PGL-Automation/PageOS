@@ -32,11 +32,8 @@ import (
 const (
 	providusNUBAN = "5401732286"
 
-	// Paths relative to working directory.
-	// bankStmFile: the full May–Sept 2026 Providus statement, converted from
-	// .xls to .xlsx (excelize does not support the old binary .xls format).
-	// Run: python3 convert_xls.py  (see README or DEPLOY.md)
-	bankStmFile  = "files/statement_providus.xlsx"
+	// Paths relative to working directory (/opt/pageos on the VPS).
+	bankStmFile  = "files/STATEMENT - 2026-09-30T135049.445 (1).xls"
 	glLedgerFile = "files/Providus CLient_Ledger (1).xlsx"
 )
 
