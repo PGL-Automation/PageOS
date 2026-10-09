@@ -482,6 +482,132 @@ func (p *ExcelStatementParser) Parse(r io.Reader) ([]ParsedLine, error) {
 	return lines, nil
 }
 
+// ── Providus bank statement parser ───────────────────────────────────────────
+
+// ProvidusStatementParser reads a Providus Bank statement Excel export.
+// The file has 16 metadata rows before the real column header row, so the
+// generic ExcelStatementParser (which uses the first non-blank row as headers)
+// cannot be used. This parser scans rows until it finds "Transaction Date"
+// then treats that row as the header.
+//
+// Providus column map:
+//
+//	Transaction Date | Actual Transaction Date | Transaction Details | Value Date
+//	Debit Amount | Credit Amount | Current Balance | DR/CR | DOC-NUM
+type ProvidusStatementParser struct{}
+
+func (ProvidusStatementParser) Parse(r io.Reader) ([]ParsedLine, error) {
+	f, err := excelize.OpenReader(r)
+	if err != nil {
+		return nil, fmt.Errorf("providus statement parser: open workbook: %w", err)
+	}
+	defer f.Close()
+
+	sheets := f.GetSheetList()
+	if len(sheets) == 0 {
+		return nil, fmt.Errorf("providus statement parser: workbook has no sheets")
+	}
+	rows, err := f.GetRows(sheets[0])
+	if err != nil {
+		return nil, fmt.Errorf("providus statement parser: read sheet: %w", err)
+	}
+
+	// Scan for the row that contains "Transaction Date".
+	headerRowIdx := -1
+	for i, row := range rows {
+		for _, cell := range row {
+			if strings.TrimSpace(cell) == "Transaction Date" {
+				headerRowIdx = i
+				break
+			}
+		}
+		if headerRowIdx >= 0 {
+			break
+		}
+	}
+	if headerRowIdx < 0 {
+		return nil, fmt.Errorf("providus statement parser: could not find 'Transaction Date' header row")
+	}
+
+	// Build column index from header row.
+	headerIdx := make(map[string]int)
+	for i, h := range rows[headerRowIdx] {
+		headerIdx[strings.TrimSpace(h)] = i
+	}
+	col := func(name string) int {
+		i, ok := headerIdx[name]
+		if !ok {
+			return -1
+		}
+		return i
+	}
+	cell := func(row []string, i int) string {
+		if i < 0 || i >= len(row) {
+			return ""
+		}
+		return strings.TrimSpace(row[i])
+	}
+
+	dateIdx      := col("Transaction Date")
+	valueDateIdx := col("Value Date")
+	narrationIdx := col("Transaction Details")
+	debitIdx     := col("Debit Amount")
+	creditIdx    := col("Credit Amount")
+	balanceIdx   := col("Current Balance")
+	refIdx       := col("DOC-NUM")
+
+	if dateIdx < 0 {
+		return nil, fmt.Errorf("providus statement parser: 'Transaction Date' column not found in header")
+	}
+
+	var lines []ParsedLine
+	for _, row := range rows[headerRowIdx+1:] {
+		allBlank := true
+		for _, c := range row {
+			if strings.TrimSpace(c) != "" {
+				allBlank = false
+				break
+			}
+		}
+		if allBlank {
+			continue
+		}
+
+		dateStr := cell(row, dateIdx)
+		if dateStr == "" {
+			continue
+		}
+		txnDate, err := parseDateOrExcel(dateStr)
+		if err != nil {
+			continue // skip footer/summary rows
+		}
+
+		pl := ParsedLine{
+			TxnDate:    txnDate,
+			DebitKobo:  parseAmount(cell(row, debitIdx)),
+			CreditKobo: parseAmount(cell(row, creditIdx)),
+			Narration:  cell(row, narrationIdx),
+			Reference:  cell(row, refIdx),
+			Raw:        strings.Join(row, ","),
+		}
+		if len(pl.Raw) > 500 {
+			pl.Raw = pl.Raw[:500]
+		}
+		if valueDateIdx >= 0 {
+			if vd, err := parseDateOrExcel(cell(row, valueDateIdx)); err == nil {
+				pl.ValueDate = &vd
+			}
+		}
+		if balanceIdx >= 0 {
+			if b := parseAmount(cell(row, balanceIdx)); b != 0 {
+				pl.BalanceKobo = &b
+			}
+		}
+		lines = append(lines, pl)
+	}
+	return lines, nil
+}
+
 // ── CSV GL ledger parser ──────────────────────────────────────────────────────
 
 // CSVLedgerParser reads a GL export in CSV format using the same 9-column layout

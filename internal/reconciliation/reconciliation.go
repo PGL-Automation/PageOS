@@ -132,6 +132,10 @@ func NewService(db *pgxpool.Pool, a *audit.Writer) *Service {
 // bank-not-in-GL items. Called after both services are initialised in main.
 func (s *Service) SetFinanceService(f *finance.Service) { s.financeSvc = f }
 
+// Pool exposes the underlying database pool for scripts and tools that need
+// direct SQL access alongside the service methods.
+func (s *Service) Pool() *pgxpool.Pool { return s.store.Pool() }
+
 // PostingType describes a transaction classification template for bank-not-in-GL items.
 type PostingType struct {
 	Code        string `json:"code"`
