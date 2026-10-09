@@ -96,149 +96,125 @@ ON CONFLICT (code) DO UPDATE SET
     direction   = EXCLUDED.direction;
 
 -- ── Seed live bank accounts for Page Asset Management Limited ─────────────────
--- GL codes map to finance.account (migration 00027 + 00073).
--- Account numbers sourced from Providus bank statement and existing records.
--- Rows with empty account_number should be updated once the NUBAN is confirmed.
+-- Uses CTEs to avoid dollar-quoting (goose parses $$ as a statement boundary).
+-- Each INSERT is a no-op when the GL code already exists for the subsidiary.
 
-DO $$
-DECLARE
-    sid uuid;
-BEGIN
-    SELECT id INTO sid FROM organization.subsidiary ORDER BY created_at LIMIT 1;
-    IF sid IS NULL THEN RETURN; END IF;
+-- Providus Bank – Client Account (GL0811101500 → 1123)
+INSERT INTO reconciliation.bank_account
+    (subsidiary_id, bank_name, account_number, account_name, currency, gl_account_code, status)
+SELECT s.id, 'Providus Bank', '5401732286', 'Page Asset Management – Clients', 'NGN', '1123', 'active'
+FROM   (SELECT id FROM organization.subsidiary ORDER BY created_at LIMIT 1) s
+WHERE  NOT EXISTS (
+    SELECT 1 FROM reconciliation.bank_account WHERE subsidiary_id = s.id AND gl_account_code = '1123'
+);
 
-    -- Providus Bank – Client Account (GL0811101500 → 1123)
-    -- Primary operating account; NUBAN confirmed from bank statement
-    INSERT INTO reconciliation.bank_account
-        (subsidiary_id, bank_name, account_number, account_name, currency, gl_account_code, status)
-    SELECT sid, 'Providus Bank', '5401732286',
-           'Page Asset Management – Clients', 'NGN', '1123', 'active'
-    WHERE NOT EXISTS (
-        SELECT 1 FROM reconciliation.bank_account
-        WHERE subsidiary_id = sid AND gl_account_code = '1123'
-    );
+-- Providus Bank – Main (GL0811101900 → 1113)
+INSERT INTO reconciliation.bank_account
+    (subsidiary_id, bank_name, account_number, account_name, currency, gl_account_code, status)
+SELECT s.id, 'Providus Bank', '0044456789', 'Page Asset Management – Main', 'NGN', '1113', 'active'
+FROM   (SELECT id FROM organization.subsidiary ORDER BY created_at LIMIT 1) s
+WHERE  NOT EXISTS (
+    SELECT 1 FROM reconciliation.bank_account WHERE subsidiary_id = s.id AND gl_account_code = '1113'
+);
 
-    -- Providus Bank – Main (GL0811101900 → 1113)
-    INSERT INTO reconciliation.bank_account
-        (subsidiary_id, bank_name, account_number, account_name, currency, gl_account_code, status)
-    SELECT sid, 'Providus Bank', '0044456789',
-           'Page Asset Management – Main', 'NGN', '1113', 'active'
-    WHERE NOT EXISTS (
-        SELECT 1 FROM reconciliation.bank_account
-        WHERE subsidiary_id = sid AND gl_account_code = '1113'
-    );
+-- Providus Bank – Operations (GL0811101600 → 1114)
+INSERT INTO reconciliation.bank_account
+    (subsidiary_id, bank_name, account_number, account_name, currency, gl_account_code, status)
+SELECT s.id, 'Providus Bank', '', 'Page Asset Management – Operations', 'NGN', '1114', 'active'
+FROM   (SELECT id FROM organization.subsidiary ORDER BY created_at LIMIT 1) s
+WHERE  NOT EXISTS (
+    SELECT 1 FROM reconciliation.bank_account WHERE subsidiary_id = s.id AND gl_account_code = '1114'
+);
 
-    -- Providus Bank – Operations (GL0811101600 → 1114)
-    INSERT INTO reconciliation.bank_account
-        (subsidiary_id, bank_name, account_number, account_name, currency, gl_account_code, status)
-    SELECT sid, 'Providus Bank', '',
-           'Page Asset Management – Operations', 'NGN', '1114', 'active'
-    WHERE NOT EXISTS (
-        SELECT 1 FROM reconciliation.bank_account
-        WHERE subsidiary_id = sid AND gl_account_code = '1114'
-    );
+-- GTBank – Main (GL0811100600 → 1110)
+INSERT INTO reconciliation.bank_account
+    (subsidiary_id, bank_name, account_number, account_name, currency, gl_account_code, status)
+SELECT s.id, 'GTBank', '', 'Page Asset Management – GTBank Main', 'NGN', '1110', 'active'
+FROM   (SELECT id FROM organization.subsidiary ORDER BY created_at LIMIT 1) s
+WHERE  NOT EXISTS (
+    SELECT 1 FROM reconciliation.bank_account WHERE subsidiary_id = s.id AND gl_account_code = '1110'
+);
 
-    -- GTBank – Main (GL0811100600 → 1110)
-    INSERT INTO reconciliation.bank_account
-        (subsidiary_id, bank_name, account_number, account_name, currency, gl_account_code, status)
-    SELECT sid, 'GTBank', '',
-           'Page Asset Management – GTBank Main', 'NGN', '1110', 'active'
-    WHERE NOT EXISTS (
-        SELECT 1 FROM reconciliation.bank_account
-        WHERE subsidiary_id = sid AND gl_account_code = '1110'
-    );
+-- FSDH Bank – Main (GL0811101700 → 1112)
+INSERT INTO reconciliation.bank_account
+    (subsidiary_id, bank_name, account_number, account_name, currency, gl_account_code, status)
+SELECT s.id, 'FSDH Bank', '', 'Page Asset Management – FSDH Main', 'NGN', '1112', 'active'
+FROM   (SELECT id FROM organization.subsidiary ORDER BY created_at LIMIT 1) s
+WHERE  NOT EXISTS (
+    SELECT 1 FROM reconciliation.bank_account WHERE subsidiary_id = s.id AND gl_account_code = '1112'
+);
 
-    -- FSDH Bank – Main (GL0811101700 → 1112)
-    INSERT INTO reconciliation.bank_account
-        (subsidiary_id, bank_name, account_number, account_name, currency, gl_account_code, status)
-    SELECT sid, 'FSDH Bank', '',
-           'Page Asset Management – FSDH Main', 'NGN', '1112', 'active'
-    WHERE NOT EXISTS (
-        SELECT 1 FROM reconciliation.bank_account
-        WHERE subsidiary_id = sid AND gl_account_code = '1112'
-    );
+-- FSDH Bank – Clients New (GL0811102000 → 1122)
+INSERT INTO reconciliation.bank_account
+    (subsidiary_id, bank_name, account_number, account_name, currency, gl_account_code, status)
+SELECT s.id, 'FSDH Bank', '', 'Page Asset Management – FSDH Clients', 'NGN', '1122', 'active'
+FROM   (SELECT id FROM organization.subsidiary ORDER BY created_at LIMIT 1) s
+WHERE  NOT EXISTS (
+    SELECT 1 FROM reconciliation.bank_account WHERE subsidiary_id = s.id AND gl_account_code = '1122'
+);
 
-    -- FSDH Bank – Clients New (GL0811102000 → 1122)
-    INSERT INTO reconciliation.bank_account
-        (subsidiary_id, bank_name, account_number, account_name, currency, gl_account_code, status)
-    SELECT sid, 'FSDH Bank', '',
-           'Page Asset Management – FSDH Clients', 'NGN', '1122', 'active'
-    WHERE NOT EXISTS (
-        SELECT 1 FROM reconciliation.bank_account
-        WHERE subsidiary_id = sid AND gl_account_code = '1122'
-    );
+-- Access Bank – Client Account (GL0811101100 → 1121)
+INSERT INTO reconciliation.bank_account
+    (subsidiary_id, bank_name, account_number, account_name, currency, gl_account_code, status)
+SELECT s.id, 'Access Bank', '', 'Page Asset Management – Access Client', 'NGN', '1121', 'active'
+FROM   (SELECT id FROM organization.subsidiary ORDER BY created_at LIMIT 1) s
+WHERE  NOT EXISTS (
+    SELECT 1 FROM reconciliation.bank_account WHERE subsidiary_id = s.id AND gl_account_code = '1121'
+);
 
-    -- Access Bank – Client Account (GL0811101100 → 1121)
-    INSERT INTO reconciliation.bank_account
-        (subsidiary_id, bank_name, account_number, account_name, currency, gl_account_code, status)
-    SELECT sid, 'Access Bank', '',
-           'Page Asset Management – Access Client', 'NGN', '1121', 'active'
-    WHERE NOT EXISTS (
-        SELECT 1 FROM reconciliation.bank_account
-        WHERE subsidiary_id = sid AND gl_account_code = '1121'
-    );
+-- Stanbic IBTC – Client Account (GL0811100100 → 1126)
+INSERT INTO reconciliation.bank_account
+    (subsidiary_id, bank_name, account_number, account_name, currency, gl_account_code, status)
+SELECT s.id, 'Stanbic IBTC', '', 'Page Asset Management – Stanbic Client', 'NGN', '1126', 'active'
+FROM   (SELECT id FROM organization.subsidiary ORDER BY created_at LIMIT 1) s
+WHERE  NOT EXISTS (
+    SELECT 1 FROM reconciliation.bank_account WHERE subsidiary_id = s.id AND gl_account_code = '1126'
+);
 
-    -- Stanbic IBTC – Client Account (GL0811100100 → 1126)
-    INSERT INTO reconciliation.bank_account
-        (subsidiary_id, bank_name, account_number, account_name, currency, gl_account_code, status)
-    SELECT sid, 'Stanbic IBTC', '',
-           'Page Asset Management – Stanbic Client', 'NGN', '1126', 'active'
-    WHERE NOT EXISTS (
-        SELECT 1 FROM reconciliation.bank_account
-        WHERE subsidiary_id = sid AND gl_account_code = '1126'
-    );
+-- UBA – Nominee / NGN Nostro (GL0811101300 → 1136)
+INSERT INTO reconciliation.bank_account
+    (subsidiary_id, bank_name, account_number, account_name, currency, gl_account_code, status)
+SELECT s.id, 'UBA', '', 'Page Asset Management – UBA Nominee', 'NGN', '1136', 'active'
+FROM   (SELECT id FROM organization.subsidiary ORDER BY created_at LIMIT 1) s
+WHERE  NOT EXISTS (
+    SELECT 1 FROM reconciliation.bank_account WHERE subsidiary_id = s.id AND gl_account_code = '1136'
+);
 
-    -- UBA – Nominee / NGN Nostro (GL0811101300 → 1136)
-    INSERT INTO reconciliation.bank_account
-        (subsidiary_id, bank_name, account_number, account_name, currency, gl_account_code, status)
-    SELECT sid, 'UBA', '',
-           'Page Asset Management – UBA Nominee', 'NGN', '1136', 'active'
-    WHERE NOT EXISTS (
-        SELECT 1 FROM reconciliation.bank_account
-        WHERE subsidiary_id = sid AND gl_account_code = '1136'
-    );
+-- UBA – Client Account (GL0811100800 → 1127)
+INSERT INTO reconciliation.bank_account
+    (subsidiary_id, bank_name, account_number, account_name, currency, gl_account_code, status)
+SELECT s.id, 'UBA', '', 'Page Asset Management – UBA Client', 'NGN', '1127', 'active'
+FROM   (SELECT id FROM organization.subsidiary ORDER BY created_at LIMIT 1) s
+WHERE  NOT EXISTS (
+    SELECT 1 FROM reconciliation.bank_account WHERE subsidiary_id = s.id AND gl_account_code = '1127'
+);
 
-    -- UBA – Client Account (GL0811100800 → 1127)
-    INSERT INTO reconciliation.bank_account
-        (subsidiary_id, bank_name, account_number, account_name, currency, gl_account_code, status)
-    SELECT sid, 'UBA', '',
-           'Page Asset Management – UBA Client', 'NGN', '1127', 'active'
-    WHERE NOT EXISTS (
-        SELECT 1 FROM reconciliation.bank_account
-        WHERE subsidiary_id = sid AND gl_account_code = '1127'
-    );
+-- RMB – Nominee / NGN Nostro (GL0811101400 → 1135)
+INSERT INTO reconciliation.bank_account
+    (subsidiary_id, bank_name, account_number, account_name, currency, gl_account_code, status)
+SELECT s.id, 'RMB Bank', '', 'Page Asset Management – RMB Nominee', 'NGN', '1135', 'active'
+FROM   (SELECT id FROM organization.subsidiary ORDER BY created_at LIMIT 1) s
+WHERE  NOT EXISTS (
+    SELECT 1 FROM reconciliation.bank_account WHERE subsidiary_id = s.id AND gl_account_code = '1135'
+);
 
-    -- RMB – Nominee / NGN Nostro (GL0811101400 → 1135)
-    INSERT INTO reconciliation.bank_account
-        (subsidiary_id, bank_name, account_number, account_name, currency, gl_account_code, status)
-    SELECT sid, 'RMB Bank', '',
-           'Page Asset Management – RMB Nominee', 'NGN', '1135', 'active'
-    WHERE NOT EXISTS (
-        SELECT 1 FROM reconciliation.bank_account
-        WHERE subsidiary_id = sid AND gl_account_code = '1135'
-    );
+-- Wema Bank – Clients Executed Only (GL0811102100 → 1128)
+INSERT INTO reconciliation.bank_account
+    (subsidiary_id, bank_name, account_number, account_name, currency, gl_account_code, status)
+SELECT s.id, 'Wema Bank', '0124977578', 'Page Asset Management – Wema Clients', 'NGN', '1128', 'active'
+FROM   (SELECT id FROM organization.subsidiary ORDER BY created_at LIMIT 1) s
+WHERE  NOT EXISTS (
+    SELECT 1 FROM reconciliation.bank_account WHERE subsidiary_id = s.id AND gl_account_code = '1128'
+);
 
-    -- Wema Bank – Clients Executed Only (GL0811102100 → 1128)
-    INSERT INTO reconciliation.bank_account
-        (subsidiary_id, bank_name, account_number, account_name, currency, gl_account_code, status)
-    SELECT sid, 'Wema Bank', '0124977578',
-           'Page Asset Management – Wema Clients', 'NGN', '1128', 'active'
-    WHERE NOT EXISTS (
-        SELECT 1 FROM reconciliation.bank_account
-        WHERE subsidiary_id = sid AND gl_account_code = '1128'
-    );
-
-    -- Zenith Bank – Client Account (GL0811100300 → 1129)
-    INSERT INTO reconciliation.bank_account
-        (subsidiary_id, bank_name, account_number, account_name, currency, gl_account_code, status)
-    SELECT sid, 'Zenith Bank', '',
-           'Page Asset Management – Zenith Client', 'NGN', '1129', 'active'
-    WHERE NOT EXISTS (
-        SELECT 1 FROM reconciliation.bank_account
-        WHERE subsidiary_id = sid AND gl_account_code = '1129'
-    );
-
-END $$;
+-- Zenith Bank – Client Account (GL0811100300 → 1129)
+INSERT INTO reconciliation.bank_account
+    (subsidiary_id, bank_name, account_number, account_name, currency, gl_account_code, status)
+SELECT s.id, 'Zenith Bank', '', 'Page Asset Management – Zenith Client', 'NGN', '1129', 'active'
+FROM   (SELECT id FROM organization.subsidiary ORDER BY created_at LIMIT 1) s
+WHERE  NOT EXISTS (
+    SELECT 1 FROM reconciliation.bank_account WHERE subsidiary_id = s.id AND gl_account_code = '1129'
+);
 
 -- +goose Down
 DROP TABLE IF EXISTS reconciliation.posting_type;
