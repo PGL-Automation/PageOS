@@ -1166,7 +1166,7 @@ export default function ReconciliationPage() {
                     className="h-9 px-3 rounded-xl text-[12px] font-medium outline-none appearance-none"
                     style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)", color: "var(--pg-text-1)" }}>
               {accounts.map(a => (
-                <option key={a.id} value={a.id}>{a.bank_name} — {a.account_number} ({a.currency})</option>
+                <option key={a.id} value={a.id}>{a.account_name} — {a.account_number} ({a.currency})</option>
               ))}
             </select>
           </div>
@@ -1320,7 +1320,7 @@ export default function ReconciliationPage() {
             <div className="grid" style={{ gridTemplateColumns: "1fr 28px 1fr" }}>
               {/* Bank header */}
               <div className="px-5 py-3 text-[11px] font-semibold" style={{ borderBottom: "1px solid var(--pg-row-border)", color: "var(--pg-text-2)" }}>
-                Bank Statement — {selectedAccount?.bank_name} {selectedAccount?.account_number}
+                Bank Statement — {selectedAccount?.account_name} {selectedAccount?.account_number}
               </div>
               <div style={{ borderBottom: "1px solid var(--pg-row-border)" }} />
               {/* Ledger header */}
