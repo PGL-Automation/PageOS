@@ -96,6 +96,8 @@ func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	r.Post("/runs/{id}/auto-close", h.withCap("recon.close", h.tryAutoClose))
 	// List all posting type classification templates.
 	r.Get("/posting-types", h.withCap("recon.view", h.listPostingTypes))
+	// Search client sub-accounts (2110-XXXX) for classify sheet.
+	r.Get("/client-accounts", h.withCap("recon.view", h.listClientAccounts))
 	// Exception summary across all accounts for a subsidiary.
 	r.Get("/exceptions", h.withCap("recon.view", h.getExceptions))
 	// Dashboard: all run summaries for a subsidiary.
@@ -665,6 +667,21 @@ func (h *Handler) listPostingTypes(w http.ResponseWriter, r *http.Request) {
 		types = []reconciliation.PostingType{}
 	}
 	httpx.JSON(w, http.StatusOK, types)
+}
+
+// listClientAccounts returns client sub-accounts (2110-XXXX) filtered by
+// an optional search query, used to populate the classify sheet client picker.
+func (h *Handler) listClientAccounts(w http.ResponseWriter, r *http.Request) {
+	search := r.URL.Query().Get("search")
+	clients, err := h.svc.SearchClientAccounts(r.Context(), search)
+	if err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		return
+	}
+	if clients == nil {
+		clients = []reconciliation.ClientAccount{}
+	}
+	httpx.JSON(w, http.StatusOK, clients)
 }
 
 // ── Classification and posting ────────────────────────────────────────────────

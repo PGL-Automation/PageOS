@@ -890,6 +890,18 @@ export default function ReconciliationPage() {
     queryFn: () => reconFetch("/posting-types"),
   });
 
+  // Client sub-accounts search for classify sheet
+  type ClientAccount = { account_code: string; client_name: string };
+  const [clientSearch, setClientSearch] = useState("");
+  const { data: clientAccounts = [] } = useQuery<ClientAccount[]>({
+    queryKey: ["recon-client-accounts", clientSearch],
+    queryFn: () => reconFetch(`/client-accounts?search=${encodeURIComponent(clientSearch)}`),
+  });
+
+  // Posting types that require a client to be selected
+  const CLIENT_POSTING_TYPES = new Set(["customer_deposit", "customer_redemption", "interest_payout"]);
+  const needsClient = CLIENT_POSTING_TYPES.has(postingType);
+
   // Classify a bank-not-in-GL match
   const classifyMutation = useMutation({
     mutationFn: async () => {
@@ -1463,18 +1475,67 @@ export default function ReconciliationPage() {
               </Select>
               {postingType && <p style={{ fontSize: "11px", color: "var(--pg-text-3)" }}>{postingTypes.find(p => p.code === postingType)?.description}</p>}
             </div>
+            {/* Client picker — shown for client-related transaction types */}
+            {needsClient && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <Label style={{ fontSize: "12px" }}>Select Client</Label>
+                <Input
+                  value={clientSearch}
+                  onChange={e => setClientSearch(e.target.value)}
+                  placeholder="Search client name…"
+                  style={{ height: "36px", fontSize: "12px" }}
+                />
+                {clientSearch && clientAccounts.length > 0 && (
+                  <div style={{
+                    border: "1px solid var(--pg-card-border)", borderRadius: "8px",
+                    maxHeight: "180px", overflowY: "auto", background: "var(--pg-card)",
+                  }}>
+                    {clientAccounts.map(c => (
+                      <button key={c.account_code}
+                        onClick={() => {
+                          // Set the client's sub-account as the CR code (for credits) or DR (for debits)
+                          const pt = postingTypes.find(p => p.code === postingType);
+                          if (pt?.cr_gl_code === '2110' || pt?.cr_gl_code === '') setCrCode(c.account_code);
+                          else setDrCode(c.account_code);
+                          setClientSearch(c.client_name);
+                        }}
+                        style={{
+                          display: "block", width: "100%", textAlign: "left",
+                          padding: "8px 12px", fontSize: "12px", background: "transparent",
+                          border: "none", cursor: "pointer", borderBottom: "1px solid var(--pg-row-border)",
+                          color: "var(--pg-text-1)",
+                        }}
+                      >
+                        <span style={{ fontWeight: 600, color: "#6d28d9", marginRight: "8px", fontFamily: "monospace", fontSize: "11px" }}>
+                          {c.account_code}
+                        </span>
+                        {c.client_name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {clientSearch && clientAccounts.length === 0 && (
+                  <p style={{ fontSize: "11px", color: "var(--pg-text-3)" }}>No matching clients found</p>
+                )}
+              </div>
+            )}
+
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 <Label style={{ fontSize: "12px" }}>DR Account Code</Label>
                 <Input value={drCode} onChange={e => setDrCode(e.target.value)} placeholder="e.g. 1123"
                   style={{ height: "36px", fontSize: "12px", fontFamily: "monospace" }} />
-                <p style={{ fontSize: "10px", color: "var(--pg-text-3)" }}>{drCode === "BANK" ? "Uses bank GL code" : ""}</p>
+                <p style={{ fontSize: "10px", color: "var(--pg-text-3)" }}>
+                  {drCode === "BANK" ? "Uses bank GL code" : drCode.startsWith("2110-") ? `Client sub-account: ${drCode}` : ""}
+                </p>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 <Label style={{ fontSize: "12px" }}>CR Account Code</Label>
-                <Input value={crCode} onChange={e => setCrCode(e.target.value)} placeholder="e.g. 2110"
+                <Input value={crCode} onChange={e => setCrCode(e.target.value)} placeholder="e.g. 2110-0001"
                   style={{ height: "36px", fontSize: "12px", fontFamily: "monospace" }} />
-                <p style={{ fontSize: "10px", color: "var(--pg-text-3)" }}>{crCode === "BANK" ? "Uses bank GL code" : ""}</p>
+                <p style={{ fontSize: "10px", color: "var(--pg-text-3)" }}>
+                  {crCode === "BANK" ? "Uses bank GL code" : crCode.startsWith("2110-") ? `Client sub-account: ${crCode}` : ""}
+                </p>
               </div>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>

@@ -136,6 +136,42 @@ func (s *Service) SetFinanceService(f *finance.Service) { s.financeSvc = f }
 // direct SQL access alongside the service methods.
 func (s *Service) Pool() *pgxpool.Pool { return s.store.Pool() }
 
+// ClientAccount is a client sub-ledger account (e.g. 2110-0001).
+type ClientAccount struct {
+	AccountCode string `json:"account_code"`
+	ClientName  string `json:"client_name"`
+}
+
+// SearchClientAccounts returns client sub-accounts whose name contains the
+// search string (case-insensitive). Returns all accounts when search is empty.
+// Limited to 50 results to keep the dropdown fast.
+func (s *Service) SearchClientAccounts(ctx context.Context, search string) ([]ClientAccount, error) {
+	var rows interface{ Next() bool; Scan(...any) error; Close(); Err() error }
+	_ = rows
+	q := `
+		SELECT account_code, client_name
+		FROM   finance.client_account
+		WHERE  is_active = true
+		  AND  ($1 = '' OR client_name ILIKE '%' || $1 || '%')
+		ORDER  BY client_name
+		LIMIT  50
+	`
+	pgrows, err := s.store.Pool().Query(ctx, q, search)
+	if err != nil {
+		return nil, fmt.Errorf("reconciliation: search client accounts: %w", err)
+	}
+	defer pgrows.Close()
+	var out []ClientAccount
+	for pgrows.Next() {
+		var c ClientAccount
+		if err := pgrows.Scan(&c.AccountCode, &c.ClientName); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, pgrows.Err()
+}
+
 // PostingType describes a transaction classification template for bank-not-in-GL items.
 type PostingType struct {
 	Code        string `json:"code"`
