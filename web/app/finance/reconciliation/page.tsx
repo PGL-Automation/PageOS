@@ -674,10 +674,11 @@ function UploadSection({
 // ── Match row ──────────────────────────────────────────────────────────────────
 
 function MatchRowContent({
-  m, onAccept, onDismiss, isSelected, onClick,
+  m, onAccept, onDismiss, isSelected, onClick, onClassify, onPostJE, postingJE,
 }: {
   m: FullMatch; onAccept?: () => void; onDismiss?: () => void;
   isSelected?: boolean; onClick?: () => void;
+  onClassify?: () => void; onPostJE?: () => void; postingJE?: boolean;
 }) {
   const bankAmt = m.bank_credit_kobo > 0 ? m.bank_credit_kobo : -m.bank_debit_kobo;
   const bankDir = m.bank_credit_kobo > 0 ? "credit" : "debit";
@@ -743,11 +744,26 @@ function MatchRowContent({
             {onDismiss && <button onClick={e => { e.stopPropagation(); onDismiss(); }} title="Dismiss match" className="w-5 h-5 flex items-center justify-center rounded bg-red-400 hover:bg-red-500 transition-colors"><X className="w-2.5 h-2.5 text-white"/></button>}
           </div>
         )}
-        {/* Unmatched — click to select */}
-        {isUnmatched && (
+        {/* Unmatched — click to select for manual match */}
+        {isUnmatched && !onClassify && (
           <p className="text-[9px] mt-1" style={{ color: isSelected ? "#FF6600" : "var(--pg-text-4)" }}>
             {isSelected ? "✓ Selected" : "Click to select"}
           </p>
+        )}
+        {/* Bank-only: classify then post */}
+        {m.status === "unmatched_bank" && onClassify && (
+          <div className="flex gap-1 mt-1.5 justify-center" onClick={e => e.stopPropagation()}>
+            <button onClick={onClassify}
+              className="h-6 px-2 rounded text-[10px] font-semibold"
+              style={{ background: "#ede9fe", color: "#6d28d9", border: "1px solid #c4b5fd" }}>
+              Classify
+            </button>
+            <button onClick={onPostJE} disabled={postingJE}
+              className="h-6 px-2 rounded text-[10px] font-semibold disabled:opacity-40"
+              style={{ background: "#fff7ed", color: "#c2410c", border: "1px solid #fed7aa" }}>
+              {postingJE ? "…" : "Post JE"}
+            </button>
+          </div>
         )}
       </td>
 
@@ -1335,6 +1351,13 @@ export default function ReconciliationPage() {
                           onDismiss={isAI ? () => dismissMatch(m.match_id) : undefined}
                           isSelected={isSelected}
                           onClick={() => toggleSelection(m)}
+                          onClassify={m.status === "unmatched_bank" ? () => {
+                            setClassifyMatchId(m.match_id);
+                            setPostingType(""); setDrCode(""); setCrCode(""); setClassifyNotes("");
+                            setClassifySheet(true);
+                          } : undefined}
+                          onPostJE={m.status === "unmatched_bank" ? () => postJE(m.match_id) : undefined}
+                          postingJE={postingJEId === m.match_id}
                         />
                       );
                     })
@@ -1344,130 +1367,32 @@ export default function ReconciliationPage() {
             </div>
 
             {/* Manual match action bar */}
-            {/* Bank-only selected: Post to GL panel */}
-            {selectedBankMatchId && !selectedLedgerMatchId && (
-              <div className="px-5 py-4 space-y-3"
-                   style={{ borderTop: "2px solid rgba(124,58,237,0.3)", background: "rgba(124,58,237,0.04)" }}>
-                <div className="flex items-center justify-between">
-                  <p className="text-[13px] font-semibold" style={{ color: "#6d28d9" }}>
-                    Post to GL — Bank item has no ledger entry
-                  </p>
-                  <button onClick={() => setSelectedBankMatchId(null)}
-                          className="text-[11px]" style={{ color: "var(--pg-text-3)" }}>✕ Cancel</button>
-                </div>
-                <p className="text-[11px]" style={{ color: "var(--pg-text-3)" }}>
-                  Select a transaction type, confirm the GL accounts, then click Post Journal Entry. The journal will appear in Finance → Journals as a draft for review.
-                </p>
-                <div className="flex flex-wrap items-end gap-3">
-                  <div className="flex flex-col gap-1 min-w-[200px]">
-                    <label className="text-[11px] font-medium" style={{ color: "var(--pg-text-2)" }}>Transaction Type</label>
-                    <select value={postingType} onChange={e => {
-                      const v = e.target.value;
-                      setPostingType(v);
-                      const pt = postingTypes.find(p => p.code === v);
-                      if (pt) { setDrCode(pt.dr_gl_code); setCrCode(pt.cr_gl_code); }
-                    }} className="h-9 px-2 rounded-lg text-[12px] outline-none"
-                      style={{ border: "1px solid var(--pg-card-border)", background: "var(--pg-card)", color: "var(--pg-text-1)" }}>
-                      <option value="">Select type…</option>
-                      {postingTypes.map(pt => <option key={pt.code} value={pt.code}>{pt.label}</option>)}
-                    </select>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[11px] font-medium" style={{ color: "var(--pg-text-2)" }}>DR Account</label>
-                    <input value={drCode} onChange={e => setDrCode(e.target.value)}
-                      placeholder="e.g. 1123" className="h-9 px-2 rounded-lg text-[12px] font-mono w-24 outline-none"
-                      style={{ border: "1px solid var(--pg-card-border)", background: "var(--pg-card)", color: "var(--pg-text-1)" }} />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[11px] font-medium" style={{ color: "var(--pg-text-2)" }}>CR Account</label>
-                    <input value={crCode} onChange={e => setCrCode(e.target.value)}
-                      placeholder="e.g. 2110" className="h-9 px-2 rounded-lg text-[12px] font-mono w-24 outline-none"
-                      style={{ border: "1px solid var(--pg-card-border)", background: "var(--pg-card)", color: "var(--pg-text-1)" }} />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[11px] font-medium" style={{ color: "var(--pg-text-2)" }}>Notes</label>
-                    <input value={classifyNotes} onChange={e => setClassifyNotes(e.target.value)}
-                      placeholder="Optional" className="h-9 px-2 rounded-lg text-[12px] w-36 outline-none"
-                      style={{ border: "1px solid var(--pg-card-border)", background: "var(--pg-card)", color: "var(--pg-text-1)" }} />
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={async () => {
-                        if (!postingType || !drCode || !crCode) {
-                          toast({ title: "Select a transaction type first", variant: "destructive" }); return;
-                        }
-                        // Classify first, then post
-                        try {
-                          await reconFetch(`/runs/${selectedRunId}/matches/${selectedBankMatchId}/classify`, {
-                            method: "POST", headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ posting_type: postingType, dr_gl_code: drCode, cr_gl_code: crCode, notes: classifyNotes }),
-                          });
-                          const jh = await reconFetch(`/runs/${selectedRunId}/matches/${selectedBankMatchId}/post-journal`, {
-                            method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
-                          }) as { reference?: string };
-                          queryClient.invalidateQueries({ queryKey: ["recon-full", selectedRunId] });
-                          setSelectedBankMatchId(null);
-                          setPostingType(""); setDrCode(""); setCrCode(""); setClassifyNotes("");
-                          toast({ title: `Journal ${jh?.reference ?? "entry"} created`, description: "Go to Finance → Journals to review and post it." });
-                        } catch (e) {
-                          toast({ title: "Failed", description: (e as Error).message, variant: "destructive" });
-                        }
-                      }}
-                      disabled={!postingType || !drCode || !crCode}
-                      className="h-9 px-4 rounded-lg text-[12px] font-semibold text-white disabled:opacity-40 flex items-center gap-1.5"
-                      style={{ background: "linear-gradient(135deg,#7c3aed,#6d28d9)" }}>
-                      <Send className="w-3.5 h-3.5" /> Post Journal Entry
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Both sides selected: manual match */}
-            {(selectedBankMatchId && selectedLedgerMatchId) && (
+            {/* Manual match bar */}
+            {(selectedBankMatchId || selectedLedgerMatchId) && (
               <div className="flex items-center justify-between px-5 py-3 gap-4"
                    style={{ borderTop: "1px solid var(--pg-row-border)", background: "rgba(255,102,0,0.05)" }}>
                 <div className="flex items-center gap-3 text-[12px]" style={{ color: "var(--pg-text-2)" }}>
-                  <span className="px-2 py-0.5 rounded-full text-[11px] font-medium text-orange-700 bg-orange-100">
-                    ✓ Bank item selected
+                  <span className={cn("px-2 py-0.5 rounded-full text-[11px] font-medium", selectedBankMatchId ? "text-orange-700 bg-orange-100" : "text-slate-400 bg-slate-100")}>
+                    {selectedBankMatchId ? "✓ Bank item selected" : "Select an unmatched bank line"}
                   </span>
                   <span style={{ color: "var(--pg-text-4)" }}>↔</span>
-                  <span className="px-2 py-0.5 rounded-full text-[11px] font-medium text-violet-700 bg-violet-100">
-                    ✓ Ledger item selected
+                  <span className={cn("px-2 py-0.5 rounded-full text-[11px] font-medium", selectedLedgerMatchId ? "text-violet-700 bg-violet-100" : "text-slate-400 bg-slate-100")}>
+                    {selectedLedgerMatchId ? "✓ Ledger item selected" : "Select an unmatched ledger entry"}
                   </span>
                 </div>
                 <div className="flex gap-2">
                   <button onClick={() => { setSelectedBankMatchId(null); setSelectedLedgerMatchId(null); }}
-                          className="h-8 px-3 rounded-lg text-[12px] font-medium"
+                          className="h-8 px-3 rounded-lg text-[12px] font-medium transition-colors"
                           style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}>
                     Cancel
                   </button>
-                  <button onClick={confirmManualMatch} disabled={manualMatching}
+                  <button onClick={confirmManualMatch}
+                          disabled={!selectedBankMatchId || !selectedLedgerMatchId || manualMatching}
                           className="h-8 px-4 rounded-lg text-[12px] font-semibold text-white disabled:opacity-40"
                           style={{ background: "linear-gradient(135deg,#FF6600,#E05500)" }}>
                     {manualMatching ? "Matching…" : "Confirm Manual Match"}
                   </button>
                 </div>
-              </div>
-            )}
-
-            {/* Only ledger selected */}
-            {(!selectedBankMatchId && selectedLedgerMatchId) && (
-              <div className="flex items-center justify-between px-5 py-3 gap-4"
-                   style={{ borderTop: "1px solid var(--pg-row-border)", background: "rgba(124,58,237,0.04)" }}>
-                <div className="flex items-center gap-3 text-[12px]" style={{ color: "var(--pg-text-2)" }}>
-                  <span className="px-2 py-0.5 rounded-full text-[11px] font-medium text-violet-700 bg-violet-100">
-                    ✓ Ledger item selected
-                  </span>
-                  <span className="text-[11px]" style={{ color: "var(--pg-text-3)" }}>
-                    Now select an unmatched bank line to create a manual match
-                  </span>
-                </div>
-                <button onClick={() => setSelectedLedgerMatchId(null)}
-                        className="h-8 px-3 rounded-lg text-[12px] font-medium"
-                        style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)" }}>
-                  Cancel
-                </button>
               </div>
             )}
 
