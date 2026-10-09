@@ -516,32 +516,41 @@ func (s *Service) GetAvailableGLAccounts(ctx context.Context, subsidiaryID uuid.
 	return out, rows.Err()
 }
 
+// ListBankAccounts returns active bank accounts. When subsidiaryID is the
+// zero UUID, all active accounts across every subsidiary are returned — used
+// by finance users who work across multiple entities.
 func (s *Service) ListBankAccounts(ctx context.Context, subsidiaryID uuid.UUID) ([]BankAccount, error) {
+	// $1::uuid IS NULL matches when subsidiaryID is uuid.Nil (all-zeros).
 	const q = `
 		SELECT id, subsidiary_id, bank_name, account_number, account_name,
 		       currency, COALESCE(gl_account_code,'') AS gl_account_code,
 		       parser_column_map, status
 		FROM   reconciliation.bank_account
-		WHERE  subsidiary_id = $1 AND status = 'active'
+		WHERE  ($1::uuid IS NULL OR subsidiary_id = $1)
+		  AND  status = 'active'
 		ORDER  BY bank_name
 	`
-	rows, err := s.store.Pool().Query(ctx, q, subsidiaryID)
-	if err != nil {
-		return nil, err
+	var sidParam interface{}
+	if subsidiaryID != uuid.Nil {
+		sidParam = subsidiaryID
 	}
-	defer rows.Close()
+	pgrows, e := s.store.Pool().Query(ctx, q, sidParam)
+	if e != nil {
+		return nil, e
+	}
+	defer pgrows.Close()
 	var out []BankAccount
-	for rows.Next() {
+	for pgrows.Next() {
 		var a BankAccount
 		var colMapJSON []byte
-		if err := rows.Scan(&a.ID, &a.SubsidiaryID, &a.BankName, &a.AccountNumber,
+		if err := pgrows.Scan(&a.ID, &a.SubsidiaryID, &a.BankName, &a.AccountNumber,
 			&a.AccountName, &a.Currency, &a.GLAccountCode, &colMapJSON, &a.Status); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal(colMapJSON, &a.ParserColumnMap)
 		out = append(out, a)
 	}
-	return out, rows.Err()
+	return out, pgrows.Err()
 }
 
 // SyncFromJournals derives internal transactions for this bank account directly

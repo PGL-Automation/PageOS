@@ -785,13 +785,20 @@ export default function ReconciliationPage() {
 
   const subsidId = subsidiary?.ID ?? "";
 
-  // Fetch bank accounts
+  // Fetch bank accounts for the active subsidiary; fall back to all subsidiaries
+  // if none are registered for the current one (finance users span entities).
   const { data: accounts = [], refetch: refetchAccounts } = useQuery<BankAccount[]>({
     queryKey: ["recon-accounts", subsidId],
-    enabled: Boolean(subsidId),
     queryFn: async () => {
-      const raw = await reconFetch(`/accounts?subsidiary_id=${subsidId}`);
-      return Array.isArray(raw) ? (raw as BankAccount[]) : [];
+      const raw = await reconFetch(subsidId ? `/accounts?subsidiary_id=${subsidId}` : "/accounts");
+      const list = Array.isArray(raw) ? (raw as BankAccount[]) : [];
+      if (list.length === 0 && subsidId) {
+        // No accounts for this subsidiary — fetch across all subsidiaries so
+        // finance users who work on Page Asset Management can always see accounts.
+        const all = await reconFetch("/accounts");
+        return Array.isArray(all) ? (all as BankAccount[]) : [];
+      }
+      return list;
     },
   });
 

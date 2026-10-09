@@ -174,11 +174,9 @@ func (h *Handler) setGLCode(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) listAccounts(w http.ResponseWriter, r *http.Request) {
-	sid, err := uuid.Parse(r.URL.Query().Get("subsidiary_id"))
-	if err != nil {
-		httpx.Error(w, http.StatusBadRequest, "bad_request", "subsidiary_id required")
-		return
-	}
+	// subsidiary_id is optional — omit or pass empty to return all active
+	// bank accounts across every subsidiary (for cross-entity finance users).
+	sid, _ := uuid.Parse(r.URL.Query().Get("subsidiary_id"))
 	accounts, err := h.svc.ListBankAccounts(r.Context(), sid)
 	if err != nil {
 		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
