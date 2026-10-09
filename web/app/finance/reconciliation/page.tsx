@@ -8,10 +8,14 @@ import {
   RefreshCw, Upload, Download, Brain, Plus, Check, X,
   Sparkles, AlertCircle, ChevronDown, Filter, Search,
   ArrowUpRight, ArrowDownLeft, CheckCircle2, XCircle,
-  Settings, Loader2, FileText, Building2,
+  Settings, Loader2, FileText, Building2, BookOpen, Send,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTeamView, TeamViewBar } from "@/lib/team-view";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -49,6 +53,11 @@ type FullMatch = {
 };
 
 type MatchFilter = "all" | "matched" | "unmatched" | "ai_suggested";
+
+type PostingType = {
+  code: string; label: string; description: string;
+  dr_gl_code: string; cr_gl_code: string; direction: string;
+};
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -663,8 +672,12 @@ function UploadSection({
 // ── Match row ──────────────────────────────────────────────────────────────────
 
 function MatchRowContent({
-  m, onAccept, onDismiss, isSelected, onClick,
-}: { m: FullMatch; onAccept?: () => void; onDismiss?: () => void; isSelected?: boolean; onClick?: () => void }) {
+  m, onAccept, onDismiss, isSelected, onClick, onClassify, onPostJE, postingJE,
+}: {
+  m: FullMatch; onAccept?: () => void; onDismiss?: () => void;
+  isSelected?: boolean; onClick?: () => void;
+  onClassify?: () => void; onPostJE?: () => void; postingJE?: boolean;
+}) {
   const bankAmt = m.bank_credit_kobo > 0 ? m.bank_credit_kobo : -m.bank_debit_kobo;
   const bankDir = m.bank_credit_kobo > 0 ? "credit" : "debit";
 
@@ -730,10 +743,27 @@ function MatchRowContent({
           </div>
         )}
         {/* Unmatched — click to select for manual match */}
-        {isUnmatched && (
+        {isUnmatched && !onClassify && (
           <p className="text-[9px] mt-1" style={{ color: isSelected ? "#FF6600" : "var(--pg-text-4)" }}>
             {isSelected ? "✓ Selected" : "Click to select"}
           </p>
+        )}
+        {/* Bank-only items: classify then post as journal entry */}
+        {m.status === "unmatched_bank" && onClassify && (
+          <div className="flex flex-col gap-1 mt-1" onClick={e => e.stopPropagation()}>
+            <button onClick={onClassify}
+              className="flex items-center justify-center gap-1 text-[9px] font-semibold px-2 py-0.5 rounded"
+              style={{ background: "rgba(124,58,237,0.1)", color: "#7c3aed", border: "1px solid rgba(124,58,237,0.2)" }}>
+              <BookOpen className="w-2.5 h-2.5" /> Classify
+            </button>
+            {onPostJE && (
+              <button onClick={onPostJE} disabled={postingJE}
+                className="flex items-center justify-center gap-1 text-[9px] font-semibold px-2 py-0.5 rounded"
+                style={{ background: "rgba(255,102,0,0.1)", color: "#C05000", border: "1px solid rgba(255,102,0,0.25)", opacity: postingJE ? 0.5 : 1 }}>
+                {postingJE ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Send className="w-2.5 h-2.5" />} Post JE
+              </button>
+            )}
+          </div>
         )}
       </td>
 
@@ -782,6 +812,20 @@ export default function ReconciliationPage() {
   const [selectedBankMatchId, setSelectedBankMatchId]     = useState<string | null>(null);
   const [selectedLedgerMatchId, setSelectedLedgerMatchId] = useState<string | null>(null);
   const [manualMatching, setManualMatching]               = useState(false);
+
+  // Pagination
+  const PAGE_SIZE = 50;
+  const [page, setPage]                                   = useState(1);
+
+  // Classify + Post JE
+  const [classifySheet, setClassifySheet]                 = useState(false);
+  const [classifyMatchId, setClassifyMatchId]             = useState("");
+  const [postingType, setPostingType]                     = useState("");
+  const [drCode, setDrCode]                               = useState("");
+  const [crCode, setCrCode]                               = useState("");
+  const [classifyNotes, setClassifyNotes]                 = useState("");
+  const [postingJEId, setPostingJEId]                     = useState<string | null>(null);
+  const [exporting, setExporting]                         = useState(false);
 
   const subsidId = subsidiary?.ID ?? "";
 
@@ -839,6 +883,66 @@ export default function ReconciliationPage() {
       return Array.isArray(raw) ? (raw as FullMatch[]) : [];
     },
   });
+
+  // Posting type templates for classify sheet
+  const { data: postingTypes = [] } = useQuery<PostingType[]>({
+    queryKey: ["recon-posting-types"],
+    queryFn: () => reconFetch("/posting-types"),
+  });
+
+  // Classify a bank-not-in-GL match
+  const classifyMutation = useMutation({
+    mutationFn: async () => {
+      await reconFetch(`/runs/${selectedRunId}/matches/${classifyMatchId}/classify`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ posting_type: postingType, dr_gl_code: drCode, cr_gl_code: crCode, notes: classifyNotes }),
+      });
+    },
+    onSuccess: () => {
+      setClassifySheet(false);
+      toast({ title: "Classified", description: "Now click Post JE to create the journal entry." });
+    },
+    onError: (e) => toast({ title: "Classify Failed", description: (e as Error).message, variant: "destructive" }),
+  });
+
+  // Post a journal entry from a classified bank-not-in-GL match
+  async function postJE(matchId: string) {
+    setPostingJEId(matchId);
+    try {
+      await reconFetch(`/runs/${selectedRunId}/matches/${matchId}/post-journal`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+      });
+      toast({ title: "Journal Created", description: "Draft journal entry created in Finance → Journals." });
+      queryClient.invalidateQueries({ queryKey: ["recon-full", selectedRunId] });
+    } catch (e) {
+      toast({ title: "Post Failed", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setPostingJEId(null);
+    }
+  }
+
+  // Export run as Excel
+  async function downloadExport() {
+    if (!selectedRunId) return;
+    setExporting(true);
+    try {
+      const res = await fetch(`${BASE}/api/v1/reconciliation/runs/${selectedRunId}/export`, { credentials: "include" });
+      if (!res.ok) throw new Error("Export failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const cd = res.headers.get("Content-Disposition") ?? "";
+      const match = cd.match(/filename="([^"]+)"/);
+      a.download = match?.[1] ?? `recon_${selectedRunId}.xlsx`;
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a); URL.revokeObjectURL(url);
+    } catch (e) {
+      toast({ title: "Export Failed", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setExporting(false);
+    }
+  }
 
   // Create a new reconciliation run (auto-matches on creation)
   async function createRun() {
@@ -964,6 +1068,9 @@ export default function ReconciliationPage() {
     return true;
   });
 
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+  const pagedFiltered = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
   const aiPending = fullMatches.filter(isAISuggested).length;
 
   // Difference calculation
@@ -1000,6 +1107,14 @@ export default function ReconciliationPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          {selectedRun && (
+            <button onClick={downloadExport} disabled={exporting}
+                    className="flex items-center gap-1.5 h-9 px-3 rounded-xl text-[12px] font-medium transition-colors"
+                    style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)", background: "var(--pg-card)" }}>
+              {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+              Export Excel
+            </button>
+          )}
           {selectedRun && selectedRun.status !== "closed" && (
             <button onClick={() => closeMutation.mutate()} disabled={closeMutation.isPending}
                     className="flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-semibold text-white"
@@ -1154,7 +1269,7 @@ export default function ReconciliationPage() {
                   ai_suggested: aiPending,
                 };
                 return (
-                  <button key={f} onClick={() => setFilter(f)}
+                  <button key={f} onClick={() => { setFilter(f); setPage(1); }}
                           className={cn("flex items-center gap-1 h-7 px-3 rounded-lg text-[11px] font-medium transition-all capitalize", filter === f ? "text-white" : "")}
                           style={filter === f ? { background: "linear-gradient(135deg,#FF6600,#E05500)" } : { color: "var(--pg-text-2)" }}>
                     {f.replace("_", " ")}
@@ -1169,7 +1284,7 @@ export default function ReconciliationPage() {
             <div className="flex items-center gap-1.5 h-9 px-3 rounded-xl"
                  style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}>
               <Search className="w-3.5 h-3.5" style={{ color: "var(--pg-text-3)" }} />
-              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search transactions…"
+              <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} placeholder="Search transactions…"
                      className="text-[12px] bg-transparent outline-none w-44" style={{ color: "var(--pg-text-1)" }} />
             </div>
           </div>
@@ -1215,7 +1330,7 @@ export default function ReconciliationPage() {
                       </td>
                     </tr>
                   ) : (
-                    filtered.map(m => {
+                    pagedFiltered.map(m => {
                       const isSelectedBank   = selectedBankMatchId   === m.match_id;
                       const isSelectedLedger = selectedLedgerMatchId === m.match_id;
                       const isSelected = isSelectedBank || isSelectedLedger;
@@ -1225,7 +1340,15 @@ export default function ReconciliationPage() {
                           onAccept={isAI ? () => acceptMatch(m.match_id) : undefined}
                           onDismiss={isAI ? () => dismissMatch(m.match_id) : undefined}
                           isSelected={isSelected}
-                          onClick={() => toggleSelection(m)} />
+                          onClick={() => toggleSelection(m)}
+                          onClassify={m.status === "unmatched_bank" ? () => {
+                            setClassifyMatchId(m.match_id);
+                            setPostingType(""); setDrCode(""); setCrCode(""); setClassifyNotes("");
+                            setClassifySheet(true);
+                          } : undefined}
+                          onPostJE={m.status === "unmatched_bank" ? () => postJE(m.match_id) : undefined}
+                          postingJE={postingJEId === m.match_id}
+                        />
                       );
                     })
                   )}
@@ -1263,14 +1386,28 @@ export default function ReconciliationPage() {
             )}
 
             {filtered.length > 0 && (
-              <div className="px-5 py-3 flex items-center justify-between" style={{ borderTop: "1px solid var(--pg-row-border)" }}>
+              <div className="px-5 py-3 flex items-center justify-between gap-4" style={{ borderTop: "1px solid var(--pg-row-border)" }}>
                 <span className="text-[11px]" style={{ color: "var(--pg-text-3)" }}>
-                  {filtered.length} of {fullMatches.length} transactions
+                  {(page-1)*PAGE_SIZE+1}–{Math.min(page*PAGE_SIZE, filtered.length)} of {filtered.length} transactions
                 </span>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setPage(p => Math.max(1,p-1))} disabled={page===1}
+                    className="h-7 px-3 rounded-lg text-[11px] font-medium disabled:opacity-40"
+                    style={{ border: "1px solid var(--pg-card-border)", background: "var(--pg-card)", color: "var(--pg-text-2)" }}>
+                    ← Prev
+                  </button>
+                  <span className="text-[11px]" style={{ color: "var(--pg-text-3)", minWidth: 70, textAlign: "center" }}>
+                    Page {page} / {totalPages}
+                  </span>
+                  <button onClick={() => setPage(p => Math.min(totalPages,p+1))} disabled={page===totalPages}
+                    className="h-7 px-3 rounded-lg text-[11px] font-medium disabled:opacity-40"
+                    style={{ border: "1px solid var(--pg-card-border)", background: "var(--pg-card)", color: "var(--pg-text-2)" }}>
+                    Next →
+                  </button>
+                </div>
                 <div className="flex items-center gap-3 text-[11px]" style={{ color: "var(--pg-text-3)" }}>
-                  <span>Bank total: <strong>{shortKobo(Math.abs(bankTotal))}</strong></span>
-                  <span>·</span>
-                  <span>Ledger total: <strong>{shortKobo(Math.abs(ledgerTotal))}</strong></span>
+                  <span>Bank: <strong>{shortKobo(Math.abs(bankTotal))}</strong></span>
+                  <span>Ledger: <strong>{shortKobo(Math.abs(ledgerTotal))}</strong></span>
                   {difference > 0 && <span className="font-bold text-amber-600">Diff: {shortKobo(difference)}</span>}
                 </div>
               </div>
@@ -1282,6 +1419,70 @@ export default function ReconciliationPage() {
       {/* Run history — always visible when an account is selected.
           Data is permanently saved in the database. Every run, its matches,
           and all statement lines remain available indefinitely. */}
+      {/* Classify bank line sheet */}
+      <Sheet open={classifySheet} onOpenChange={setClassifySheet}>
+        <SheetContent side="right" style={{ width: "420px", padding: "28px 24px" }}>
+          <SheetHeader>
+            <SheetTitle style={{ fontSize: "16px" }}>Classify Bank Line</SheetTitle>
+            <SheetDescription style={{ fontSize: "12px" }}>
+              Select the transaction type. A draft journal entry will be created in Finance → Journals.
+            </SheetDescription>
+          </SheetHeader>
+          <div style={{ display: "flex", flexDirection: "column", gap: "18px", marginTop: "24px" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              <Label style={{ fontSize: "12px" }}>Transaction Type</Label>
+              <Select value={postingType} onValueChange={(v: string | null) => {
+                if (!v) return;
+                setPostingType(v);
+                const pt = postingTypes.find(p => p.code === v);
+                if (pt) { setDrCode(pt.dr_gl_code); setCrCode(pt.cr_gl_code); }
+              }}>
+                <SelectTrigger style={{ height: "36px", fontSize: "12px" }}>
+                  <SelectValue placeholder="Select type…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {postingTypes.map(pt => (
+                    <SelectItem key={pt.code} value={pt.code} style={{ fontSize: "12px" }}>{pt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {postingType && <p style={{ fontSize: "11px", color: "var(--pg-text-3)" }}>{postingTypes.find(p => p.code === postingType)?.description}</p>}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <Label style={{ fontSize: "12px" }}>DR Account Code</Label>
+                <Input value={drCode} onChange={e => setDrCode(e.target.value)} placeholder="e.g. 1123"
+                  style={{ height: "36px", fontSize: "12px", fontFamily: "monospace" }} />
+                <p style={{ fontSize: "10px", color: "var(--pg-text-3)" }}>{drCode === "BANK" ? "Uses bank GL code" : ""}</p>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <Label style={{ fontSize: "12px" }}>CR Account Code</Label>
+                <Input value={crCode} onChange={e => setCrCode(e.target.value)} placeholder="e.g. 2110"
+                  style={{ height: "36px", fontSize: "12px", fontFamily: "monospace" }} />
+                <p style={{ fontSize: "10px", color: "var(--pg-text-3)" }}>{crCode === "BANK" ? "Uses bank GL code" : ""}</p>
+              </div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              <Label style={{ fontSize: "12px" }}>Notes (optional)</Label>
+              <Input value={classifyNotes} onChange={e => setClassifyNotes(e.target.value)}
+                placeholder="Additional context…" style={{ height: "36px", fontSize: "12px" }} />
+            </div>
+            <button onClick={() => classifyMutation.mutate()}
+              disabled={!postingType || !drCode || !crCode || classifyMutation.isPending}
+              style={{
+                display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "6px",
+                background: "linear-gradient(135deg,#FF6600,#E05500)", border: "none",
+                borderRadius: "10px", padding: "9px 0", fontSize: "13px", color: "#fff",
+                width: "100%", cursor: (!postingType || !drCode || !crCode) ? "not-allowed" : "pointer",
+                opacity: (!postingType || !drCode || !crCode) ? 0.5 : 1,
+              }}>
+              {classifyMutation.isPending ? <Loader2 style={{ width: "14px", height: "14px" }} /> : <CheckCircle2 style={{ width: "14px", height: "14px" }} />}
+              Save Classification
+            </button>
+          </div>
+        </SheetContent>
+      </Sheet>
+
       {effectiveAccountId && runs.length > 0 && (
         <div className="rounded-2xl overflow-hidden"
              style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}>
