@@ -295,6 +295,25 @@ const ADMIN_NAV: NavGroup[] = [
   ]},
 ];
 
+// Stripped nav for FINOPS_RECONCILIATION_OFFICER — Finance + Reconciliation only.
+const FINOPS_NAV: NavGroup[] = [
+  { id: "finance", label: "Finance", items: [
+    { href: "/finance",               label: "Overview",       icon: TrendingUp },
+    { href: "/finance/ledger",        label: "General Ledger", icon: BookOpen },
+    { href: "/finance/journals",      label: "Journals",       icon: FileText },
+    { href: "/finance/payables",      label: "Payables",       icon: CreditCard },
+    { href: "/finance/receivables",   label: "Receivables",    icon: Wallet },
+    { href: "/finance/assets",        label: "Fixed Assets",   icon: Package },
+    { href: "/finance/vendors",       label: "Vendors",        icon: Briefcase },
+    { href: "/finance/fx-rates",      label: "FX Rates",       icon: RefreshCw },
+  ]},
+  { id: "reconciliation", label: "Reconciliation", items: [
+    { href: "/reconciliation/dashboard",    label: "Overview",      icon: LayoutDashboard },
+    { href: "/finance/reconciliation",      label: "Runs",          icon: RefreshCw },
+    { href: "/reconciliation/connectivity", label: "Bank Accounts", icon: Building2 },
+  ]},
+];
+
 const DEFAULT_NAV: NavGroup[] = [
   { id: "core", items: [
     { href: "/dashboard",             label: "Dashboard",      icon: LayoutDashboard },
@@ -345,6 +364,7 @@ function navForFamily(family: string): NavGroup[] {
     case "md":         base = MD_NAV;         break;
     case "hr":         base = HR_NAV;         break;
     case "finance":    base = FINANCE_NAV;    break;
+    case "finops":     base = FINOPS_NAV;     break;
     case "compliance": base = COMPLIANCE_NAV; break;
     default:           base = DEFAULT_NAV;    break;
   }

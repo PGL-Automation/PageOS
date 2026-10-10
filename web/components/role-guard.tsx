@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { usePosition } from "@/lib/position";
 
-type Family = "wm" | "md" | "hr" | "finance" | "compliance" | "pm" | "default";
+type Family = "wm" | "md" | "hr" | "finance" | "finops" | "compliance" | "pm" | "default";
 
 // Where each role family lands after login.
 const ROLE_HOME: Record<Family, string> = {
@@ -14,6 +14,7 @@ const ROLE_HOME: Record<Family, string> = {
   md:         "/dashboard",
   hr:         "/hr/dashboard",
   finance:    "/finance",
+  finops:     "/finance",
   compliance: "/compliance",
   default:    "/dashboard",
 };

@@ -83,7 +83,7 @@ export type RoleCode = (typeof ROLE)[keyof typeof ROLE];
 //
 // Maps a position code to a role family for nav/routing/badge decisions.
 // Patterns are evaluated in priority order; more specific checks come first.
-export function roleFamily(code: string | null | undefined): "wm" | "md" | "hr" | "finance" | "compliance" | "pm" | "default" {
+export function roleFamily(code: string | null | undefined): "wm" | "md" | "hr" | "finance" | "finops" | "compliance" | "pm" | "default" {
   if (!code) return "default";
   const c = code.toUpperCase();
   // HR family — HR_*, HC_*, *_HR suffix, human capital, payroll, recruitment
@@ -106,6 +106,8 @@ export function roleFamily(code: string | null | undefined): "wm" | "md" | "hr" 
   // WM family — wealth management, relationship managers
   if (c.includes("WEALTH") || c.includes("PORTFOLIO") ||
       c.includes("RELATIONSHIP_MANAGER") || c.startsWith("RM_")) return "wm";
+  // FinOps Reconciliation — stripped nav (Finance + Reconciliation only)
+  if (c === "FINOPS_RECONCILIATION_OFFICER") return "finops";
   // Finance/Ops family — operations, treasury, finance reporting, reconciliation
   if (c.includes("FINANCE") || c.includes("FINANCIAL") || c.includes("FINOPS") ||
       c.includes("TREASURY") || c.includes("ACCOUNT") || c.includes("RECONCILI") ||

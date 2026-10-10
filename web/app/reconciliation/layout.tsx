@@ -4,7 +4,7 @@ import { RoleGuard } from "@/components/role-guard";
 export default function ReconciliationLayout({ children }: { children: React.ReactNode }) {
   return (
     <AppLayout>
-      <RoleGuard allow={["finance", "md"]}>{children}</RoleGuard>
+      <RoleGuard allow={["finance", "finops", "md"]}>{children}</RoleGuard>
     </AppLayout>
   );
 }
