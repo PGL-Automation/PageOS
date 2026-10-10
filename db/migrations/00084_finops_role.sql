@@ -2,6 +2,19 @@
 -- Creates the FINOPS_RECONCILIATION_OFFICER position for users whose only
 -- access is Finance + Reconciliation — nothing else in the nav or system.
 
+-- ── Expand the family check constraint to include 'finops' ───────────────────
+ALTER TABLE organization.position
+    DROP CONSTRAINT IF EXISTS position_family_check;
+ALTER TABLE organization.position
+    ADD CONSTRAINT position_family_check
+    CHECK (family IN ('hr','finance','finops','compliance','pm','wm','md','default'));
+
+ALTER TABLE organization.department
+    DROP CONSTRAINT IF EXISTS department_family_check;
+ALTER TABLE organization.department
+    ADD CONSTRAINT department_family_check
+    CHECK (family IN ('hr','finance','finops','compliance','pm','wm','md','default'));
+
 -- ── Create the position under Page Asset Management Limited ───────────────────
 INSERT INTO organization.position (subsidiary_id, code, title, family)
 SELECT s.id, 'FINOPS_RECONCILIATION_OFFICER', 'FinOps – Reconciliation Officer', 'finops'
@@ -45,3 +58,10 @@ ON CONFLICT DO NOTHING;
 -- +goose Down
 DELETE FROM organization.role_capability WHERE role_code = 'FINOPS_RECONCILIATION_OFFICER';
 DELETE FROM organization.position WHERE code = 'FINOPS_RECONCILIATION_OFFICER';
+
+ALTER TABLE organization.position DROP CONSTRAINT IF EXISTS position_family_check;
+ALTER TABLE organization.position ADD CONSTRAINT position_family_check
+    CHECK (family IN ('hr','finance','compliance','pm','wm','md','default'));
+ALTER TABLE organization.department DROP CONSTRAINT IF EXISTS department_family_check;
+ALTER TABLE organization.department ADD CONSTRAINT department_family_check
+    CHECK (family IN ('hr','finance','compliance','pm','wm','md','default'));
