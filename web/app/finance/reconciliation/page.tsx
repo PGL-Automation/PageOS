@@ -970,6 +970,30 @@ export default function ReconciliationPage() {
     }
   }
 
+  // Auto-classify unmatched bank items using keyword rules
+  const [autoClassifying, setAutoClassifying] = useState(false);
+  async function runAutoClassify() {
+    if (!selectedRunId) return;
+    setAutoClassifying(true);
+    try {
+      const result = await reconFetch(`/runs/${selectedRunId}/auto-classify`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+      }) as { classified?: number };
+      queryClient.invalidateQueries({ queryKey: ["recon-full", selectedRunId] });
+      queryClient.invalidateQueries({ queryKey: ["recon-run-details", selectedRunId] });
+      toast({
+        title: `Auto-Classify complete`,
+        description: result.classified === 0
+          ? "No new items could be classified automatically."
+          : `${result.classified} item${result.classified === 1 ? "" : "s"} classified. Review them in the Unmatched filter, then click Post JE on each.`,
+      });
+    } catch (e) {
+      toast({ title: "Auto-Classify Failed", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setAutoClassifying(false);
+    }
+  }
+
   // Create a new reconciliation run (auto-matches on creation)
   async function createRun() {
     if (!effectiveAccountId || !newRunStart || !newRunEnd) {
@@ -1133,6 +1157,14 @@ export default function ReconciliationPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          {selectedRun && selectedRun.status !== "closed" && (
+            <button onClick={runAutoClassify} disabled={autoClassifying}
+                    className="flex items-center gap-1.5 h-9 px-3 rounded-xl text-[12px] font-medium transition-colors"
+                    style={{ border: "1px solid #c4b5fd", color: "#6d28d9", background: "#f5f3ff" }}>
+              {autoClassifying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+              Auto-Classify
+            </button>
+          )}
           {selectedRun && (
             <button onClick={downloadExport} disabled={exporting}
                     className="flex items-center gap-1.5 h-9 px-3 rounded-xl text-[12px] font-medium transition-colors"

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -342,6 +343,175 @@ func (s *Service) CreateJournalFromBankLine(ctx context.Context, runID, matchID,
 		Context: map[string]any{"journal_id": jh.ID, "amount": amount},
 	})
 	return jh, nil
+}
+
+// AutoClassifyUnmatched applies keyword-pattern rules to every unmatched_bank
+// match in the run, setting posting_type/dr/cr on each one that matches a rule.
+// It does NOT post journal entries — that still requires user review.
+// Returns the number of items classified.
+func (s *Service) AutoClassifyUnmatched(ctx context.Context, runID, userID uuid.UUID) (int, error) {
+	// 1. Load active rules ordered by priority.
+	type rule struct {
+		narrationPattern string
+		direction        *string
+		amountMaxKobo    *int64
+		amountMinKobo    *int64
+		postingType      string
+		drGLCode         string
+		crGLCode         string
+		notes            string
+	}
+
+	ruleRows, err := s.store.Pool().Query(ctx, `
+		SELECT narration_pattern, direction, amount_max_kobo, amount_min_kobo,
+		       posting_type, dr_gl_code, cr_gl_code, notes
+		FROM   reconciliation.classification_rule
+		WHERE  is_active = true
+		ORDER  BY priority, created_at
+	`)
+	if err != nil {
+		return 0, fmt.Errorf("auto-classify: load rules: %w", err)
+	}
+	defer ruleRows.Close()
+
+	var rules []rule
+	for ruleRows.Next() {
+		var r rule
+		if err := ruleRows.Scan(&r.narrationPattern, &r.direction,
+			&r.amountMaxKobo, &r.amountMinKobo,
+			&r.postingType, &r.drGLCode, &r.crGLCode, &r.notes); err != nil {
+			return 0, err
+		}
+		rules = append(rules, r)
+	}
+	if err := ruleRows.Err(); err != nil {
+		return 0, err
+	}
+
+	// 2. Fetch all unmatched_bank match records that aren't already classified.
+	matchRows, err := s.store.Pool().Query(ctx, `
+		SELECT m.id, bsl.narration, bsl.debit_kobo, bsl.credit_kobo
+		FROM   reconciliation.reconciliation_match m
+		JOIN   reconciliation.bank_statement_line bsl ON bsl.id = m.bank_line_id
+		WHERE  m.run_id = $1
+		  AND  m.status IN ('unmatched_bank', 'adjustment')
+		  AND  (m.posting_type IS NULL OR m.posting_type = '')
+	`, runID)
+	if err != nil {
+		return 0, fmt.Errorf("auto-classify: fetch unmatched: %w", err)
+	}
+	defer matchRows.Close()
+
+	type unmatchedItem struct {
+		matchID   uuid.UUID
+		narration string
+		debit     int64
+		credit    int64
+	}
+	var items []unmatchedItem
+	for matchRows.Next() {
+		var item unmatchedItem
+		if err := matchRows.Scan(&item.matchID, &item.narration, &item.debit, &item.credit); err != nil {
+			return 0, err
+		}
+		items = append(items, item)
+	}
+	if err := matchRows.Err(); err != nil {
+		return 0, err
+	}
+
+	// 3. For each item, test rules and classify on first match.
+	classified := 0
+	for _, item := range items {
+		itemDir := "credit_in_bank"
+		if item.debit > 0 {
+			itemDir = "debit_in_bank"
+		}
+		amount := item.credit
+		if item.debit > 0 {
+			amount = item.debit
+		}
+		narrationUpper := strings.ToUpper(item.narration)
+
+		for _, r := range rules {
+			// Check direction
+			if r.direction != nil && *r.direction != itemDir {
+				continue
+			}
+			// Check amount bounds
+			if r.amountMinKobo != nil && amount < *r.amountMinKobo {
+				continue
+			}
+			if r.amountMaxKobo != nil && amount > *r.amountMaxKobo {
+				continue
+			}
+			// Check narration pattern (ILIKE equivalent in Go)
+			if !ilikeMatch(narrationUpper, strings.ToUpper(r.narrationPattern)) {
+				continue
+			}
+
+			// Rule matched — classify the item.
+			notes := r.notes
+			if notes == "" {
+				notes = "Auto-classified by rule engine"
+			}
+			if err := s.ClassifyBankLine(ctx, runID, item.matchID, userID,
+				r.postingType, r.drGLCode, r.crGLCode, notes); err != nil {
+				// Log but don't stop — continue with other items.
+				_ = err
+				break
+			}
+			classified++
+			break // first matching rule wins
+		}
+	}
+
+	_ = s.audit.Write(ctx, audit.Entry{
+		Actor:        audit.Actor{Type: "user", ID: userID.String()},
+		Action:       "reconciliation.auto_classify",
+		ResourceType: "reconciliation_run", ResourceID: runID.String(),
+		Context: map[string]any{"classified": classified, "total_unmatched": len(items)},
+	})
+	return classified, nil
+}
+
+// ilikeMatch implements SQL ILIKE pattern matching in Go.
+// Supports % (any sequence) and _ (any single char) wildcards.
+func ilikeMatch(str, pattern string) bool {
+	return sqlLike(str, pattern)
+}
+
+func sqlLike(s, p string) bool {
+	if p == "%" {
+		return true
+	}
+	if len(p) == 0 {
+		return len(s) == 0
+	}
+	if p[0] == '%' {
+		// Skip consecutive % signs
+		i := 0
+		for i < len(p) && p[i] == '%' {
+			i++
+		}
+		rest := p[i:]
+		if rest == "" {
+			return true
+		}
+		for j := 0; j <= len(s); j++ {
+			if sqlLike(s[j:], rest) {
+				return true
+			}
+		}
+		return false
+	}
+	if len(s) == 0 {
+		return false
+	}
+	if p[0] == '_' || p[0] == s[0] {
+		return sqlLike(s[1:], p[1:])
+	}
+	return false
 }
 
 // SubmitRun marks a run as pending review. The preparer calls this when all
@@ -834,12 +1004,17 @@ func (s *Service) CreateRun(ctx context.Context, bankAccountID, userID uuid.UUID
 
 	// Auto-match immediately after creating the run.
 	if _, err := s.AutoMatch(ctx, run.ID, userID); err != nil {
-		// Non-fatal: log but don't fail the run creation.
 		_ = s.audit.Write(ctx, audit.Entry{
 			Actor: audit.Actor{Type: "system"}, Action: "reconciliation.auto_match.failed",
 			ResourceType: "reconciliation_run", ResourceID: run.ID.String(),
 			Context: map[string]any{"error": err.Error()},
 		})
+	}
+
+	// Auto-classify whatever remained unmatched after the matcher.
+	// Non-fatal — run is still created and matched items are preserved.
+	if _, err := s.AutoClassifyUnmatched(ctx, run.ID, userID); err != nil {
+		_ = err // log via audit inside AutoClassifyUnmatched
 	}
 
 	return run, nil

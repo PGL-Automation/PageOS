@@ -84,6 +84,8 @@ func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	r.Post("/runs/{id}/matches/{matchId}/classify", h.withCap("recon.match", h.classifyBankLine))
 	// Create a draft journal entry from a classified bank-not-in-GL match.
 	r.Post("/runs/{id}/matches/{matchId}/post-journal", h.withCap("recon.match", h.postJournal))
+	// Auto-classify unmatched bank items using keyword rules.
+	r.Post("/runs/{id}/auto-classify", h.withCap("recon.match", h.autoClassify))
 	// Submit a completed run for reviewer sign-off.
 	r.Post("/runs/{id}/submit", h.withCap("recon.close", h.submitRun))
 	// Reviewer approves or rejects a submitted run.
@@ -682,6 +684,27 @@ func (h *Handler) listClientAccounts(w http.ResponseWriter, r *http.Request) {
 		clients = []reconciliation.ClientAccount{}
 	}
 	httpx.JSON(w, http.StatusOK, clients)
+}
+
+// ── Auto-classify ─────────────────────────────────────────────────────────────
+
+func (h *Handler) autoClassify(w http.ResponseWriter, r *http.Request) {
+	runID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid run id")
+		return
+	}
+	caller, ok := identityhttp.UserFrom(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+		return
+	}
+	count, err := h.svc.AutoClassifyUnmatched(r.Context(), runID, caller.ID)
+	if err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "auto_classify_failed", err.Error())
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"classified": count})
 }
 
 // ── Classification and posting ────────────────────────────────────────────────
