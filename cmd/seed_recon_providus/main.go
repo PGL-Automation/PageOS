@@ -32,8 +32,9 @@ import (
 const (
 	providusNUBAN = "5401732286"
 
-	// Full May–Sept 2026 bank statement (converted from .xls to .xlsx).
-	// Run the Python conversion first: python3 convert_xls.py
+	// Full bank statement (converted from .xls to .xlsx).
+	// Use statement_providus_full.xlsx for May-Sept 2026 (default).
+	// For Jan-April 2026 use statement_providus_jan.xlsx (from Bank Stm_Providus Client_Excel.xls).
 	bankStmFile  = "files/statement_providus_full.xlsx"
 	// GL ledger covers Apr–Sept 2026 in full.
 	glLedgerFile = "files/Providus CLient_Ledger (1).xlsx"

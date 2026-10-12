@@ -674,11 +674,12 @@ function UploadSection({
 // ── Match row ──────────────────────────────────────────────────────────────────
 
 function MatchRowContent({
-  m, onAccept, onDismiss, isSelected, onClick, onClassify, onPostJE, postingJE,
+  m, onAccept, onDismiss, isSelected, onClick, onClassify, onPostJE, postingJE, onDetail,
 }: {
   m: FullMatch; onAccept?: () => void; onDismiss?: () => void;
   isSelected?: boolean; onClick?: () => void;
   onClassify?: () => void; onPostJE?: () => void; postingJE?: boolean;
+  onDetail?: () => void;
 }) {
   const bankAmt = m.bank_credit_kobo > 0 ? m.bank_credit_kobo : -m.bank_debit_kobo;
   const bankDir = m.bank_credit_kobo > 0 ? "credit" : "debit";
@@ -713,9 +714,16 @@ function MatchRowContent({
       </td>
       <td className="py-3 pr-3 max-w-[200px]">
         {m.bank_line_id ? (
-          <div>
+          <div className="group relative">
             <p className="text-[12.5px] font-medium truncate" style={{ color: "var(--pg-text-1)" }}>{m.bank_narration || m.bank_reference || "—"}</p>
             <p className="text-[10px] font-mono truncate" style={{ color: "var(--pg-text-4)" }}>{m.bank_reference}</p>
+            {onDetail && (
+              <button onClick={e => { e.stopPropagation(); onDetail(); }}
+                className="absolute right-0 top-0 opacity-0 group-hover:opacity-100 transition-opacity text-[9px] px-1.5 py-0.5 rounded"
+                style={{ background: "#dbeafe", color: "#1d4ed8" }}>
+                details
+              </button>
+            )}
           </div>
         ) : <span style={{ color: "var(--pg-text-4)" }}>—</span>}
       </td>
@@ -773,9 +781,16 @@ function MatchRowContent({
       </td>
       <td className="py-3 pr-3 max-w-[200px]">
         {m.ledger_txn_id ? (
-          <div>
+          <div className="group relative">
             <p className="text-[12.5px] font-medium truncate" style={{ color: "var(--pg-text-1)" }}>{m.ledger_type || m.ledger_reference || "—"}</p>
             <p className="text-[10px] font-mono truncate" style={{ color: "var(--pg-text-4)" }}>{m.ledger_reference}</p>
+            {onDetail && (
+              <button onClick={e => { e.stopPropagation(); onDetail(); }}
+                className="absolute right-0 top-0 opacity-0 group-hover:opacity-100 transition-opacity text-[9px] px-1.5 py-0.5 rounded"
+                style={{ background: "#d1fae5", color: "#065f46" }}>
+                details
+              </button>
+            )}
           </div>
         ) : <span style={{ color: "var(--pg-text-4)" }}>—</span>}
       </td>
@@ -972,6 +987,7 @@ export default function ReconciliationPage() {
 
   // Auto-classify unmatched bank items using keyword rules
   const [autoClassifying, setAutoClassifying] = useState(false);
+  const [detailMatch, setDetailMatch] = useState<FullMatch | null>(null);
   async function runAutoClassify() {
     if (!selectedRunId) return;
     setAutoClassifying(true);
@@ -1425,6 +1441,7 @@ export default function ReconciliationPage() {
                           onDismiss={isAI ? () => dismissMatch(m.match_id) : undefined}
                           isSelected={isSelected}
                           onClick={() => toggleSelection(m)}
+                          onDetail={() => setDetailMatch(detailMatch?.match_id === m.match_id ? null : m)}
                           onClassify={m.status === "unmatched_bank" ? () => {
                             setClassifyMatchId(m.match_id);
                             setPostingType(""); setDrCode(""); setCrCode(""); setClassifyNotes("");
@@ -1617,6 +1634,58 @@ export default function ReconciliationPage() {
         </SheetContent>
       </Sheet>
 
+      {/* Transaction detail panel */}
+      {detailMatch && (
+        <div className="rounded-2xl overflow-hidden"
+             style={{ background: "var(--pg-card)", border: "2px solid #dbeafe" }}>
+          <div className="flex items-center justify-between px-5 py-3"
+               style={{ borderBottom: "1px solid var(--pg-row-border)", background: "#eff6ff" }}>
+            <p className="text-[13px] font-semibold" style={{ color: "#1d4ed8" }}>Transaction Details</p>
+            <button onClick={() => setDetailMatch(null)} className="text-[11px]" style={{ color: "var(--pg-text-3)" }}>✕ Close</button>
+          </div>
+          <div className="grid gap-px" style={{ gridTemplateColumns: "1fr 1fr", background: "var(--pg-card-border)" }}>
+            {/* Bank side */}
+            <div className="p-5 space-y-3" style={{ background: "var(--pg-card)" }}>
+              <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: "#d97706" }}>Bank Statement</p>
+              {[
+                ["Date", detailMatch.bank_date?.slice(0,10) ?? "—"],
+                ["Narration", detailMatch.bank_narration || "—"],
+                ["Reference / DOC-NUM", detailMatch.bank_reference || "—"],
+                ["Amount", detailMatch.bank_credit_kobo > 0
+                  ? `Credit: ₦${(detailMatch.bank_credit_kobo/100).toLocaleString("en-NG",{minimumFractionDigits:2})}`
+                  : `Debit: ₦${(detailMatch.bank_debit_kobo/100).toLocaleString("en-NG",{minimumFractionDigits:2})}`],
+              ].map(([label, value]) => (
+                <div key={label}>
+                  <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--pg-text-3)" }}>{label}</p>
+                  <p className="text-[12px] font-medium mt-0.5" style={{ color: "var(--pg-text-1)", wordBreak: "break-all" }}>{value}</p>
+                </div>
+              ))}
+            </div>
+            {/* Ledger side */}
+            <div className="p-5 space-y-3" style={{ background: "var(--pg-card)" }}>
+              <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: "#059669" }}>General Ledger</p>
+              {[
+                ["Date", detailMatch.ledger_date?.slice(0,10) ?? "—"],
+                ["Transaction Type", detailMatch.ledger_type || "—"],
+                ["Reference", detailMatch.ledger_reference || "—"],
+                ["Amount", `${detailMatch.ledger_direction === "credit" ? "Credit" : "Debit"}: ₦${(detailMatch.ledger_amount_kobo/100).toLocaleString("en-NG",{minimumFractionDigits:2})}`],
+                ["Match Type", detailMatch.match_type + (detailMatch.confidence_pct != null ? ` (${detailMatch.confidence_pct}% confidence)` : "")],
+              ].map(([label, value]) => (
+                <div key={label}>
+                  <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--pg-text-3)" }}>{label}</p>
+                  <p className="text-[12px] font-medium mt-0.5" style={{ color: "var(--pg-text-1)", wordBreak: "break-all" }}>{value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+          {detailMatch.notes && (
+            <div className="px-5 py-3" style={{ borderTop: "1px solid var(--pg-row-border)" }}>
+              <p className="text-[11px]" style={{ color: "var(--pg-text-3)" }}>Notes: {detailMatch.notes}</p>
+            </div>
+          )}
+        </div>
+      )}
+
       {effectiveAccountId && runs.length > 0 && (
         <div className="rounded-2xl overflow-hidden"
              style={{ background: "var(--pg-card)", border: "1px solid var(--pg-card-border)" }}>
@@ -1630,12 +1699,13 @@ export default function ReconciliationPage() {
           </div>
           <div className="divide-y" style={{ borderColor: "var(--pg-row-border)" }}>
             {runs.map(r => (
-              <button key={r.id}
+              <div key={r.id} className="flex items-center gap-2 transition-colors"
+                   style={{ background: selectedRunId === r.id ? "rgba(255,102,0,0.05)" : undefined }}
+                   onMouseEnter={e => { if (selectedRunId !== r.id) (e.currentTarget as HTMLElement).style.background = "var(--pg-row-hover)"; }}
+                   onMouseLeave={e => { if (selectedRunId !== r.id) (e.currentTarget as HTMLElement).style.background = ""; }}>
+              <button
                       onClick={() => setSelectedRunId(r.id)}
-                      className="w-full flex items-center gap-4 px-5 py-3.5 text-left transition-colors"
-                      style={{ background: selectedRunId === r.id ? "rgba(255,102,0,0.05)" : undefined }}
-                      onMouseEnter={e => { if (selectedRunId !== r.id) (e.currentTarget as HTMLElement).style.background = "var(--pg-row-hover)"; }}
-                      onMouseLeave={e => { if (selectedRunId !== r.id) (e.currentTarget as HTMLElement).style.background = ""; }}>
+                      className="flex-1 flex items-center gap-4 px-5 py-3.5 text-left">
                 <RefreshCw className="w-4 h-4 shrink-0" style={{ color: r.status === "closed" ? "#059669" : "#d97706" }} />
                 <div className="flex-1 min-w-0">
                   <p className="text-[13px] font-medium" style={{ color: "var(--pg-text-1)" }}>
@@ -1653,6 +1723,29 @@ export default function ReconciliationPage() {
                   <span className="text-[11px] font-semibold text-orange-600 shrink-0">Viewing ▶</span>
                 )}
               </button>
+              {/* Export button per run */}
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await fetch(`${BASE}/api/v1/reconciliation/runs/${r.id}/export`, { credentials: "include" });
+                    if (!res.ok) throw new Error("Export failed");
+                    const blob = await res.blob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    const cd = res.headers.get("Content-Disposition") ?? "";
+                    const match = cd.match(/filename="([^"]+)"/);
+                    a.download = match?.[1] ?? `recon_${r.id.slice(-8)}.xlsx`;
+                    document.body.appendChild(a); a.click();
+                    document.body.removeChild(a); URL.revokeObjectURL(url);
+                  } catch { /* silent */ }
+                }}
+                title="Export as Excel"
+                className="shrink-0 mr-3 h-7 w-7 flex items-center justify-center rounded-lg transition-colors"
+                style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-3)" }}>
+                <Download className="w-3.5 h-3.5" />
+              </button>
+              </div>
             ))}
           </div>
         </div>
