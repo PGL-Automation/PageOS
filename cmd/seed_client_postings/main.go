@@ -11,6 +11,7 @@ package main
 import (
 	"context"
 	"encoding/csv"
+	"flag"
 	"fmt"
 	"io"
 	"log/slog"
@@ -24,11 +25,18 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const csvFile = "files/client-side postings _1 May - 30 Sept 2026.csv"
-
 func main() {
+	csvPath := flag.String("file", "", "Absolute path to the client-side postings CSV (required)")
+	flag.Parse()
+
 	ctx := context.Background()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	if *csvPath == "" {
+		logger.Error("provide -file=/absolute/path/to/csv")
+		flag.Usage()
+		os.Exit(1)
+	}
 
 	dbURL := os.Getenv("PAGEOS_DATABASE_URL")
 	if dbURL == "" {
@@ -66,6 +74,7 @@ func main() {
 	logger.Info("loaded client accounts", "count", len(clientMap))
 
 	// ── Parse the CSV ─────────────────────────────────────────────────────────
+	csvFile := *csvPath
 	f, err := os.Open(csvFile)
 	if err != nil {
 		logger.Error("open csv", "file", csvFile, "err", err)
