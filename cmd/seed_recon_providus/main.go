@@ -32,9 +32,9 @@ import (
 const (
 	providusNUBAN = "5401732286"
 
-	// Paths relative to working directory (/opt/pageos on the VPS).
-	// Sept bank statement (xlsx — covers 01/09/2026 to 29/09/2026).
-	bankStmFile  = "files/Providus_client_bank Stm Sept 29th (2).xlsx"
+	// Full May–Sept 2026 bank statement (converted from .xls to .xlsx).
+	// Run the Python conversion first: python3 convert_xls.py
+	bankStmFile  = "files/statement_providus_full.xlsx"
 	// GL ledger covers Apr–Sept 2026 in full.
 	glLedgerFile = "files/Providus CLient_Ledger (1).xlsx"
 )
@@ -108,9 +108,7 @@ func main() {
 	logger.Info("GL ledger parsed", "total_lines", len(glLines))
 
 	// ── Process one calendar month at a time ──────────────────────────────────
-	// Bank statement xlsx covers September only.
-	// GL ledger covers May–September so GL-side internal transactions are
-	// seeded for all 5 months even though bank matching is Sept only.
+	// All 5 months now have bank statement data from the full-period file.
 	months := []struct{ year, month int }{
 		{2026, 5},
 		{2026, 6},
@@ -118,7 +116,7 @@ func main() {
 		{2026, 8},
 		{2026, 9},
 	}
-	bankStmMonths := map[int]bool{9: true} // only September has a bank statement
+	bankStmMonths := map[int]bool{5: true, 6: true, 7: true, 8: true, 9: true}
 
 	for _, m := range months {
 		periodStart := time.Date(m.year, time.Month(m.month), 1, 0, 0, 0, 0, time.UTC)
