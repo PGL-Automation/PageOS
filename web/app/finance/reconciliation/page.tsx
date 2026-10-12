@@ -1216,6 +1216,32 @@ export default function ReconciliationPage() {
           </select>
         )}
 
+        {/* Existing statements — click to pre-fill dates */}
+        {statements.length > 0 && (
+          <div className="w-full">
+            <p className="text-[11px] font-semibold mb-1.5" style={{ color: "var(--pg-text-3)" }}>
+              DATA ALREADY IN SYSTEM — click a period to use it:
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {statements.map(s => (
+                <button key={s.id}
+                  onClick={() => {
+                    setNewRunStart(s.period_start?.slice(0,10) ?? "");
+                    setNewRunEnd(s.period_end?.slice(0,10) ?? "");
+                  }}
+                  className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-[11px] font-medium transition-colors"
+                  style={{ border: "1px solid #c4b5fd", background: "#f5f3ff", color: "#6d28d9" }}>
+                  <FileText className="w-3 h-3" />
+                  {s.period_start?.slice(0,10)} → {s.period_end?.slice(0,10)}
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] mt-1" style={{ color: "var(--pg-text-3)" }}>
+              Select a period above or enter custom dates below, then click New Run.
+            </p>
+          </div>
+        )}
+
         {/* New run */}
         {effectiveAccountId && (
           <div className="flex items-center gap-2 flex-wrap">

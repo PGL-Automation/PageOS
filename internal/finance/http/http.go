@@ -124,6 +124,10 @@ func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	r.Get("/trial-balance", h.trialBalance)
 	r.Get("/ledger", h.accountLedger)
 
+	// Client Ledger — list clients and their transaction history
+	r.Get("/clients", h.withCap("finance.view_gl", h.listClientAccounts))
+	r.Get("/clients/{code}/postings", h.withCap("finance.view_gl", h.getClientPostings))
+
 	// Permissions (open to any authenticated user — no cap check)
 	r.Get("/permissions/me", h.getMyPermissions)
 	r.Get("/permissions", h.getAllPermissions)
@@ -1113,4 +1117,99 @@ func (h *Handler) accountLedger(w http.ResponseWriter, r *http.Request) {
 		"opening_balance": openingBalance,
 		"entries":         entries,
 	})
+}
+
+// ── Client Ledger ─────────────────────────────────────────────────────────────
+
+// listClientAccounts returns all client sub-accounts with their balance summary.
+func (h *Handler) listClientAccounts(w http.ResponseWriter, r *http.Request) {
+	search := r.URL.Query().Get("search")
+	q := `
+		SELECT ca.account_code, ca.client_name,
+		       COALESCE(SUM(cp.credit_amount - cp.debit_amount), 0) AS balance,
+		       COUNT(cp.id) AS txn_count,
+		       MAX(cp.effective_date)::text AS last_activity
+		FROM   finance.client_account ca
+		LEFT   JOIN finance.client_posting cp ON cp.account_code = ca.account_code AND cp.is_reversed = false
+		WHERE  ca.is_active = true
+		  AND  ($1 = '' OR ca.client_name ILIKE '%' || $1 || '%')
+		GROUP  BY ca.account_code, ca.client_name
+		ORDER  BY ca.client_name
+		LIMIT  200
+	`
+	rows, err := h.pool.Query(r.Context(), q, search)
+	if err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		return
+	}
+	defer rows.Close()
+
+	type row struct {
+		AccountCode  string  `json:"account_code"`
+		ClientName   string  `json:"client_name"`
+		Balance      float64 `json:"balance"`
+		TxnCount     int64   `json:"txn_count"`
+		LastActivity *string `json:"last_activity,omitempty"`
+	}
+	var out []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.AccountCode, &r.ClientName, &r.Balance, &r.TxnCount, &r.LastActivity); err != nil {
+			continue
+		}
+		out = append(out, r)
+	}
+	if out == nil {
+		out = []row{}
+	}
+	httpx.JSON(w, http.StatusOK, out)
+}
+
+// getClientPostings returns all transactions for a specific client sub-account.
+func (h *Handler) getClientPostings(w http.ResponseWriter, r *http.Request) {
+	code := chi.URLParam(r, "code")
+	q := r.URL.Query()
+	from := q.Get("from")
+	to   := q.Get("to")
+
+	const qStr = `
+		SELECT effective_date::text, tran_no, tran_desc, tran_ref,
+		       tran_source, debit_amount, credit_amount, is_reversed, officer_name
+		FROM   finance.client_posting
+		WHERE  account_code = $1
+		  AND  ($2 = '' OR effective_date::text >= $2)
+		  AND  ($3 = '' OR effective_date::text <= $3)
+		ORDER  BY effective_date, tran_no
+	`
+	rows, err := h.pool.Query(r.Context(), qStr, code, from, to)
+	if err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		return
+	}
+	defer rows.Close()
+
+	type txn struct {
+		Date        string  `json:"date"`
+		TranNo      string  `json:"tran_no"`
+		Description string  `json:"description"`
+		Reference   string  `json:"reference"`
+		Source      string  `json:"source"`
+		Debit       float64 `json:"debit"`
+		Credit      float64 `json:"credit"`
+		Reversed    bool    `json:"reversed"`
+		Officer     string  `json:"officer"`
+	}
+	var out []txn
+	for rows.Next() {
+		var t txn
+		if err := rows.Scan(&t.Date, &t.TranNo, &t.Description, &t.Reference,
+			&t.Source, &t.Debit, &t.Credit, &t.Reversed, &t.Officer); err != nil {
+			continue
+		}
+		out = append(out, t)
+	}
+	if out == nil {
+		out = []txn{}
+	}
+	httpx.JSON(w, http.StatusOK, out)
 }
