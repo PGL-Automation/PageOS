@@ -122,11 +122,24 @@ func main() {
 		if s == "" {
 			return pgtype.Date{}
 		}
-		formats := []string{"2/1/2006", "02/01/2006", "1/2/2006", "2006-01-02", "01/02/2006"}
+		// Cover Nigerian day/month/year and ISO formats, with and without zero-padding.
+		formats := []string{
+			"02/01/2006", "2/1/2006", "01/02/2006", "1/2/2006",
+			"02-01-2006", "2-1-2006",
+			"2006-01-02", "2006/01/02",
+			"02-Jan-2006", "2-Jan-2006",
+			"January 2, 2006", "Jan 2, 2006",
+		}
 		for _, f := range formats {
 			if t, err := time.Parse(f, s); err == nil {
 				return pgtype.Date{Time: t, Valid: true}
 			}
+		}
+		// Try Excel serial number (days since 1899-12-30).
+		if serial, err := strconv.ParseFloat(s, 64); err == nil && serial > 1000 {
+			base := time.Date(1899, 12, 30, 0, 0, 0, 0, time.UTC)
+			t := base.Add(time.Duration(serial) * 24 * time.Hour)
+			return pgtype.Date{Time: t, Valid: true}
 		}
 		return pgtype.Date{}
 	}
@@ -134,6 +147,7 @@ func main() {
 	inserted := 0
 	skipped := 0
 	matched := 0
+	firstErr := "" // capture first error for diagnosis
 
 	for {
 		row, err := cr.Read()
@@ -202,12 +216,19 @@ func main() {
 			accountCode,
 		)
 		if err != nil {
+			if firstErr == "" {
+				firstErr = fmt.Sprintf("row error (customer=%s eff_date=%s): %v",
+					customerName, col(row, "Effective Date"), err)
+			}
 			skipped++
 			continue
 		}
 		inserted++
 	}
 
+	if firstErr != "" {
+		logger.Warn("first insert error (sample)", "detail", firstErr)
+	}
 	logger.Info("seed complete",
 		"inserted", inserted,
 		"skipped", skipped,
