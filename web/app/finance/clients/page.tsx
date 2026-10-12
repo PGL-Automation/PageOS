@@ -9,7 +9,9 @@ const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
 type Client = {
   account_code: string;
   client_name: string;
-  balance: number;
+  total_in: number;
+  total_out: number;
+  net_balance: number;
   txn_count: number;
   last_activity?: string;
 };
@@ -61,7 +63,9 @@ export default function ClientsPage() {
     },
   });
 
-  const balance = postings.reduce((s, p) => s + (p.reversed ? 0 : p.credit - p.debit), 0);
+  const totalIn  = postings.filter(p => !p.reversed).reduce((s, p) => s + p.credit, 0);
+  const totalOut = postings.filter(p => !p.reversed).reduce((s, p) => s + p.debit, 0);
+  const balance  = totalIn - totalOut;
 
   return (
     <div style={{ display: "flex", height: "calc(100vh - 60px)", gap: 0 }}>
@@ -127,10 +131,14 @@ export default function ClientsPage() {
                   </p>
                 </div>
                 <div style={{ textAlign: "right", flexShrink: 0, marginLeft: "8px" }}>
-                  <p style={{ fontSize: "11px", fontWeight: 600,
-                    color: c.balance >= 0 ? "#059669" : "#dc2626" }}>
-                    {fmt(Math.abs(c.balance))}
-                  </p>
+                  {c.txn_count > 0 ? (
+                    <>
+                      <p style={{ fontSize: "10px", color: "#059669", fontWeight: 600 }}>↑ {fmt(c.total_in)}</p>
+                      <p style={{ fontSize: "10px", color: "#dc2626", fontWeight: 600 }}>↓ {fmt(c.total_out)}</p>
+                    </>
+                  ) : (
+                    <p style={{ fontSize: "10px", color: "var(--pg-text-4)" }}>No transactions</p>
+                  )}
                   {c.last_activity && (
                     <p style={{ fontSize: "9px", color: "var(--pg-text-3)", marginTop: "1px" }}>
                       {c.last_activity.slice(0, 10)}
@@ -163,7 +171,9 @@ export default function ClientsPage() {
                   {selected.client_name}
                 </h2>
                 <p style={{ fontSize: "11px", color: "var(--pg-text-3)", marginTop: "2px" }}>
-                  {selected.account_code} · Net balance: <strong style={{ color: balance >= 0 ? "#059669" : "#dc2626" }}>{fmt(balance)}</strong>
+                  {selected.account_code} · Total In: <strong style={{ color: "#059669" }}>{fmt(totalIn)}</strong>
+                  {" · "}Total Out: <strong style={{ color: "#dc2626" }}>{fmt(totalOut)}</strong>
+                  {" · "}Net: <strong style={{ color: balance >= 0 ? "#059669" : "#dc2626" }}>{fmt(Math.abs(balance))}</strong>
                 </p>
               </div>
               <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
@@ -180,8 +190,8 @@ export default function ClientsPage() {
             {/* Summary strip */}
             <div style={{ display: "flex", gap: "1px", background: "var(--pg-card-border)" }}>
               {[
-                { label: "Total Credits", value: postings.filter(p => !p.reversed).reduce((s, p) => s + p.credit, 0), color: "#059669" },
-                { label: "Total Debits", value: postings.filter(p => !p.reversed).reduce((s, p) => s + p.debit, 0), color: "#dc2626" },
+                { label: "Total In (Credits)", value: totalIn, color: "#059669" },
+                { label: "Total Out (Debits)", value: totalOut, color: "#dc2626" },
                 { label: "Transactions", value: postings.length, color: "var(--pg-text-1)", isCnt: true },
                 { label: "Reversals", value: postings.filter(p => p.reversed).length, color: "#d97706", isCnt: true },
               ].map(m => (

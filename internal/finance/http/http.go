@@ -1126,15 +1126,17 @@ func (h *Handler) listClientAccounts(w http.ResponseWriter, r *http.Request) {
 	search := r.URL.Query().Get("search")
 	q := `
 		SELECT ca.account_code, ca.client_name,
-		       COALESCE(SUM(cp.credit_amount - cp.debit_amount), 0) AS balance,
-		       COUNT(cp.id) AS txn_count,
-		       MAX(cp.effective_date)::text AS last_activity
+		       COALESCE(SUM(cp.credit_amount), 0)               AS total_in,
+		       COALESCE(SUM(cp.debit_amount), 0)                AS total_out,
+		       COALESCE(SUM(cp.credit_amount - cp.debit_amount),0) AS net_balance,
+		       COUNT(cp.id)                                      AS txn_count,
+		       MAX(cp.effective_date)::text                      AS last_activity
 		FROM   finance.client_account ca
 		LEFT   JOIN finance.client_posting cp ON cp.account_code = ca.account_code AND cp.is_reversed = false
 		WHERE  ca.is_active = true
 		  AND  ($1 = '' OR ca.client_name ILIKE '%' || $1 || '%')
 		GROUP  BY ca.account_code, ca.client_name
-		ORDER  BY ca.client_name
+		ORDER  BY SUM(cp.tran_amount) DESC NULLS LAST, ca.client_name
 		LIMIT  200
 	`
 	rows, err := h.pool.Query(r.Context(), q, search)
@@ -1147,14 +1149,16 @@ func (h *Handler) listClientAccounts(w http.ResponseWriter, r *http.Request) {
 	type row struct {
 		AccountCode  string  `json:"account_code"`
 		ClientName   string  `json:"client_name"`
-		Balance      float64 `json:"balance"`
+		TotalIn      float64 `json:"total_in"`
+		TotalOut     float64 `json:"total_out"`
+		NetBalance   float64 `json:"net_balance"`
 		TxnCount     int64   `json:"txn_count"`
 		LastActivity *string `json:"last_activity,omitempty"`
 	}
 	var out []row
 	for rows.Next() {
 		var r row
-		if err := rows.Scan(&r.AccountCode, &r.ClientName, &r.Balance, &r.TxnCount, &r.LastActivity); err != nil {
+		if err := rows.Scan(&r.AccountCode, &r.ClientName, &r.TotalIn, &r.TotalOut, &r.NetBalance, &r.TxnCount, &r.LastActivity); err != nil {
 			continue
 		}
 		out = append(out, r)
