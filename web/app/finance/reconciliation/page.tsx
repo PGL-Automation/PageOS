@@ -714,16 +714,21 @@ function MatchRowContent({
       </td>
       <td className="py-3 pr-3 max-w-[200px]">
         {m.bank_line_id ? (
-          <div className="group relative">
-            <p className="text-[12.5px] font-medium truncate" style={{ color: "var(--pg-text-1)" }}>{m.bank_narration || m.bank_reference || "—"}</p>
-            <p className="text-[10px] font-mono truncate" style={{ color: "var(--pg-text-4)" }}>{m.bank_reference}</p>
-            {onDetail && (
-              <button onClick={e => { e.stopPropagation(); onDetail(); }}
-                className="absolute right-0 top-0 opacity-0 group-hover:opacity-100 transition-opacity text-[9px] px-1.5 py-0.5 rounded"
-                style={{ background: "#dbeafe", color: "#1d4ed8" }}>
-                details
-              </button>
-            )}
+          <div>
+            <div className="flex items-start gap-1.5">
+              <div className="flex-1 min-w-0">
+                <p className="text-[12.5px] font-medium truncate" style={{ color: "var(--pg-text-1)" }}>{m.bank_narration || m.bank_reference || "—"}</p>
+                <p className="text-[10px] font-mono truncate" style={{ color: "var(--pg-text-4)" }}>{m.bank_reference}</p>
+              </div>
+              {onDetail && (
+                <button onClick={e => { e.stopPropagation(); onDetail(); }}
+                  title="View full details"
+                  className="shrink-0 text-[10px] px-1.5 py-0.5 rounded mt-0.5"
+                  style={{ background: "#dbeafe", color: "#1d4ed8", border: "1px solid #bfdbfe" }}>
+                  ⓘ
+                </button>
+              )}
+            </div>
           </div>
         ) : <span style={{ color: "var(--pg-text-4)" }}>—</span>}
       </td>
@@ -781,14 +786,17 @@ function MatchRowContent({
       </td>
       <td className="py-3 pr-3 max-w-[200px]">
         {m.ledger_txn_id ? (
-          <div className="group relative">
-            <p className="text-[12.5px] font-medium truncate" style={{ color: "var(--pg-text-1)" }}>{m.ledger_type || m.ledger_reference || "—"}</p>
-            <p className="text-[10px] font-mono truncate" style={{ color: "var(--pg-text-4)" }}>{m.ledger_reference}</p>
+          <div className="flex items-start gap-1.5">
+            <div className="flex-1 min-w-0">
+              <p className="text-[12.5px] font-medium truncate" style={{ color: "var(--pg-text-1)" }}>{m.ledger_type || m.ledger_reference || "—"}</p>
+              <p className="text-[10px] font-mono truncate" style={{ color: "var(--pg-text-4)" }}>{m.ledger_reference}</p>
+            </div>
             {onDetail && (
               <button onClick={e => { e.stopPropagation(); onDetail(); }}
-                className="absolute right-0 top-0 opacity-0 group-hover:opacity-100 transition-opacity text-[9px] px-1.5 py-0.5 rounded"
-                style={{ background: "#d1fae5", color: "#065f46" }}>
-                details
+                title="View full details"
+                className="shrink-0 text-[10px] px-1.5 py-0.5 rounded mt-0.5"
+                style={{ background: "#d1fae5", color: "#065f46", border: "1px solid #a7f3d0" }}>
+                ⓘ
               </button>
             )}
           </div>
