@@ -674,12 +674,12 @@ function UploadSection({
 // ── Match row ──────────────────────────────────────────────────────────────────
 
 function MatchRowContent({
-  m, onAccept, onDismiss, isSelected, onClick, onClassify, onPostJE, postingJE, onDetail,
+  m, onAccept, onDismiss, isSelected, onClick, onClassify, onPostJE, postingJE, onDetail, isExpanded,
 }: {
   m: FullMatch; onAccept?: () => void; onDismiss?: () => void;
   isSelected?: boolean; onClick?: () => void;
   onClassify?: () => void; onPostJE?: () => void; postingJE?: boolean;
-  onDetail?: () => void;
+  onDetail?: () => void; isExpanded?: boolean;
 }) {
   const bankAmt = m.bank_credit_kobo > 0 ? m.bank_credit_kobo : -m.bank_debit_kobo;
   const bankDir = m.bank_credit_kobo > 0 ? "credit" : "debit";
@@ -701,7 +701,7 @@ function MatchRowContent({
 
   const isUnmatched = m.status === "unmatched_bank" || m.status === "unmatched_internal";
 
-  return (
+  return (<>
     <tr key={m.match_id}
         className={cn("border-b transition-colors", isUnmatched && "cursor-pointer", isSelected && "ring-2 ring-inset ring-orange-400")}
         style={{ borderColor: "var(--pg-row-border)", background: isSelected ? "rgba(255,102,0,0.07)" : undefined }}
@@ -813,6 +813,65 @@ function MatchRowContent({
         ) : <span style={{ color: "var(--pg-text-4)" }}>—</span>}
       </td>
     </tr>
+    {isExpanded && (
+      <tr style={{ background: "#f0f9ff" }}>
+        <td colSpan={7} style={{ padding: 0 }}>
+          <div style={{ padding: "16px 20px", borderTop: "2px solid #bae6fd", borderBottom: "1px solid #e0f2fe" }}>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[12px] font-semibold" style={{ color: "#0369a1" }}>Transaction Details</p>
+              {onDetail && (
+                <button onClick={e => { e.stopPropagation(); onDetail(); }}
+                  className="text-[11px] px-2 py-0.5 rounded"
+                  style={{ background: "#e0f2fe", color: "#0369a1" }}>
+                  ✕ Close
+                </button>
+              )}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+              {/* Bank side */}
+              {m.bank_line_id && (
+                <div style={{ padding: "12px", background: "#fffbeb", borderRadius: "8px", border: "1px solid #fde68a" }}>
+                  <p className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: "#d97706" }}>Bank Statement</p>
+                  {[
+                    ["Date", m.bank_date?.slice(0,10) ?? "—"],
+                    ["Narration", m.bank_narration || "—"],
+                    ["Reference / DOC-NUM", m.bank_reference || "—"],
+                    ["Amount", m.bank_credit_kobo > 0
+                      ? `↑ Credit ${shortKobo(m.bank_credit_kobo)}`
+                      : `↓ Debit ${shortKobo(m.bank_debit_kobo)}`],
+                  ].map(([label, value]) => (
+                    <div key={label} className="mb-2">
+                      <p className="text-[9px] uppercase tracking-wide" style={{ color: "#92400e" }}>{label}</p>
+                      <p className="text-[12px] font-medium" style={{ color: "#1c1917", wordBreak: "break-word" }}>{value}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {/* Ledger side */}
+              {m.ledger_txn_id && (
+                <div style={{ padding: "12px", background: "#f0fdf4", borderRadius: "8px", border: "1px solid #bbf7d0" }}>
+                  <p className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: "#059669" }}>General Ledger</p>
+                  {[
+                    ["Date", m.ledger_date?.slice(0,10) ?? "—"],
+                    ["Transaction Type", m.ledger_type || "—"],
+                    ["Reference", m.ledger_reference || "—"],
+                    ["Amount", `${m.ledger_direction === "credit" ? "↑ Credit" : "↓ Debit"} ${shortKobo(m.ledger_amount_kobo)}`],
+                    ["Match", m.match_type + (m.confidence_pct != null ? ` · ${m.confidence_pct}% confidence` : "")],
+                  ].map(([label, value]) => (
+                    <div key={label} className="mb-2">
+                      <p className="text-[9px] uppercase tracking-wide" style={{ color: "#065f46" }}>{label}</p>
+                      <p className="text-[12px] font-medium" style={{ color: "#1c1917", wordBreak: "break-word" }}>{value}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            {m.notes && <p className="mt-2 text-[11px]" style={{ color: "var(--pg-text-3)" }}>Notes: {m.notes}</p>}
+          </div>
+        </td>
+      </tr>
+    )}
+  </>
   );
 }
 
@@ -1450,6 +1509,7 @@ export default function ReconciliationPage() {
                           isSelected={isSelected}
                           onClick={() => toggleSelection(m)}
                           onDetail={() => setDetailMatch(detailMatch?.match_id === m.match_id ? null : m)}
+                          isExpanded={detailMatch?.match_id === m.match_id}
                           onClassify={m.status === "unmatched_bank" ? () => {
                             setClassifyMatchId(m.match_id);
                             setPostingType(""); setDrCode(""); setCrCode(""); setClassifyNotes("");
@@ -1641,58 +1701,6 @@ export default function ReconciliationPage() {
           </div>
         </SheetContent>
       </Sheet>
-
-      {/* Transaction detail panel */}
-      {detailMatch && (
-        <div className="rounded-2xl overflow-hidden"
-             style={{ background: "var(--pg-card)", border: "2px solid #dbeafe" }}>
-          <div className="flex items-center justify-between px-5 py-3"
-               style={{ borderBottom: "1px solid var(--pg-row-border)", background: "#eff6ff" }}>
-            <p className="text-[13px] font-semibold" style={{ color: "#1d4ed8" }}>Transaction Details</p>
-            <button onClick={() => setDetailMatch(null)} className="text-[11px]" style={{ color: "var(--pg-text-3)" }}>✕ Close</button>
-          </div>
-          <div className="grid gap-px" style={{ gridTemplateColumns: "1fr 1fr", background: "var(--pg-card-border)" }}>
-            {/* Bank side */}
-            <div className="p-5 space-y-3" style={{ background: "var(--pg-card)" }}>
-              <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: "#d97706" }}>Bank Statement</p>
-              {[
-                ["Date", detailMatch.bank_date?.slice(0,10) ?? "—"],
-                ["Narration", detailMatch.bank_narration || "—"],
-                ["Reference / DOC-NUM", detailMatch.bank_reference || "—"],
-                ["Amount", detailMatch.bank_credit_kobo > 0
-                  ? `Credit: ₦${(detailMatch.bank_credit_kobo/100).toLocaleString("en-NG",{minimumFractionDigits:2})}`
-                  : `Debit: ₦${(detailMatch.bank_debit_kobo/100).toLocaleString("en-NG",{minimumFractionDigits:2})}`],
-              ].map(([label, value]) => (
-                <div key={label}>
-                  <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--pg-text-3)" }}>{label}</p>
-                  <p className="text-[12px] font-medium mt-0.5" style={{ color: "var(--pg-text-1)", wordBreak: "break-all" }}>{value}</p>
-                </div>
-              ))}
-            </div>
-            {/* Ledger side */}
-            <div className="p-5 space-y-3" style={{ background: "var(--pg-card)" }}>
-              <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: "#059669" }}>General Ledger</p>
-              {[
-                ["Date", detailMatch.ledger_date?.slice(0,10) ?? "—"],
-                ["Transaction Type", detailMatch.ledger_type || "—"],
-                ["Reference", detailMatch.ledger_reference || "—"],
-                ["Amount", `${detailMatch.ledger_direction === "credit" ? "Credit" : "Debit"}: ₦${(detailMatch.ledger_amount_kobo/100).toLocaleString("en-NG",{minimumFractionDigits:2})}`],
-                ["Match Type", detailMatch.match_type + (detailMatch.confidence_pct != null ? ` (${detailMatch.confidence_pct}% confidence)` : "")],
-              ].map(([label, value]) => (
-                <div key={label}>
-                  <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--pg-text-3)" }}>{label}</p>
-                  <p className="text-[12px] font-medium mt-0.5" style={{ color: "var(--pg-text-1)", wordBreak: "break-all" }}>{value}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-          {detailMatch.notes && (
-            <div className="px-5 py-3" style={{ borderTop: "1px solid var(--pg-row-border)" }}>
-              <p className="text-[11px]" style={{ color: "var(--pg-text-3)" }}>Notes: {detailMatch.notes}</p>
-            </div>
-          )}
-        </div>
-      )}
 
       {effectiveAccountId && runs.length > 0 && (
         <div className="rounded-2xl overflow-hidden"
