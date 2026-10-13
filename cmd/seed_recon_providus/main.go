@@ -125,18 +125,8 @@ func main() {
 		label := fmt.Sprintf("%d-%02d", m.year, m.month)
 		log := logger.With("period", label)
 
-		// Skip if a run already exists for this period.
-		var existing int
-		_ = pool.QueryRow(ctx, `
-			SELECT COUNT(*) FROM reconciliation.reconciliation_run
-			WHERE bank_account_id = $1 AND period_start = $2 AND period_end = $3
-		`, bankAccountID, periodStart, periodEnd).Scan(&existing)
-		if existing > 0 {
-			log.Info("run already exists — skipping")
-			continue
-		}
-
-		// Insert GL internal transactions for all months (GL covers May–Sept).
+		// Always insert GL lines first — even if run already exists.
+		// This ensures narrations are populated even on re-runs.
 		monthGL := filterGLByMonth(glLines, m.year, m.month)
 		log.Info("GL lines for period", "count", len(monthGL))
 		if len(monthGL) > 0 {
@@ -146,6 +136,17 @@ func main() {
 			} else {
 				log.Info("GL lines inserted", "count", glCount)
 			}
+		}
+
+		// Skip bank statement + run creation if run already exists.
+		var existing int
+		_ = pool.QueryRow(ctx, `
+			SELECT COUNT(*) FROM reconciliation.reconciliation_run
+			WHERE bank_account_id = $1 AND period_start = $2 AND period_end = $3
+		`, bankAccountID, periodStart, periodEnd).Scan(&existing)
+		if existing > 0 {
+			log.Info("run already exists — GL narrations updated, skipping run creation")
+			continue
 		}
 
 		// Only create a bank statement + run for months that have bank data.
