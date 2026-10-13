@@ -837,8 +837,8 @@ function MatchRowContent({
                     ["Narration", m.bank_narration || "—"],
                     ["Reference / DOC-NUM", m.bank_reference || "—"],
                     ["Amount", m.bank_credit_kobo > 0
-                      ? `↑ Credit ${shortKobo(m.bank_credit_kobo)}`
-                      : `↓ Debit ${shortKobo(m.bank_debit_kobo)}`],
+                      ? `↑ Credit ${kobo(m.bank_credit_kobo)}`
+                      : `↓ Debit ${kobo(m.bank_debit_kobo)}`],
                   ].map(([label, value]) => (
                     <div key={label} className="mb-2">
                       <p className="text-[9px] uppercase tracking-wide" style={{ color: "#92400e" }}>{label}</p>
@@ -855,7 +855,7 @@ function MatchRowContent({
                     ["Date", m.ledger_date?.slice(0,10) ?? "—"],
                     ["Transaction Type", m.ledger_type || "—"],
                     ["Reference", m.ledger_reference || "—"],
-                    ["Amount", `${m.ledger_direction === "credit" ? "↑ Credit" : "↓ Debit"} ${shortKobo(m.ledger_amount_kobo)}`],
+                    ["Amount", `${m.ledger_direction === "credit" ? "↑ Credit" : "↓ Debit"} ${kobo(m.ledger_amount_kobo)}`],
                     ["Match", m.match_type + (m.confidence_pct != null ? ` · ${m.confidence_pct}% confidence` : "")],
                   ].map(([label, value]) => (
                     <div key={label} className="mb-2">
