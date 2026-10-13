@@ -827,11 +827,11 @@ func (s *Service) SyncFromJournals(ctx context.Context, bankAccountID, syncedBy 
 		_, err := s.store.Pool().Exec(ctx, `
 			INSERT INTO reconciliation.internal_transaction
 			    (subsidiary_id, bank_account_id, type, direction, amount_kobo,
-			     currency, reference, related_type, related_id, txn_date)
-			VALUES ($1,$2,'journal_entry',$3,$4,'NGN',$5,$6,$7,$8)
+			     currency, reference, narration, related_type, related_id, txn_date)
+			VALUES ($1,$2,'journal_entry',$3,$4,'NGN',$5,$6,$7,$8,$9)
 			ON CONFLICT DO NOTHING
 		`, subsidiaryID, bankAccountID, direction, amountKobo,
-			ref, relatedType, lineID, toPGDate(txnDate))
+			ref, narration, relatedType, lineID, toPGDate(txnDate))
 		if err != nil {
 			return count, fmt.Errorf("reconciliation: insert txn for line %s: %w", lineID, err)
 		}
@@ -864,17 +864,18 @@ func (s *Service) UploadLedger(ctx context.Context, bankAccountID, uploadedBy uu
 	count := 0
 	for _, l := range lines {
 		relatedType := "gl_ledger"
-		_, err := s.store.CreateInternalTransaction(ctx, recondb.CreateInternalTransactionParams{
-			SubsidiaryID:  subsidiaryID,
-			BankAccountID: &bankAccountID,
-			Type:          "ledger_entry",
-			Direction:     l.Direction,
-			AmountKobo:    l.AmountKobo,
-			Currency:      "NGN",
-			Reference:     l.Reference,
-			RelatedType:   &relatedType,
-			TxnDate:       toPGDate(l.TxnDate),
-		})
+		narration := l.Description
+		if len(narration) > 500 {
+			narration = narration[:500]
+		}
+		_, err := s.store.Pool().Exec(ctx, `
+			INSERT INTO reconciliation.internal_transaction
+			    (subsidiary_id, bank_account_id, type, direction, amount_kobo,
+			     currency, reference, narration, related_type, txn_date)
+			VALUES ($1,$2,'ledger_entry',$3,$4,'NGN',$5,$6,$7,$8)
+			ON CONFLICT DO NOTHING
+		`, subsidiaryID, bankAccountID, l.Direction, l.AmountKobo,
+			l.Reference, narration, relatedType, toPGDate(l.TxnDate))
 		if err != nil {
 			return count, fmt.Errorf("reconciliation: insert ledger line %q: %w", l.Reference, err)
 		}

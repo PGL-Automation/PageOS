@@ -72,7 +72,10 @@ func (s *Store) GetRunFullView(ctx context.Context, runID uuid.UUID) ([]FullMatc
 
 			it.id                                         AS ledger_txn_id,
 			it.txn_date::text                             AS ledger_date,
-			COALESCE(it.type,        '')                  AS ledger_type,
+			CASE
+			  WHEN it.narration <> '' THEN it.narration
+			  ELSE COALESCE(it.type, '')
+			END                                           AS ledger_type,
 			COALESCE(it.direction,   '')                  AS ledger_direction,
 			COALESCE(it.amount_kobo, 0)                   AS ledger_amount_kobo,
 			COALESCE(it.reference,   '')                  AS ledger_reference

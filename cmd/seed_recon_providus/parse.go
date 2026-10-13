@@ -137,6 +137,7 @@ func insertBankStatement(
 }
 
 // insertGLLines inserts LedgerLines as internal_transaction rows.
+// Uses UPSERT so re-running updates the narration on existing rows.
 func insertGLLines(
 	ctx context.Context,
 	pool *pgxpool.Pool,
@@ -153,13 +154,17 @@ func insertGLLines(
 		if len(ref) > 200 {
 			ref = ref[:200]
 		}
+		narration := l.Description
+		if len(narration) > 500 {
+			narration = narration[:500]
+		}
 		_, err := pool.Exec(ctx, `
 			INSERT INTO reconciliation.internal_transaction
 			    (subsidiary_id, bank_account_id, type, direction, amount_kobo,
-			     currency, reference, txn_date)
-			VALUES ($1,$2,'gl_export',$3,$4,'NGN',$5,$6)
+			     currency, reference, narration, txn_date)
+			VALUES ($1,$2,'gl_export',$3,$4,'NGN',$5,$6,$7)
 			ON CONFLICT DO NOTHING
-		`, subsidiaryID, bankAccountID, l.Direction, l.AmountKobo, ref,
+		`, subsidiaryID, bankAccountID, l.Direction, l.AmountKobo, ref, narration,
 			pgtype.Date{Time: l.TxnDate, Valid: true})
 		if err != nil {
 			return count, fmt.Errorf("insert GL line: %w", err)
