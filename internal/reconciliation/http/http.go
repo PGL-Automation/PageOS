@@ -59,6 +59,7 @@ func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	r.Get("/accounts/available-gl", h.withCap("recon.view", h.listAvailableGL))
 	r.Patch("/accounts/{id}/gl-code", h.withCap("recon.configure", h.setGLCode))
 	r.Get("/accounts/{id}/statements", h.withCap("recon.view", h.listStatements))
+	r.Get("/statements/{id}/lines", h.withCap("recon.view", h.listStatementLines))
 	r.Post("/accounts/{id}/statements", h.withCap("recon.run", h.uploadStatement))
 	r.Post("/accounts/{id}/ledger", h.withCap("recon.run", h.uploadLedger))
 	r.Post("/accounts/{id}/sync-gl", h.withCap("recon.run", h.syncGL))
@@ -655,6 +656,55 @@ func (h *Handler) getDashboard(w http.ResponseWriter, r *http.Request) {
 		summaries = []reconciliation.RunSummaryFull{}
 	}
 	httpx.JSON(w, http.StatusOK, summaries)
+}
+
+// ── Statement lines ───────────────────────────────────────────────────────────
+
+// listStatementLines returns all transaction lines for a specific bank statement.
+func (h *Handler) listStatementLines(w http.ResponseWriter, r *http.Request) {
+	stmtID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid statement id")
+		return
+	}
+	rows, err := h.svc.Pool().Query(r.Context(), `
+		SELECT id::text, txn_date::text, COALESCE(value_date::text,'') AS value_date,
+		       debit_kobo, credit_kobo, COALESCE(balance_kobo,0) AS balance_kobo,
+		       narration, reference
+		FROM   reconciliation.bank_statement_line
+		WHERE  statement_id = $1
+		ORDER  BY txn_date, id
+	`, stmtID)
+	if err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		return
+	}
+	defer rows.Close()
+
+	type line struct {
+		ID          string `json:"id"`
+		TxnDate     string `json:"txn_date"`
+		ValueDate   string `json:"value_date,omitempty"`
+		DebitKobo   int64  `json:"debit_kobo"`
+		CreditKobo  int64  `json:"credit_kobo"`
+		BalanceKobo int64  `json:"balance_kobo"`
+		Narration   string `json:"narration"`
+		Reference   string `json:"reference"`
+	}
+	var out []line
+	for rows.Next() {
+		var l line
+		if err := rows.Scan(&l.ID, &l.TxnDate, &l.ValueDate,
+			&l.DebitKobo, &l.CreditKobo, &l.BalanceKobo,
+			&l.Narration, &l.Reference); err != nil {
+			continue
+		}
+		out = append(out, l)
+	}
+	if out == nil {
+		out = []line{}
+	}
+	httpx.JSON(w, http.StatusOK, out)
 }
 
 // ── Posting types ─────────────────────────────────────────────────────────────

@@ -140,6 +140,7 @@ const MD_NAV: NavGroup[] = [
   { id: "reconciliation", label: "Reconciliation", items: [
     { href: "/reconciliation/dashboard",    label: "Overview",      icon: LayoutDashboard },
     { href: "/finance/reconciliation",      label: "Runs",          icon: RefreshCw },
+    { href: "/reconciliation/statements",   label: "Bank Statements", icon: FileText },
     { href: "/reconciliation/connectivity", label: "Bank Accounts", icon: Building2 },
   ]},
   { id: "compliance", label: "Audit & Risk", items: [
@@ -271,6 +272,7 @@ const ADMIN_NAV: NavGroup[] = [
   { id: "reconciliation", label: "Reconciliation", items: [
     { href: "/reconciliation/dashboard",    label: "Overview",      icon: LayoutDashboard },
     { href: "/finance/reconciliation",      label: "Runs",          icon: RefreshCw },
+    { href: "/reconciliation/statements",   label: "Bank Statements", icon: FileText },
     { href: "/reconciliation/connectivity", label: "Bank Accounts", icon: Building2 },
   ]},
   { id: "governance", label: "Governance", items: [
@@ -312,6 +314,7 @@ const FINOPS_NAV: NavGroup[] = [
   { id: "reconciliation", label: "Reconciliation", items: [
     { href: "/reconciliation/dashboard",    label: "Overview",      icon: LayoutDashboard },
     { href: "/finance/reconciliation",      label: "Runs",          icon: RefreshCw },
+    { href: "/reconciliation/statements",   label: "Bank Statements", icon: FileText },
     { href: "/reconciliation/connectivity", label: "Bank Accounts", icon: Building2 },
   ]},
 ];
@@ -336,6 +339,7 @@ const DEFAULT_NAV: NavGroup[] = [
   { id: "reconciliation", label: "Reconciliation", items: [
     { href: "/reconciliation/dashboard",    label: "Overview",      icon: LayoutDashboard },
     { href: "/finance/reconciliation",      label: "Runs",          icon: RefreshCw },
+    { href: "/reconciliation/statements",   label: "Bank Statements", icon: FileText },
     { href: "/reconciliation/connectivity", label: "Bank Accounts", icon: Building2 },
   ]},
   { id: "governance", label: "Governance", items: [
