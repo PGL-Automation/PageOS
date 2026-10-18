@@ -1100,6 +1100,43 @@ export default function ReconciliationPage() {
     }
   }
 
+  // ── 3-way payout cross-check ──────────────────────────────────────────────
+  type PayoutCheckResult = {
+    bank_line_id: string;
+    instruction_id: string;
+    narration: string;
+    bank_amount_kobo: number;
+    payout_request_id?: string;
+    approved_amount_kobo?: number;
+    beneficiary_account?: string;
+    status: "matched_3way" | "no_approval" | "amount_mismatch";
+    notes: string;
+  };
+  type PayoutCheckSummary = {
+    run_id: string;
+    total: number;
+    matched_3way: number;
+    no_approval: number;
+    amount_mismatch: number;
+    results: PayoutCheckResult[];
+  };
+  const [payoutCheck, setPayoutCheck] = useState<PayoutCheckSummary | null>(null);
+  const payoutCheckMutation = useMutation({
+    mutationFn: () => reconFetch(`/runs/${selectedRunId}/payout-check`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }),
+    onSuccess: (data: PayoutCheckSummary) => {
+      setPayoutCheck(data);
+      queryClient.invalidateQueries({ queryKey: ["recon-full", selectedRunId] });
+      if (data.total === 0) {
+        toast({ title: "No Payout Lines", description: "No payout instruction IDs found in this run's bank statement." });
+      } else {
+        toast({ title: `Payout Cross-Check Complete`, description: `${data.matched_3way} matched, ${data.no_approval} missing approval, ${data.amount_mismatch} amount mismatch.` });
+      }
+    },
+    onError: (err: Error) => {
+      toast({ title: "Cross-Check Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
   // Close a run
   const closeMutation = useMutation({
     mutationFn: () => reconFetch(`/runs/${selectedRunId}/close`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }),
@@ -1254,6 +1291,15 @@ export default function ReconciliationPage() {
                     style={{ border: "1px solid var(--pg-card-border)", color: "var(--pg-text-2)", background: "var(--pg-card)" }}>
               {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
               Export Excel
+            </button>
+          )}
+          {selectedRun && (
+            <button onClick={() => { setPayoutCheck(null); payoutCheckMutation.mutate(); }}
+                    disabled={payoutCheckMutation.isPending}
+                    className="flex items-center gap-1.5 h-9 px-3 rounded-xl text-[12px] font-medium transition-colors"
+                    style={{ border: "1px solid #bfdbfe", color: "#1d4ed8", background: "#eff6ff" }}>
+              {payoutCheckMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+              3-Way Check
             </button>
           )}
           {selectedRun && selectedRun.status !== "closed" && (
@@ -1423,6 +1469,56 @@ export default function ReconciliationPage() {
       )}
 
       {/* Match table */}
+      {/* ── 3-Way Payout Cross-Check Results ────────────────────────────── */}
+      {selectedRun && payoutCheck && payoutCheck.total > 0 && (
+        <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid var(--pg-card-border)", background: "var(--pg-card)" }}>
+          <div className="flex items-center justify-between px-5 py-3 border-b" style={{ borderColor: "var(--pg-card-border)" }}>
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-blue-600" />
+              <span className="text-[13px] font-semibold" style={{ color: "var(--pg-text-1)" }}>3-Way Payout Cross-Check</span>
+            </div>
+            <div className="flex items-center gap-3 text-[11px]">
+              <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">{payoutCheck.matched_3way} matched</span>
+              {payoutCheck.amount_mismatch > 0 && <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">{payoutCheck.amount_mismatch} mismatch</span>}
+              {payoutCheck.no_approval > 0 && <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-medium">{payoutCheck.no_approval} no approval ⚠</span>}
+            </div>
+          </div>
+          <div className="divide-y divide-[var(--pg-card-border)]">
+            {payoutCheck.results.map(r => (
+              <div key={r.bank_line_id} className="px-5 py-3 flex items-start gap-4">
+                <div className="mt-0.5 flex-shrink-0">
+                  {r.status === "matched_3way" && <CheckCircle2 className="w-4 h-4 text-green-500" />}
+                  {r.status === "amount_mismatch" && <AlertCircle className="w-4 h-4 text-amber-500" />}
+                  {r.status === "no_approval" && <AlertCircle className="w-4 h-4 text-red-500" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[12px] font-semibold" style={{ color: "var(--pg-text-1)" }}>{r.instruction_id}</span>
+                    <span className="text-[11px]" style={{ color: "var(--pg-text-3)" }}>{r.narration.slice(0, 60)}</span>
+                  </div>
+                  <div className="flex items-center gap-4 mt-1 text-[11px]" style={{ color: "var(--pg-text-2)" }}>
+                    <span>Bank: ₦{(r.bank_amount_kobo/100).toLocaleString("en-NG",{minimumFractionDigits:2})}</span>
+                    {r.approved_amount_kobo != null && r.approved_amount_kobo > 0 && (
+                      <span>Approved: ₦{(r.approved_amount_kobo/100).toLocaleString("en-NG",{minimumFractionDigits:2})}</span>
+                    )}
+                    {r.beneficiary_account && <span>Acct: {r.beneficiary_account}</span>}
+                  </div>
+                  <p className="text-[11px] mt-1" style={{ color: r.status === "no_approval" ? "#dc2626" : r.status === "amount_mismatch" ? "#d97706" : "#059669" }}>
+                    {r.notes}
+                  </p>
+                </div>
+                {r.payout_request_id && (
+                  <a href={`/approvals/${r.payout_request_id}`} target="_blank" rel="noreferrer"
+                     className="text-[11px] font-medium whitespace-nowrap" style={{ color: "#2563eb" }}>
+                    View Approval ↗
+                  </a>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {selectedRun && (
         <>
           {/* Filter bar */}

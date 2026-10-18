@@ -105,7 +105,25 @@ func (h *Handler) Routes(authMW func(http.Handler) http.Handler) http.Handler {
 	r.Get("/exceptions", h.withCap("recon.view", h.getExceptions))
 	// Dashboard: all run summaries for a subsidiary.
 	r.Get("/dashboard", h.withCap("recon.view", h.getDashboard))
+	// 3-way payout cross-check: bank statement ↔ GL ↔ payout approval.
+	r.Post("/runs/{id}/payout-check", h.withCap("recon.match", h.payoutCrossCheck))
 	return r
+}
+
+// payoutCrossCheck runs the 3-way reconciliation cross-check for payout
+// instructions in a given reconciliation run.
+func (h *Handler) payoutCrossCheck(w http.ResponseWriter, r *http.Request) {
+	runID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid run id")
+		return
+	}
+	summary, err := h.svc.CrossCheckPayoutInstructions(r.Context(), runID)
+	if err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", err.Error())
+		return
+	}
+	httpx.JSON(w, http.StatusOK, summary)
 }
 
 // ── Accounts ──────────────────────────────────────────────────────────────────

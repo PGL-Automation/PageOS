@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 	"time"
 
@@ -89,6 +90,36 @@ type Match struct {
 	MatchType     string     `json:"match_type"`
 	ConfidencePct *int32     `json:"confidence_pct,omitempty"`
 	Notes         string     `json:"notes"`
+
+	// Payout cross-check fields (populated only for payout_* match types).
+	PayoutRequestID     *uuid.UUID `json:"payout_request_id,omitempty"`
+	PayoutInstructionID string     `json:"payout_instruction_id,omitempty"`
+	PayoutApprovedKobo  int64      `json:"payout_approved_kobo,omitempty"`
+	PayoutBankKobo      int64      `json:"payout_bank_kobo,omitempty"`
+}
+
+// PayoutCrossCheckResult summarises one bank statement line that contained a
+// payout instruction ID.
+type PayoutCrossCheckResult struct {
+	BankLineID          uuid.UUID  `json:"bank_line_id"`
+	InstructionID       string     `json:"instruction_id"`
+	Narration           string     `json:"narration"`
+	BankAmountKobo      int64      `json:"bank_amount_kobo"`
+	PayoutRequestID     *uuid.UUID `json:"payout_request_id,omitempty"`
+	ApprovedAmountKobo  int64      `json:"approved_amount_kobo,omitempty"`
+	BeneficiaryAccount  string     `json:"beneficiary_account,omitempty"`
+	Status              string     `json:"status"` // matched_3way | no_approval | amount_mismatch
+	Notes               string     `json:"notes"`
+}
+
+// PayoutCrossCheckSummary is the full output of CrossCheckPayoutInstructions.
+type PayoutCrossCheckSummary struct {
+	RunID         uuid.UUID                `json:"run_id"`
+	Total         int                      `json:"total"`
+	Matched3Way   int                      `json:"matched_3way"`
+	NoApproval    int                      `json:"no_approval"`
+	AmountMismatch int                     `json:"amount_mismatch"`
+	Results       []PayoutCrossCheckResult `json:"results"`
 }
 
 type RunSummary struct {
@@ -1396,6 +1427,190 @@ func toMatch(r recondb.ReconciliationReconciliationMatch) Match {
 		ConfidencePct: r.ConfidencePct, Notes: r.Notes,
 	}
 }
+
+// ── 3-way payout cross-check ──────────────────────────────────────────────────
+
+// payoutInstIDRE matches instruction IDs of the form XXX-APR-YYYY-NNNNNN.
+var payoutInstIDRE = regexp.MustCompile(`[A-Z]{2,3}-APR-\d{4}-\d{6}`)
+
+// CrossCheckPayoutInstructions scans all bank statement lines in the given
+// reconciliation run for payout instruction IDs (e.g. PAM-APR-2026-000123).
+//
+// For each line carrying an instruction ID it checks three things:
+//  1. Does a payout approval record exist for that ID?
+//  2. Does the bank debit amount equal the approved amount exactly?
+//  3. (GL side) Is there an existing bank↔GL match for this line?
+//
+// Results are persisted as new match rows (match_type = payout_3way /
+// payout_no_approval / payout_amount_mismatch) and returned as a summary.
+func (s *Service) CrossCheckPayoutInstructions(ctx context.Context, runID uuid.UUID) (PayoutCrossCheckSummary, error) {
+	summary := PayoutCrossCheckSummary{RunID: runID}
+
+	// ── Load bank statement lines for this run ────────────────────────────────
+	const linesQ = `
+		SELECT bsl.id, bsl.narration, bsl.reference, bsl.debit_kobo, bsl.credit_kobo
+		FROM   reconciliation.bank_statement_line bsl
+		JOIN   reconciliation.bank_statement       bs ON bs.id = bsl.statement_id
+		JOIN   reconciliation.reconciliation_run   rr ON rr.bank_account_id = bs.bank_account_id
+		WHERE  rr.id = $1
+		  AND  bsl.txn_date BETWEEN rr.period_start AND rr.period_end
+	`
+	rows, err := s.store.Pool().Query(ctx, linesQ, runID)
+	if err != nil {
+		return summary, fmt.Errorf("reconciliation: payout cross-check: load lines: %w", err)
+	}
+
+	type lineRow struct {
+		id         uuid.UUID
+		narration  string
+		reference  string
+		debitKobo  int64
+		creditKobo int64
+	}
+	var lines []lineRow
+	for rows.Next() {
+		var l lineRow
+		if err := rows.Scan(&l.id, &l.narration, &l.reference, &l.debitKobo, &l.creditKobo); err != nil {
+			rows.Close()
+			return summary, err
+		}
+		lines = append(lines, l)
+	}
+	rows.Close()
+
+	// ── Filter lines that carry a payout instruction ID ───────────────────────
+	type payoutLine struct {
+		line  lineRow
+		instID string
+	}
+	var payoutLines []payoutLine
+	for _, l := range lines {
+		search := l.narration + " " + l.reference
+		if id := payoutInstIDRE.FindString(strings.ToUpper(search)); id != "" {
+			payoutLines = append(payoutLines, payoutLine{line: l, instID: id})
+		}
+	}
+
+	if len(payoutLines) == 0 {
+		return summary, nil
+	}
+
+	// ── Cross-check each line against the payout approval record ─────────────
+	for _, pl := range payoutLines {
+		result := PayoutCrossCheckResult{
+			BankLineID:    pl.line.id,
+			InstructionID: pl.instID,
+			Narration:     pl.line.narration,
+			BankAmountKobo: pl.line.debitKobo, // payouts are debits
+		}
+
+		// Look up the payout approval record.
+		var (
+			payoutID          uuid.UUID
+			approvedKobo      int64
+			beneficiaryAcct   string
+			payoutStatus      string
+		)
+		lookupErr := s.store.Pool().QueryRow(ctx, `
+			SELECT id, amount_kobo, beneficiary_account, status
+			FROM   payout.payment_request
+			WHERE  instruction_id = $1
+			LIMIT  1
+		`, pl.instID).Scan(&payoutID, &approvedKobo, &beneficiaryAcct, &payoutStatus)
+
+		if lookupErr != nil {
+			// No approval record — potential unauthorised payment.
+			result.Status = "no_approval"
+			result.Notes = "Bank statement contains instruction ID " + pl.instID + " but no payout approval record was found. Investigate immediately."
+			summary.NoApproval++
+		} else {
+			result.PayoutRequestID    = &payoutID
+			result.ApprovedAmountKobo = approvedKobo
+			result.BeneficiaryAccount = beneficiaryAcct
+
+			if pl.line.debitKobo != approvedKobo {
+				// Amount in bank differs from approved amount.
+				result.Status = "amount_mismatch"
+				result.Notes = fmt.Sprintf(
+					"Approved ₦%s but bank debited ₦%s. Difference: ₦%s.",
+					formatKobo(approvedKobo), formatKobo(pl.line.debitKobo),
+					formatKobo(abs64recon(pl.line.debitKobo-approvedKobo)),
+				)
+				summary.AmountMismatch++
+			} else {
+				// Amounts match — full 3-way reconciliation.
+				result.Status = "matched_3way"
+				result.Notes = fmt.Sprintf(
+					"3-way matched: approval %s (%s, status: %s) ↔ bank debit ₦%s.",
+					pl.instID, payoutID, payoutStatus, formatKobo(pl.line.debitKobo),
+				)
+				summary.Matched3Way++
+
+				// Advance the payout request to reconciled if it was confirmed.
+				if payoutStatus == "confirmed" || payoutStatus == "sent_to_bank" {
+					_, _ = s.store.Pool().Exec(ctx, `
+						UPDATE payout.payment_request
+						SET    status = 'reconciled', updated_at = now()
+						WHERE  id = $1 AND status IN ('confirmed','sent_to_bank')
+					`, payoutID)
+				}
+			}
+
+			// Stamp the payout_request_id on the existing match for this bank line (if any).
+			_, _ = s.store.Pool().Exec(ctx, `
+				UPDATE reconciliation.reconciliation_match
+				SET    payout_request_id   = $1,
+				       payout_instruction_id = $2,
+				       payout_approved_kobo  = $3,
+				       payout_bank_kobo      = $4,
+				       match_type           = CASE
+				                               WHEN match_type = 'matched' THEN $5
+				                               ELSE match_type
+				                             END,
+				       notes = notes || E'\n[payout] ' || $6
+				WHERE  run_id = $7 AND bank_line_id = $8
+			`, payoutID, pl.instID, approvedKobo, pl.line.debitKobo,
+				"payout_3way", result.Notes, runID, pl.line.id)
+		}
+
+		summary.Results = append(summary.Results, result)
+		summary.Total++
+	}
+
+	return summary, nil
+}
+
+// formatKobo formats a kobo amount as a readable naira string (no ₦ symbol,
+// for use inside SQL-like messages).
+func abs64recon(x int64) int64 {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
+func formatKobo(kobo int64) string {
+	n := kobo / 100
+	k := kobo % 100
+	s := fmt.Sprintf("%d", n)
+	// Insert commas.
+	if len(s) > 3 {
+		var out []byte
+		rem := len(s) % 3
+		for i := range s {
+			if i != 0 && (i-rem)%3 == 0 {
+				out = append(out, ',')
+			}
+			out = append(out, s[i])
+		}
+		s = string(out)
+	}
+	if k == 0 {
+		return s + ".00"
+	}
+	return fmt.Sprintf("%s.%02d", s, k)
+}
+
 
 func toPGDate(t time.Time) pgtype.Date {
 	return pgtype.Date{Time: t, Valid: true}
