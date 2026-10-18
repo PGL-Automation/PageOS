@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pagegroup/pageos/internal/notification"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -114,12 +116,13 @@ type PayoutCrossCheckResult struct {
 
 // PayoutCrossCheckSummary is the full output of CrossCheckPayoutInstructions.
 type PayoutCrossCheckSummary struct {
-	RunID         uuid.UUID                `json:"run_id"`
-	Total         int                      `json:"total"`
-	Matched3Way   int                      `json:"matched_3way"`
-	NoApproval    int                      `json:"no_approval"`
-	AmountMismatch int                     `json:"amount_mismatch"`
-	Results       []PayoutCrossCheckResult `json:"results"`
+	RunID           uuid.UUID                `json:"run_id"`
+	Total           int                      `json:"total"`
+	Matched3Way     int                      `json:"matched_3way"`
+	NoApproval      int                      `json:"no_approval"`
+	AmountMismatch  int                      `json:"amount_mismatch"`
+	AccountMismatch int                      `json:"account_mismatch"`
+	Results         []PayoutCrossCheckResult `json:"results"`
 }
 
 type RunSummary struct {
@@ -154,6 +157,7 @@ type Service struct {
 	audit      *audit.Writer
 	matcher    MatchingStrategy
 	financeSvc *finance.Service
+	notif      *notification.Outbox
 }
 
 func NewService(db *pgxpool.Pool, a *audit.Writer) *Service {
@@ -163,6 +167,10 @@ func NewService(db *pgxpool.Pool, a *audit.Writer) *Service {
 // SetFinanceService wires the finance service for journal creation from
 // bank-not-in-GL items. Called after both services are initialised in main.
 func (s *Service) SetFinanceService(f *finance.Service) { s.financeSvc = f }
+
+// SetNotification wires the notification outbox for exception alerts.
+// Called after both services are initialised in main.
+func (s *Service) SetNotification(n *notification.Outbox) { s.notif = n }
 
 // Pool exposes the underlying database pool for scripts and tools that need
 // direct SQL access alongside the service methods.
@@ -1433,151 +1441,299 @@ func toMatch(r recondb.ReconciliationReconciliationMatch) Match {
 // payoutInstIDRE matches instruction IDs of the form XXX-APR-YYYY-NNNNNN.
 var payoutInstIDRE = regexp.MustCompile(`[A-Z]{2,3}-APR-\d{4}-\d{6}`)
 
-// CrossCheckPayoutInstructions scans all bank statement lines in the given
-// reconciliation run for payout instruction IDs (e.g. PAM-APR-2026-000123).
+// nubanRE matches a Nigerian 10-digit NUBAN account number in a narration string.
+var nubanRE = regexp.MustCompile(`\b\d{10}\b`)
+
+// CrossCheckPayoutInstructions scans all bank statement lines in a reconciliation
+// run for payout instruction IDs (PAM-APR-YYYY-NNNNNN / PCL-APR-YYYY-NNNNNN).
 //
-// For each line carrying an instruction ID it checks three things:
-//  1. Does a payout approval record exist for that ID?
-//  2. Does the bank debit amount equal the approved amount exactly?
-//  3. (GL side) Is there an existing bank↔GL match for this line?
+// For each line it performs three checks in order of severity:
 //
-// Results are persisted as new match rows (match_type = payout_3way /
-// payout_no_approval / payout_amount_mismatch) and returned as a summary.
+//  1. Approval exists? — if not → payout_no_approval (potential fraud)
+//  2. Amount matches?  — if not → payout_amount_mismatch
+//  3. Account matches? — extract 10-digit NUBAN from narration; if a NUBAN is
+//     present and does not match the approved beneficiary → payout_account_mismatch
+//
+// On exceptions the method sends notification emails to FinOps, Internal
+// Control, and (for no_approval) Compliance and the MD.
+// On a full 3-way match the payout request is automatically advanced to
+// 'reconciled' and the match row is stamped with payout_request_id.
 func (s *Service) CrossCheckPayoutInstructions(ctx context.Context, runID uuid.UUID) (PayoutCrossCheckSummary, error) {
 	summary := PayoutCrossCheckSummary{RunID: runID}
+	pool := s.store.Pool()
 
-	// ── Load bank statement lines for this run ────────────────────────────────
-	const linesQ = `
-		SELECT bsl.id, bsl.narration, bsl.reference, bsl.debit_kobo, bsl.credit_kobo
+	// ── 1. Load bank statement lines for this run ─────────────────────────────
+	rows, err := pool.Query(ctx, `
+		SELECT bsl.id, bsl.narration, bsl.reference, bsl.debit_kobo
 		FROM   reconciliation.bank_statement_line bsl
-		JOIN   reconciliation.bank_statement       bs ON bs.id = bsl.statement_id
-		JOIN   reconciliation.reconciliation_run   rr ON rr.bank_account_id = bs.bank_account_id
+		JOIN   reconciliation.bank_statement     bs ON bs.id  = bsl.statement_id
+		JOIN   reconciliation.reconciliation_run rr ON rr.bank_account_id = bs.bank_account_id
 		WHERE  rr.id = $1
 		  AND  bsl.txn_date BETWEEN rr.period_start AND rr.period_end
-	`
-	rows, err := s.store.Pool().Query(ctx, linesQ, runID)
+		  AND  bsl.debit_kobo > 0
+	`, runID)
 	if err != nil {
-		return summary, fmt.Errorf("reconciliation: payout cross-check: load lines: %w", err)
+		return summary, fmt.Errorf("reconciliation: payout cross-check: %w", err)
 	}
 
-	type lineRow struct {
-		id         uuid.UUID
-		narration  string
-		reference  string
-		debitKobo  int64
-		creditKobo int64
+	type bankLine struct {
+		id        uuid.UUID
+		narration string
+		reference string
+		debitKobo int64
 	}
-	var lines []lineRow
+	var payout []struct {
+		line   bankLine
+		instID string
+	}
 	for rows.Next() {
-		var l lineRow
-		if err := rows.Scan(&l.id, &l.narration, &l.reference, &l.debitKobo, &l.creditKobo); err != nil {
+		var l bankLine
+		if err := rows.Scan(&l.id, &l.narration, &l.reference, &l.debitKobo); err != nil {
 			rows.Close()
 			return summary, err
 		}
-		lines = append(lines, l)
-	}
-	rows.Close()
-
-	// ── Filter lines that carry a payout instruction ID ───────────────────────
-	type payoutLine struct {
-		line  lineRow
-		instID string
-	}
-	var payoutLines []payoutLine
-	for _, l := range lines {
-		search := l.narration + " " + l.reference
-		if id := payoutInstIDRE.FindString(strings.ToUpper(search)); id != "" {
-			payoutLines = append(payoutLines, payoutLine{line: l, instID: id})
+		search := strings.ToUpper(l.narration + " " + l.reference)
+		if id := payoutInstIDRE.FindString(search); id != "" {
+			payout = append(payout, struct {
+				line   bankLine
+				instID string
+			}{l, id})
 		}
 	}
-
-	if len(payoutLines) == 0 {
+	rows.Close()
+	if len(payout) == 0 {
 		return summary, nil
 	}
 
-	// ── Cross-check each line against the payout approval record ─────────────
-	for _, pl := range payoutLines {
-		result := PayoutCrossCheckResult{
-			BankLineID:    pl.line.id,
-			InstructionID: pl.instID,
-			Narration:     pl.line.narration,
-			BankAmountKobo: pl.line.debitKobo, // payouts are debits
+	// ── 2. Cross-check each line ──────────────────────────────────────────────
+	for _, pl := range payout {
+		res := PayoutCrossCheckResult{
+			BankLineID:     pl.line.id,
+			InstructionID:  pl.instID,
+			Narration:      pl.line.narration,
+			BankAmountKobo: pl.line.debitKobo,
 		}
 
-		// Look up the payout approval record.
+		// Look up the approval record.
 		var (
-			payoutID          uuid.UUID
-			approvedKobo      int64
-			beneficiaryAcct   string
-			payoutStatus      string
+			payoutID      uuid.UUID
+			approvedKobo  int64
+			approvedAcct  string
+			payoutStatus  string
 		)
-		lookupErr := s.store.Pool().QueryRow(ctx, `
+		lookupErr := pool.QueryRow(ctx, `
 			SELECT id, amount_kobo, beneficiary_account, status
 			FROM   payout.payment_request
-			WHERE  instruction_id = $1
-			LIMIT  1
-		`, pl.instID).Scan(&payoutID, &approvedKobo, &beneficiaryAcct, &payoutStatus)
+			WHERE  instruction_id = $1 LIMIT 1
+		`, pl.instID).Scan(&payoutID, &approvedKobo, &approvedAcct, &payoutStatus)
 
+		// ── Check 1: No approval record ───────────────────────────────────────
 		if lookupErr != nil {
-			// No approval record — potential unauthorised payment.
-			result.Status = "no_approval"
-			result.Notes = "Bank statement contains instruction ID " + pl.instID + " but no payout approval record was found. Investigate immediately."
+			res.Status = "no_approval"
+			res.Notes = fmt.Sprintf(
+				"ALERT: Bank debited ₦%s with instruction ID %s but NO payout approval record exists. "+
+					"This transaction was not authorised through PageOS. Investigate immediately.",
+				formatKobo(pl.line.debitKobo), pl.instID,
+			)
 			summary.NoApproval++
-		} else {
-			result.PayoutRequestID    = &payoutID
-			result.ApprovedAmountKobo = approvedKobo
-			result.BeneficiaryAccount = beneficiaryAcct
-
-			if pl.line.debitKobo != approvedKobo {
-				// Amount in bank differs from approved amount.
-				result.Status = "amount_mismatch"
-				result.Notes = fmt.Sprintf(
-					"Approved ₦%s but bank debited ₦%s. Difference: ₦%s.",
-					formatKobo(approvedKobo), formatKobo(pl.line.debitKobo),
-					formatKobo(abs64recon(pl.line.debitKobo-approvedKobo)),
-				)
-				summary.AmountMismatch++
-			} else {
-				// Amounts match — full 3-way reconciliation.
-				result.Status = "matched_3way"
-				result.Notes = fmt.Sprintf(
-					"3-way matched: approval %s (%s, status: %s) ↔ bank debit ₦%s.",
-					pl.instID, payoutID, payoutStatus, formatKobo(pl.line.debitKobo),
-				)
-				summary.Matched3Way++
-
-				// Advance the payout request to reconciled if it was confirmed.
-				if payoutStatus == "confirmed" || payoutStatus == "sent_to_bank" {
-					_, _ = s.store.Pool().Exec(ctx, `
-						UPDATE payout.payment_request
-						SET    status = 'reconciled', updated_at = now()
-						WHERE  id = $1 AND status IN ('confirmed','sent_to_bank')
-					`, payoutID)
-				}
-			}
-
-			// Stamp the payout_request_id on the existing match for this bank line (if any).
-			_, _ = s.store.Pool().Exec(ctx, `
-				UPDATE reconciliation.reconciliation_match
-				SET    payout_request_id   = $1,
-				       payout_instruction_id = $2,
-				       payout_approved_kobo  = $3,
-				       payout_bank_kobo      = $4,
-				       match_type           = CASE
-				                               WHEN match_type = 'matched' THEN $5
-				                               ELSE match_type
-				                             END,
-				       notes = notes || E'\n[payout] ' || $6
-				WHERE  run_id = $7 AND bank_line_id = $8
-			`, payoutID, pl.instID, approvedKobo, pl.line.debitKobo,
-				"payout_3way", result.Notes, runID, pl.line.id)
+			s.stampMatch(ctx, pool, runID, pl.line.id, uuid.Nil, pl.instID, 0, pl.line.debitKobo, "payout_no_approval", res.Notes)
+			s.notifyException(ctx, "no_approval", pl.instID, res.Notes)
+			summary.Results = append(summary.Results, res)
+			summary.Total++
+			continue
 		}
 
-		summary.Results = append(summary.Results, result)
+		res.PayoutRequestID    = &payoutID
+		res.ApprovedAmountKobo = approvedKobo
+		res.BeneficiaryAccount = approvedAcct
+
+		// ── Check 2: Amount mismatch ──────────────────────────────────────────
+		if pl.line.debitKobo != approvedKobo {
+			diff := abs64recon(pl.line.debitKobo - approvedKobo)
+			res.Status = "amount_mismatch"
+			res.Notes = fmt.Sprintf(
+				"Amount mismatch on %s: approval authorised ₦%s but bank debited ₦%s "+
+					"(difference ₦%s). This may indicate a bank processing error, unauthorised amendment, "+
+					"or bank charges — Finance must investigate and explain the variance.",
+				pl.instID, formatKobo(approvedKobo), formatKobo(pl.line.debitKobo), formatKobo(diff),
+			)
+			summary.AmountMismatch++
+			s.stampMatch(ctx, pool, runID, pl.line.id, payoutID, pl.instID, approvedKobo, pl.line.debitKobo, "payout_amount_mismatch", res.Notes)
+			s.notifyException(ctx, "amount_mismatch", pl.instID, res.Notes)
+			summary.Results = append(summary.Results, res)
+			summary.Total++
+			continue
+		}
+
+		// ── Check 3: Beneficiary account mismatch ─────────────────────────────
+		// Extract the first 10-digit NUBAN from the narration.
+		// Only flag if a NUBAN is present AND it does not match the approved account.
+		// If no NUBAN appears in the narration we cannot verify — do not false-positive.
+		if nubans := nubanRE.FindAllString(pl.line.narration, -1); len(nubans) > 0 {
+			matched := false
+			for _, n := range nubans {
+				if n == approvedAcct {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				res.Status = "account_mismatch"
+				res.Notes = fmt.Sprintf(
+					"Account mismatch on %s: approval authorised payment to account %s but "+
+						"bank narration contains account(s) %s. Money may have been sent to the wrong account. "+
+						"Compliance must investigate immediately.",
+					pl.instID, approvedAcct, strings.Join(nubans, ", "),
+				)
+				summary.AccountMismatch++
+				s.stampMatch(ctx, pool, runID, pl.line.id, payoutID, pl.instID, approvedKobo, pl.line.debitKobo, "payout_account_mismatch", res.Notes)
+				s.notifyException(ctx, "account_mismatch", pl.instID, res.Notes)
+				summary.Results = append(summary.Results, res)
+				summary.Total++
+				continue
+			}
+		}
+
+		// ── All checks passed: full 3-way match ───────────────────────────────
+		res.Status = "matched_3way"
+		res.Notes = fmt.Sprintf(
+			"3-way match: %s approval (%s) ↔ bank debit ₦%s ↔ GL (if posted). "+
+				"Payout request advancing to reconciled.",
+			pl.instID, payoutStatus, formatKobo(pl.line.debitKobo),
+		)
+		summary.Matched3Way++
+
+		// Advance the payout request to reconciled.
+		if payoutStatus == "confirmed" || payoutStatus == "sent_to_bank" || payoutStatus == "approved" {
+			_, _ = pool.Exec(ctx, `
+				UPDATE payout.payment_request
+				SET    status = 'reconciled', updated_at = now()
+				WHERE  id = $1 AND status IN ('confirmed','sent_to_bank','approved')
+			`, payoutID)
+		}
+
+		s.stampMatch(ctx, pool, runID, pl.line.id, payoutID, pl.instID, approvedKobo, pl.line.debitKobo, "payout_3way", res.Notes)
+		summary.Results = append(summary.Results, res)
 		summary.Total++
 	}
 
 	return summary, nil
+}
+
+// stampMatch updates or inserts a reconciliation_match row with the payout cross-check data.
+func (s *Service) stampMatch(
+	ctx context.Context, pool *pgxpool.Pool,
+	runID, bankLineID, payoutRequestID uuid.UUID,
+	instID string, approvedKobo, bankKobo int64,
+	matchType, notes string,
+) {
+	var prID *uuid.UUID
+	if payoutRequestID != uuid.Nil {
+		cp := payoutRequestID
+		prID = &cp
+	}
+	// Try to update an existing match row for this bank line in this run.
+	tag, _ := pool.Exec(ctx, `
+		UPDATE reconciliation.reconciliation_match
+		SET    payout_request_id    = $1,
+		       payout_instruction_id = $2,
+		       payout_approved_kobo  = $3,
+		       payout_bank_kobo      = $4,
+		       match_type            = $5,
+		       notes                 = CASE WHEN notes = '' THEN $6 ELSE notes || E'\n' || $6 END
+		WHERE  run_id      = $7
+		  AND  bank_line_id = $8
+	`, prID, instID, approvedKobo, bankKobo, matchType, notes, runID, bankLineID)
+
+	// If no existing match row, insert a new one to make the exception visible.
+	if tag.RowsAffected() == 0 {
+		_, _ = pool.Exec(ctx, `
+			INSERT INTO reconciliation.reconciliation_match
+			    (run_id, bank_line_id, payout_request_id, payout_instruction_id,
+			     payout_approved_kobo, payout_bank_kobo, match_type, status, notes)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,'exception',$8)
+			ON CONFLICT DO NOTHING
+		`, runID, bankLineID, prID, instID, approvedKobo, bankKobo, matchType, notes)
+	}
+}
+
+// notifyException sends email alerts to the relevant oversight roles when a
+// payout cross-check exception is detected.
+//
+// severity levels:
+//   - "no_approval"       → FinOps, Internal Control, Compliance, MD
+//   - "amount_mismatch"   → FinOps, Internal Control
+//   - "account_mismatch"  → FinOps, Internal Control, Compliance
+func (s *Service) notifyException(ctx context.Context, severity, instructionID, body string) {
+	if s.notif == nil {
+		return
+	}
+
+	var roles []string
+	var subject string
+	switch severity {
+	case "no_approval":
+		roles = []string{"FINOPS_MANAGER", "HEAD_OF_OPERATIONS", "INTERNAL_CONTROL", "COMPLIANCE_OFFICER", "GROUP_ADMIN"}
+		subject = fmt.Sprintf("[ALERT] Unauthorised bank debit — no approval for %s", instructionID)
+	case "amount_mismatch":
+		roles = []string{"FINOPS_MANAGER", "HEAD_OF_OPERATIONS", "INTERNAL_CONTROL"}
+		subject = fmt.Sprintf("[ACTION REQUIRED] Amount mismatch on payout %s", instructionID)
+	case "account_mismatch":
+		roles = []string{"FINOPS_MANAGER", "INTERNAL_CONTROL", "COMPLIANCE_OFFICER"}
+		subject = fmt.Sprintf("[URGENT] Beneficiary account mismatch on payout %s", instructionID)
+	default:
+		return
+	}
+
+	emails, err := s.findRoleEmails(ctx, roles)
+	if err != nil || len(emails) == 0 {
+		return
+	}
+
+	for _, email := range emails {
+		tx, err := s.store.Pool().Begin(ctx)
+		if err != nil {
+			continue
+		}
+		_ = s.notif.Enqueue(ctx, tx, notification.Message{
+			EventType:     "recon.payout_exception",
+			TargetAddress: email,
+			Subject:       subject,
+			BodyText:      body + "\n\nPlease log in to PageOS and review the reconciliation run immediately.",
+		})
+		_ = tx.Commit(ctx)
+	}
+}
+
+// findRoleEmails returns the email addresses of active users holding any of the
+// given position codes across all subsidiaries.
+func (s *Service) findRoleEmails(ctx context.Context, positionCodes []string) ([]string, error) {
+	rows, err := s.store.Pool().Query(ctx, `
+		SELECT DISTINCT u.email
+		FROM   organization.assignment a
+		JOIN   organization.position   pos ON pos.id  = a.position_id
+		JOIN   organization.person     per ON per.id  = a.person_id
+		JOIN   identity.users          u   ON u.id    = per.user_id
+		WHERE  pos.code = ANY($1::text[])
+		  AND  a.effective_from <= CURRENT_DATE
+		  AND  (a.effective_to IS NULL OR a.effective_to >= CURRENT_DATE)
+		  AND  per.user_id IS NOT NULL
+		  AND  u.status     = 'active'
+	`, positionCodes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var emails []string
+	for rows.Next() {
+		var e string
+		if err := rows.Scan(&e); err != nil {
+			continue
+		}
+		emails = append(emails, e)
+	}
+	return emails, rows.Err()
 }
 
 // formatKobo formats a kobo amount as a readable naira string (no ₦ symbol,

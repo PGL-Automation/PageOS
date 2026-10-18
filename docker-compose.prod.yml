@@ -66,6 +66,14 @@ services:
       PAGEOS_MSGRAPH_REDIRECT_URL:    ${PAGEOS_MSGRAPH_REDIRECT_URL:-https://pageos.org/api/v1/msgraph/callback}
       PAGEOS_MSGRAPH_SSO_REDIRECT_URL: ${PAGEOS_MSGRAPH_SSO_REDIRECT_URL:-https://pageos.org/api/v1/auth/microsoft/callback}
       PAGEOS_MSGRAPH_TOKEN_KEY:       ${PAGEOS_MSGRAPH_TOKEN_KEY:-}
+      # Payout approval email replies (IMAP — set in .env)
+      PAGEOS_APPROVALS_IMAP_HOST:    ${PAGEOS_APPROVALS_IMAP_HOST:-}
+      PAGEOS_APPROVALS_EMAIL_USER:   ${PAGEOS_APPROVALS_EMAIL_USER:-approvals@pageaml.com}
+      PAGEOS_APPROVALS_EMAIL_PASS:   ${PAGEOS_APPROVALS_EMAIL_PASS:-}
+      # Bank statement inbound email (IMAP — set in .env)
+      PAGEOS_BANKSTMT_IMAP_HOST:     ${PAGEOS_BANKSTMT_IMAP_HOST:-}
+      PAGEOS_BANKSTMT_EMAIL_USER:    ${PAGEOS_BANKSTMT_EMAIL_USER:-bankstatement@pageaml.com}
+      PAGEOS_BANKSTMT_EMAIL_PASS:    ${PAGEOS_BANKSTMT_EMAIL_PASS:-}
     networks:
       - default     # reach postgres + minio
       - proxy_net   # reachable from Caddy as "pageos-api-1:8080"

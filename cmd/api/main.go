@@ -162,6 +162,9 @@ func run() error {
 	go payoutEmailPoller.Run(ctx)
 
 	reconSvc := reconciliation.NewService(pool, auditWriter)
+	reconSvc.SetNotification(notification.Shared())
+	bankStmtPoller := reconciliation.NewBankStatementEmailPoller(reconSvc, logger)
+	go bankStmtPoller.Run(ctx)
 
 	appraisalSvc := appraisal.NewService(pool)
 	appraisalH   := appraisalhttp.New(appraisalSvc)

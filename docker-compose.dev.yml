@@ -59,6 +59,14 @@ services:
       PAGEOS_SMTP_FROM:            noreply@pageos.org
       # Microsoft intentionally empty — disables all /msgraph and SSO routes
       PAGEOS_MSGRAPH_CLIENT_ID:    ""
+      # Payout approval email replies (shared mailbox with prod for now)
+      PAGEOS_APPROVALS_IMAP_HOST:    ${PAGEOS_APPROVALS_IMAP_HOST:-}
+      PAGEOS_APPROVALS_EMAIL_USER:   ${PAGEOS_APPROVALS_EMAIL_USER:-approvals@pageaml.com}
+      PAGEOS_APPROVALS_EMAIL_PASS:   ${PAGEOS_APPROVALS_EMAIL_PASS:-}
+      # Bank statement inbound email
+      PAGEOS_BANKSTMT_IMAP_HOST:     ${PAGEOS_BANKSTMT_IMAP_HOST:-}
+      PAGEOS_BANKSTMT_EMAIL_USER:    ${PAGEOS_BANKSTMT_EMAIL_USER:-bankstatement@pageaml.com}
+      PAGEOS_BANKSTMT_EMAIL_PASS:    ${PAGEOS_BANKSTMT_EMAIL_PASS:-}
     networks:
       - default
       - proxy_net   # Caddy routes app.pageos.org/api/* → this container

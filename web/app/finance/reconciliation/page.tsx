@@ -1118,6 +1118,7 @@ export default function ReconciliationPage() {
     matched_3way: number;
     no_approval: number;
     amount_mismatch: number;
+    account_mismatch: number;
     results: PayoutCheckResult[];
   };
   const [payoutCheck, setPayoutCheck] = useState<PayoutCheckSummary | null>(null);
@@ -1129,7 +1130,8 @@ export default function ReconciliationPage() {
       if (data.total === 0) {
         toast({ title: "No Payout Lines", description: "No payout instruction IDs found in this run's bank statement." });
       } else {
-        toast({ title: `Payout Cross-Check Complete`, description: `${data.matched_3way} matched, ${data.no_approval} missing approval, ${data.amount_mismatch} amount mismatch.` });
+        const exceptions = data.no_approval + data.amount_mismatch + (data.account_mismatch ?? 0);
+        toast({ title: `Payout Cross-Check Complete`, description: `${data.matched_3way} matched, ${exceptions} exception(s) flagged — alerts sent.` });
       }
     },
     onError: (err: Error) => {
@@ -1479,7 +1481,8 @@ export default function ReconciliationPage() {
             </div>
             <div className="flex items-center gap-3 text-[11px]">
               <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">{payoutCheck.matched_3way} matched</span>
-              {payoutCheck.amount_mismatch > 0 && <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">{payoutCheck.amount_mismatch} mismatch</span>}
+              {payoutCheck.amount_mismatch > 0 && <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">{payoutCheck.amount_mismatch} amount mismatch</span>}
+              {payoutCheck.account_mismatch > 0 && <span className="px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 font-medium">{payoutCheck.account_mismatch} account mismatch</span>}
               {payoutCheck.no_approval > 0 && <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-medium">{payoutCheck.no_approval} no approval ⚠</span>}
             </div>
           </div>
