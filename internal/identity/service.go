@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"regexp"
 	"strings"
 	"time"
 
@@ -170,4 +171,117 @@ func toUser(row identitydb.IdentityUser) User {
 		DisplayName: row.DisplayName,
 		Status:      row.Status,
 	}
+}
+
+// PIN authentication constants.
+const (
+	pinMaxAttempts = 5
+	pinLockDuration = 15 * time.Minute
+)
+
+var pinPattern = regexp.MustCompile(`^\d{4,6}$`)
+
+// SetPIN hashes and stores a 4-6 digit PIN for a user, resetting any lockout.
+func (s *Service) SetPIN(ctx context.Context, userID uuid.UUID, pin string) error {
+	if !pinPattern.MatchString(pin) {
+		return errors.New("identity: pin must be 4-6 digits")
+	}
+	hash, err := HashPassword(pin)
+	if err != nil {
+		return err
+	}
+	_, err = s.store.Pool.Exec(ctx,
+		`UPDATE identity.users
+		    SET pin_hash=$1, pin_attempts=0, pin_locked_until=NULL
+		  WHERE id=$2`,
+		hash, userID,
+	)
+	return err
+}
+
+// pinRow is the data we need from identity.users for PIN authentication.
+type pinRow struct {
+	id             uuid.UUID
+	email          string
+	displayName    string
+	status         string
+	pinHash        *string
+	pinAttempts    int
+	pinLockedUntil *time.Time
+}
+
+// AuthenticateByPIN verifies a user's PIN and returns the user on success.
+// It enforces brute-force lockout (pinMaxAttempts) and provides no user enumeration.
+func (s *Service) AuthenticateByPIN(ctx context.Context, email, pin string) (User, error) {
+	row := s.store.Pool.QueryRow(ctx,
+		`SELECT id, email, display_name, status,
+		        pin_hash, pin_attempts, pin_locked_until
+		   FROM identity.users
+		  WHERE lower(email) = lower($1)`,
+		email,
+	)
+	var pr pinRow
+	if err := row.Scan(
+		&pr.id, &pr.email, &pr.displayName, &pr.status,
+		&pr.pinHash, &pr.pinAttempts, &pr.pinLockedUntil,
+	); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return User{}, ErrInvalidCredentials
+		}
+		return User{}, err
+	}
+
+	if pr.status != "active" {
+		return User{}, ErrInvalidCredentials
+	}
+
+	// Check lockout before attempting verification.
+	if pr.pinLockedUntil != nil && time.Now().Before(*pr.pinLockedUntil) {
+		return User{}, ErrInvalidCredentials
+	}
+
+	// Missing PIN hash means the user has never set a PIN.
+	if pr.pinHash == nil || *pr.pinHash == "" {
+		return User{}, ErrInvalidCredentials
+	}
+
+	if err := VerifyPassword(pin, *pr.pinHash); err != nil {
+		// Increment failed attempts; lock if threshold reached.
+		newAttempts := pr.pinAttempts + 1
+		if newAttempts >= pinMaxAttempts {
+			lockedUntil := time.Now().Add(pinLockDuration)
+			_, _ = s.store.Pool.Exec(ctx,
+				`UPDATE identity.users
+				    SET pin_attempts=$1, pin_locked_until=$2
+				  WHERE id=$3`,
+				newAttempts, lockedUntil, pr.id,
+			)
+		} else {
+			_, _ = s.store.Pool.Exec(ctx,
+				`UPDATE identity.users
+				    SET pin_attempts=$1
+				  WHERE id=$2`,
+				newAttempts, pr.id,
+			)
+		}
+		return User{}, ErrInvalidCredentials
+	}
+
+	// Success — reset attempt counter.
+	_, err := s.store.Pool.Exec(ctx,
+		`UPDATE identity.users
+		    SET pin_attempts=0, pin_locked_until=NULL
+		  WHERE id=$1`,
+		pr.id,
+	)
+	if err != nil {
+		return User{}, err
+	}
+
+	return User{
+		ID:          pr.id,
+		Email:       pr.email,
+		DisplayName: pr.displayName,
+		Status:      pr.status,
+	}, nil
 }

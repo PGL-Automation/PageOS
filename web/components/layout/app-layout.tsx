@@ -13,7 +13,7 @@ import {
   PanelLeft, ChevronRight, Inbox, Sun, Moon, X, Clock, MessageSquare,
   CheckCircle2, AlertCircle, Info, FileBarChart, CalendarDays,
   Star, User, ClipboardList, Lock, Package, Briefcase, Activity,
-  TrendingDown, Layers,
+  TrendingDown, Layers, PlusCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
@@ -317,6 +317,10 @@ const FINOPS_NAV: NavGroup[] = [
     { href: "/reconciliation/statements",   label: "Bank Statements", icon: FileText },
     { href: "/reconciliation/connectivity", label: "Bank Accounts", icon: Building2 },
   ]},
+  { id: "approvals", label: "Approvals", items: [
+    { href: "/approvals",     label: "Requests",      icon: CheckSquare },
+    { href: "/approvals/new", label: "Raise Request", icon: PlusCircle },
+  ]},
 ];
 
 const DEFAULT_NAV: NavGroup[] = [
@@ -341,6 +345,10 @@ const DEFAULT_NAV: NavGroup[] = [
     { href: "/finance/reconciliation",      label: "Runs",          icon: RefreshCw },
     { href: "/reconciliation/statements",   label: "Bank Statements", icon: FileText },
     { href: "/reconciliation/connectivity", label: "Bank Accounts", icon: Building2 },
+  ]},
+  { id: "approvals", label: "Approvals", items: [
+    { href: "/approvals",     label: "All Requests",  icon: CheckSquare },
+    { href: "/approvals/new", label: "Raise Request", icon: PlusCircle },
   ]},
   { id: "governance", label: "Governance", items: [
     { href: "/compliance",            label: "Compliance",     icon: Shield },

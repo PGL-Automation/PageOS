@@ -12,8 +12,9 @@ import (
 // Store wraps the generated Queries with a pgx pool.
 type Store struct {
 	*identitydb.Queries
+	Pool *pgxpool.Pool
 }
 
 func New(db *pgxpool.Pool) *Store {
-	return &Store{Queries: identitydb.New(db)}
+	return &Store{Queries: identitydb.New(db), Pool: db}
 }

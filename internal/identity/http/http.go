@@ -115,12 +115,14 @@ func (h *Handler) Routes() http.Handler {
 	r := chi.NewRouter()
 	r.Post("/register", h.register)
 	r.Post("/login", h.login)
+	r.Post("/pin-login", h.pinLogin)
 
 	// Authenticated endpoints.
 	r.Group(func(r chi.Router) {
 		r.Use(h.Authenticator)
 		r.Post("/logout", h.logout)
 		r.Get("/me", h.me)
+		r.Post("/set-pin", h.setPin)
 	})
 	return r
 }
@@ -244,4 +246,64 @@ func clearSessionCookie(w http.ResponseWriter) {
 		Secure:   cookieSecure(),
 		SameSite: http.SameSiteLaxMode,
 	})
+}
+
+// setPin handles POST /set-pin (authenticated).
+// Body: {"pin": "1234"}
+func (h *Handler) setPin(w http.ResponseWriter, r *http.Request) {
+	user, ok := UserFrom(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+		return
+	}
+	var in struct {
+		PIN string `json:"pin"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid JSON body")
+		return
+	}
+	if err := h.svc.SetPIN(r.Context(), user.ID, in.PIN); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "set_pin_failed", err.Error())
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// pinLogin handles POST /pin-login (unauthenticated).
+// Body: {"email": "...", "pin": "1234"}
+func (h *Handler) pinLogin(w http.ResponseWriter, r *http.Request) {
+	ip := remoteIP(r)
+	if h.isRateLimited(ip) {
+		log.Printf("identity: pin-login blocked for rate-limited IP %s", ip)
+		httpx.Error(w, http.StatusTooManyRequests, "rate_limited", "too many failed attempts; try again later")
+		return
+	}
+
+	var in struct {
+		Email string `json:"email"`
+		PIN   string `json:"pin"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid JSON body")
+		return
+	}
+
+	user, err := h.svc.AuthenticateByPIN(r.Context(), in.Email, in.PIN)
+	if err != nil {
+		if h.recordFailure(ip) {
+			log.Printf("identity: IP %s exceeded pin-login failure threshold", ip)
+		}
+		httpx.Error(w, http.StatusUnauthorized, "invalid_credentials", "invalid email or PIN")
+		return
+	}
+	h.clearFailures(ip)
+
+	token, expiresAt, err := h.svc.CreateSession(r.Context(), user.ID)
+	if err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", "could not create session")
+		return
+	}
+	setSessionCookie(w, token, expiresAt)
+	httpx.JSON(w, http.StatusOK, user)
 }

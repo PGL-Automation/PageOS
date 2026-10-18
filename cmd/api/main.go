@@ -43,6 +43,8 @@ import (
 	identitystore "github.com/pagegroup/pageos/internal/identity/store"
 	"github.com/pagegroup/pageos/internal/approval"
 	approvalhttp "github.com/pagegroup/pageos/internal/approval/http"
+	"github.com/pagegroup/pageos/internal/payout"
+	payouthttp "github.com/pagegroup/pageos/internal/payout/http"
 	"github.com/pagegroup/pageos/internal/reconciliation"
 	reconhttp "github.com/pagegroup/pageos/internal/reconciliation/http"
 	"github.com/pagegroup/pageos/internal/notification"
@@ -152,6 +154,13 @@ func run() error {
 
 	onboardingH := onboardinghttp.New(onboardingSvc, docSvc)
 
+	payoutSvc := payout.NewService(pool, logger)
+	payoutH   := payouthttp.New(payoutSvc)
+	payoutScheduler := payout.NewPayoutScheduler(payoutSvc, logger)
+	go payoutScheduler.Run(ctx)
+	payoutEmailPoller := payout.NewEmailPoller(payoutSvc, logger)
+	go payoutEmailPoller.Run(ctx)
+
 	reconSvc := reconciliation.NewService(pool, auditWriter)
 
 	appraisalSvc := appraisal.NewService(pool)
@@ -245,6 +254,7 @@ func run() error {
 		api.Mount("/crm", crmH.Routes(identityH.Authenticator))
 		api.Mount("/internal-audit", internalAuditH.Routes(identityH.Authenticator))
 		api.Mount("/notifications", notifH.Routes(identityH.Authenticator))
+		api.Mount("/payouts", payoutH.Routes(identityH.Authenticator))
 		if msGraphH != nil {
 			api.Mount("/msgraph", msGraphH.Routes(identityH.Authenticator))
 			// SSO login routes — no auth middleware (user is not yet logged in)
