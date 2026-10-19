@@ -203,7 +203,7 @@ func resolveApprovers(ctx context.Context, pool *pgxpool.Pool, req PaymentReques
 			          ) THEN 0 ELSE 1 END
 			LIMIT  1
 		`
-		headCodes := []string{"HEAD_OF_OPERATIONS", "FINOPS_MANAGER", "DEPARTMENT_HEAD"}
+		headCodes := []string{"HEAD_OF_OPERATIONS", "FINOPS_MANAGER", "MANAGING_DIRECTOR"}
 		var userID uuid.UUID
 		err := pool.QueryRow(ctx, q, req.SubsidiaryID, headCodes, req.RaisedBy).Scan(&userID)
 		if err == nil {
@@ -264,12 +264,12 @@ func resolveApprovers(ctx context.Context, pool *pgxpool.Pool, req PaymentReques
 		return userID
 	}
 
-	out["INTERNAL_CONTROL"] = resolveRole("INTERNAL_CONTROL", uuid.Nil)
-	out["COMPLIANCE"] = resolveRole("COMPLIANCE_OFFICER", uuid.Nil)
+	out["INTERNAL_CONTROL"] = resolveRole("INTERNAL_CONTROL_OFFICER", uuid.Nil)
+	out["COMPLIANCE"] = resolveRole("COMPLIANCE_MANAGER", uuid.Nil)
 	out["FINANCE"] = resolveRole("FINOPS_MANAGER", uuid.Nil)
 	out["SIGNATORY_1"] = resolveRole("BANK_SIGNATORY_1", uuid.Nil)
 	out["SIGNATORY_2"] = resolveRole("BANK_SIGNATORY_2", uuid.Nil)
-	out["MD"] = resolveGroupRole("GROUP_ADMIN")
+	out["MD"] = resolveGroupRole("MANAGING_DIRECTOR")
 	out["CEO"] = resolveGroupRole("CEO")
 
 	return out, nil
