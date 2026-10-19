@@ -120,9 +120,13 @@ const MD_NAV: NavGroup[] = [
     { href: "/md/commission-rates",   label: "Rate Config",    icon: Star },
     { href: "/md/exchange-rates",     label: "Exchange Rates", icon: RefreshCw },
   ]},
+  { id: "approvals", label: "Approvals", items: [
+    { href: "/approvals",     label: "All Requests",   icon: CheckSquare },
+    { href: "/approvals/new", label: "Raise Request",  icon: PlusCircle },
+  ]},
   { id: "ops", label: "Operations", items: [
     { href: "/investments/onboarding",label: "Onboarding",       icon: UserPlus },
-    { href: "/approval",              label: "Approvals",         icon: CheckSquare },
+    { href: "/approval",              label: "Onboarding Approvals", icon: CheckSquare },
     { href: "/leave",                 label: "My Leave",          icon: CalendarDays },
     { href: "/my-documents",       label: "My Documents",      icon: FileText },
     { href: "/reports",               label: "Reports",           icon: FileBarChart },
@@ -163,8 +167,11 @@ const COMPLIANCE_NAV: NavGroup[] = [
   { id: "appraisal", label: "Appraisal", items: [
     { href: "/appraisal",             label: "My Appraisal",   icon: ClipboardList },
   ]},
+  { id: "approvals", label: "Approvals", items: [
+    { href: "/approvals",     label: "All Requests",  icon: CheckSquare },
+    { href: "/approvals/new", label: "Raise Request", icon: PlusCircle },
+  ]},
   { id: "actions", label: "Actions", items: [
-    { href: "/approval",              label: "Approvals",      icon: CheckSquare },
     { href: "/leave",                 label: "My Leave",       icon: CalendarDays },
     { href: "/my-documents",       label: "My Documents",   icon: FileText },
     { href: "/documents",             label: "Documents",      icon: FolderOpen },
@@ -197,8 +204,11 @@ const FINANCE_NAV: NavGroup[] = [
   { id: "appraisal", label: "Appraisal", items: [
     { href: "/appraisal",             label: "My Appraisal",   icon: ClipboardList },
   ]},
+  { id: "approvals", label: "Approvals", items: [
+    { href: "/approvals",     label: "All Requests",  icon: CheckSquare },
+    { href: "/approvals/new", label: "Raise Request", icon: PlusCircle },
+  ]},
   { id: "actions", label: "Actions", items: [
-    { href: "/approval",              label: "Approvals",      icon: CheckSquare },
     { href: "/leave",                 label: "My Leave",       icon: CalendarDays },
     { href: "/vault",                 label: "My Vault",       icon: Lock },
   ]},
@@ -236,8 +246,11 @@ const HR_NAV: NavGroup[] = [
     { href: "/payroll",             label: "Payroll Runs",      icon: DollarSign },
     { href: "/payroll/remittance",  label: "PAYE & Pension",    icon: Shield },
   ]},
+  { id: "approvals", label: "Approvals", items: [
+    { href: "/approvals",     label: "All Requests",  icon: CheckSquare },
+    { href: "/approvals/new", label: "Raise Request", icon: PlusCircle },
+  ]},
   { id: "actions", label: "Actions", items: [
-    { href: "/approval",              label: "Approvals",       icon: CheckSquare },
     { href: "/leave",                 label: "My Leave",        icon: CalendarDays },
     { href: "/my-documents",       label: "My Documents",    icon: FileText },
     { href: "/vault",                 label: "My Vault",        icon: Lock },
@@ -275,8 +288,11 @@ const ADMIN_NAV: NavGroup[] = [
     { href: "/reconciliation/statements",   label: "Bank Statements", icon: FileText },
     { href: "/reconciliation/connectivity", label: "Bank Accounts", icon: Building2 },
   ]},
+  { id: "approvals", label: "Approvals", items: [
+    { href: "/approvals",     label: "All Requests",  icon: CheckSquare },
+    { href: "/approvals/new", label: "Raise Request", icon: PlusCircle },
+  ]},
   { id: "governance", label: "Governance", items: [
-    { href: "/approval",               label: "Approvals",        icon: CheckSquare },
     { href: "/leave",                  label: "My Leave",         icon: CalendarDays },
     { href: "/compliance",             label: "Compliance",       icon: Shield },
     { href: "/risk",                   label: "Risk",             icon: AlertTriangle },
