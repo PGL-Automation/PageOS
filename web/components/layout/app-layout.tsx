@@ -13,7 +13,7 @@ import {
   PanelLeft, ChevronRight, Inbox, Sun, Moon, X, Clock, MessageSquare,
   CheckCircle2, AlertCircle, Info, FileBarChart, CalendarDays,
   Star, User, ClipboardList, Lock, Package, Briefcase, Activity,
-  TrendingDown, Layers, PlusCircle,
+  TrendingDown, Layers, PlusCircle, ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
@@ -967,6 +967,13 @@ export function AppLayout({ children }: { children: ReactNode }) {
                         onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = sb.itemHover}
                         onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
                     <Settings className="w-3.5 h-3.5" /> Settings
+                  </Link>
+                  <Link href="/pin-setup" onClick={() => setUserMenuOpen(false)}
+                        className="flex items-center gap-2 px-3 py-2.5 text-[13px] transition-colors"
+                        style={{ color: sb.text1 }}
+                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = sb.itemHover}
+                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}>
+                    <ShieldCheck className="w-3.5 h-3.5" /> Set PIN
                   </Link>
                   <div className="mx-3 h-px my-1" style={{ background: sb.divider }} />
                   <button onClick={() => { logout(); setUserMenuOpen(false); }}
