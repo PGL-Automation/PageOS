@@ -82,10 +82,12 @@ func (c *Client) ListUnread(ctx context.Context, mailbox string) ([]Message, err
 		return nil, err
 	}
 
+	// Build endpoint with properly encoded query string.
+	// Spaces in OData filter values must be %20; keep $ in param names literal.
 	endpoint := fmt.Sprintf(
-		"%s/users/%s/messages?$filter=isRead eq false"+
+		"%s/users/%s/messages?$filter=isRead%%20eq%%20false"+
 			"&$select=id,subject,from,body,hasAttachments&$top=50",
-		graphBase, url.PathEscape(mailbox),
+		graphBase, mailbox, // keep @ in email address unescaped in path
 	)
 
 	var resp struct {
@@ -135,7 +137,7 @@ func (c *Client) GetAttachments(ctx context.Context, mailbox, messageID string) 
 
 	endpoint := fmt.Sprintf(
 		"%s/users/%s/messages/%s/attachments?$select=id,name,contentType,contentBytes",
-		graphBase, url.PathEscape(mailbox), url.PathEscape(messageID),
+		graphBase, mailbox, url.PathEscape(messageID),
 	)
 
 	var resp struct {
@@ -180,7 +182,7 @@ func (c *Client) MarkRead(ctx context.Context, mailbox, messageID string) error 
 
 	endpoint := fmt.Sprintf(
 		"%s/users/%s/messages/%s",
-		graphBase, url.PathEscape(mailbox), url.PathEscape(messageID),
+		graphBase, mailbox, url.PathEscape(messageID),
 	)
 
 	body := bytes.NewBufferString(`{"isRead":true}`)
