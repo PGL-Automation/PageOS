@@ -1,6 +1,6 @@
-// Package payout — Item 12: IMAP email reply poller.
-// Polls approvals@pageaml.com every 2 minutes and processes APPROVE / REJECT
-// replies so approvers can act without opening the web app.
+// Package payout — email reply poller for APPROVE/REJECT actions.
+// Primary: Microsoft Graph API (app-only auth via client credentials).
+// Fallback: raw IMAP over TLS (used if Graph credentials are absent).
 package payout
 
 import (
@@ -17,48 +17,75 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pagegroup/pageos/internal/platform/graphmail"
 )
 
 // instructionIDRE matches PAM-APR-2026-000001 or PCL-APR-2026-000001.
 var instructionIDRE = regexp.MustCompile(`[A-Z]{2,3}-APR-\d{4}-\d{6}`)
 
-// EmailPoller polls an IMAP mailbox for approval reply emails.
+// EmailPoller polls approvals@pageaml.com for APPROVE / REJECT reply emails.
 //
-// Env vars (all required; poller is a no-op if any is empty):
+// Transport priority:
+//  1. Microsoft Graph (app-only) — when PAGEOS_MSGRAPH_CLIENT_ID,
+//     PAGEOS_MSGRAPH_TENANT_ID and PAGEOS_MSGRAPH_CLIENT_SECRET are all set.
+//  2. Raw IMAP/TLS fallback — when PAGEOS_APPROVALS_IMAP_HOST is set.
 //
-//	PAGEOS_APPROVALS_IMAP_HOST  — IMAP server hostname, e.g. "imap.zoho.com"
-//	PAGEOS_APPROVALS_EMAIL_USER — mailbox address,     e.g. "approvals@pageaml.com"
-//	PAGEOS_APPROVALS_EMAIL_PASS — mailbox password,    e.g. "Aml4page"
+// Mailbox address: PAGEOS_APPROVALS_EMAIL_USER (default: approvals@pageaml.com)
 type EmailPoller struct {
-	svc    *Service
-	logger *slog.Logger
-	host   string
-	user   string
-	pass   string
+	svc     *Service
+	logger  *slog.Logger
+	mailbox string
+	graph   *graphmail.Client // nil if Graph credentials absent
+
+	// IMAP fallback fields (used only when graph == nil)
+	imapHost string
+	imapPass string
 }
 
 // NewEmailPoller builds an EmailPoller from environment variables.
 func NewEmailPoller(svc *Service, logger *slog.Logger) *EmailPoller {
-	return &EmailPoller{
-		svc:    svc,
-		logger: logger,
-		host:   os.Getenv("PAGEOS_APPROVALS_IMAP_HOST"),
-		user:   os.Getenv("PAGEOS_APPROVALS_EMAIL_USER"),
-		pass:   os.Getenv("PAGEOS_APPROVALS_EMAIL_PASS"),
+	mailbox := os.Getenv("PAGEOS_APPROVALS_EMAIL_USER")
+	if mailbox == "" {
+		mailbox = "approvals@pageaml.com"
 	}
+
+	p := &EmailPoller{
+		svc:      svc,
+		logger:   logger,
+		mailbox:  mailbox,
+		imapHost: os.Getenv("PAGEOS_APPROVALS_IMAP_HOST"),
+		imapPass: os.Getenv("PAGEOS_APPROVALS_EMAIL_PASS"),
+	}
+
+	// Prefer Graph when all three credentials are present.
+	clientID := os.Getenv("PAGEOS_MSGRAPH_CLIENT_ID")
+	tenantID := os.Getenv("PAGEOS_MSGRAPH_TENANT_ID")
+	secret   := os.Getenv("PAGEOS_MSGRAPH_CLIENT_SECRET")
+	if clientID != "" && tenantID != "" && secret != "" {
+		p.graph = graphmail.New(tenantID, clientID, secret)
+	}
+
+	return p
 }
 
 // Run starts the polling loop. Blocks until ctx is cancelled.
 func (p *EmailPoller) Run(ctx context.Context) {
-	if p.host == "" || p.user == "" || p.pass == "" {
-		p.logger.Warn("payout email poller: IMAP credentials not configured — email reply approvals disabled")
+	useGraph := p.graph != nil && p.graph.Configured()
+	useIMAP  := p.imapHost != "" && p.imapPass != ""
+
+	if !useGraph && !useIMAP {
+		p.logger.Warn("payout email poller: no mail transport configured — email reply approvals disabled",
+			"hint", "set PAGEOS_MSGRAPH_CLIENT_ID/TENANT_ID/CLIENT_SECRET (preferred) or PAGEOS_APPROVALS_IMAP_HOST")
 		return
 	}
-	p.logger.Info("payout email poller started", "mailbox", p.user)
 
-	// Poll immediately on startup.
+	if useGraph {
+		p.logger.Info("payout email poller started (Microsoft Graph)", "mailbox", p.mailbox)
+	} else {
+		p.logger.Info("payout email poller started (IMAP fallback)", "mailbox", p.mailbox)
+	}
+
 	p.poll(ctx)
-
 	ticker := time.NewTicker(2 * time.Minute)
 	defer ticker.Stop()
 	for {
@@ -72,113 +99,123 @@ func (p *EmailPoller) Run(ctx context.Context) {
 	}
 }
 
-// ── Minimal IMAP client (no external dependency) ──────────────────────────────
-
-type imapClient struct {
-	conn net.Conn
-	r    *bufio.Reader
-	seq  int
-}
-
-// cmd sends one tagged IMAP command and collects all response lines until the
-// tagged OK/NO/BAD completion line.
-func (c *imapClient) cmd(format string, args ...any) ([]string, error) {
-	c.seq++
-	tag := fmt.Sprintf("A%04d", c.seq)
-	line := fmt.Sprintf("%s %s\r\n", tag, fmt.Sprintf(format, args...))
-	if _, err := c.conn.Write([]byte(line)); err != nil {
-		return nil, err
-	}
-	var out []string
-	for {
-		l, err := c.r.ReadString('\n')
-		if err != nil {
-			return nil, err
-		}
-		l = strings.TrimRight(l, "\r\n")
-		if strings.HasPrefix(l, tag+" OK") {
-			return out, nil
-		}
-		if strings.HasPrefix(l, tag+" NO") || strings.HasPrefix(l, tag+" BAD") {
-			return nil, fmt.Errorf("imap: %s", l)
-		}
-		out = append(out, l)
-	}
-}
-
-// ── poll: one IMAP session per tick ──────────────────────────────────────────
-
+// poll fetches unread messages and processes any APPROVE / REJECT replies.
 func (p *EmailPoller) poll(ctx context.Context) {
+	if p.graph != nil && p.graph.Configured() {
+		p.pollGraph(ctx)
+	} else {
+		p.pollIMAP(ctx)
+	}
+}
+
+// ── Graph path ────────────────────────────────────────────────────────────────
+
+func (p *EmailPoller) pollGraph(ctx context.Context) {
+	msgs, err := p.graph.ListUnread(ctx, p.mailbox)
+	if err != nil {
+		p.logger.Warn("payout email poller: graph list unread", "err", err)
+		return
+	}
+	if len(msgs) == 0 {
+		return
+	}
+	p.logger.Info("payout email poller: processing unread messages", "count", len(msgs))
+
+	for _, msg := range msgs {
+		instID, action, notes := parseBodyAction(msg.Subject, msg.BodyText)
+		if instID == "" || action == "" {
+			_ = p.graph.MarkRead(ctx, p.mailbox, msg.ID)
+			continue
+		}
+
+		if err := p.applyAction(ctx, msg.FromAddress, instID, action, notes); err != nil {
+			p.logger.Warn("payout email poller: apply action",
+				"from", msg.FromAddress, "instruction_id", instID, "err", err)
+		} else {
+			p.logger.Info("payout email poller: action applied",
+				"from", msg.FromAddress, "instruction_id", instID, "action", action)
+		}
+		_ = p.graph.MarkRead(ctx, p.mailbox, msg.ID)
+	}
+}
+
+// ── IMAP fallback path ────────────────────────────────────────────────────────
+
+func (p *EmailPoller) pollIMAP(ctx context.Context) {
 	conn, err := tls.DialWithDialer(
 		&net.Dialer{Timeout: 15 * time.Second},
-		"tcp", p.host+":993",
-		&tls.Config{ServerName: p.host},
+		"tcp", p.imapHost+":993",
+		&tls.Config{ServerName: p.imapHost},
 	)
 	if err != nil {
-		p.logger.Warn("payout email poller: connect failed", "host", p.host, "err", err)
+		p.logger.Warn("payout email poller: IMAP connect", "host", p.imapHost, "err", err)
 		return
 	}
 	defer conn.Close()
 
-	c := &imapClient{conn: conn, r: bufio.NewReader(conn)}
-
-	// Discard server greeting.
+	c := &imapConn{conn: conn, r: bufio.NewReader(conn)}
 	if _, err := c.r.ReadString('\n'); err != nil {
-		p.logger.Warn("payout email poller: read greeting", "err", err)
 		return
 	}
-
-	if _, err := c.cmd(`LOGIN "%s" "%s"`, p.user, p.pass); err != nil {
-		p.logger.Warn("payout email poller: LOGIN failed", "err", err)
+	if _, err := c.cmd(`LOGIN "%s" "%s"`, p.mailbox, p.imapPass); err != nil {
+		p.logger.Warn("payout email poller: IMAP LOGIN", "err", err)
 		return
 	}
 	defer c.cmd("LOGOUT") //nolint:errcheck
 
 	if _, err := c.cmd("SELECT INBOX"); err != nil {
-		p.logger.Warn("payout email poller: SELECT INBOX", "err", err)
 		return
 	}
-
-	lines, err := c.cmd("SEARCH UNSEEN")
-	if err != nil {
-		p.logger.Warn("payout email poller: SEARCH UNSEEN", "err", err)
-		return
-	}
+	lines, _ := c.cmd("SEARCH UNSEEN")
 	ids := parseSearchIDs(lines)
 	if len(ids) == 0 {
 		return
 	}
-	p.logger.Info("payout email poller: processing unseen messages", "count", len(ids))
+	p.logger.Info("payout email poller: IMAP unread", "count", len(ids))
 
 	for _, id := range ids {
 		raw, err := fetchMessage(c, id)
 		if err != nil {
-			p.logger.Warn("payout email poller: fetch", "id", id, "err", err)
 			_, _ = c.cmd("STORE %d +FLAGS (\\Seen)", id)
 			continue
 		}
-
-		from, instID, action, notes := parseApprovalReply(raw)
-		if instID == "" || action == "" {
+		msg, err := mail.ReadMessage(strings.NewReader(raw))
+		if err != nil {
 			_, _ = c.cmd("STORE %d +FLAGS (\\Seen)", id)
 			continue
 		}
+		addr, _ := mail.ParseAddress(msg.Header.Get("From"))
+		from := ""
+		if addr != nil {
+			from = strings.ToLower(addr.Address)
+		}
+		var bodyBuf strings.Builder
+		buf := make([]byte, 1<<16)
+		for {
+			n, err2 := msg.Body.Read(buf)
+			if n > 0 {
+				bodyBuf.Write(buf[:n])
+			}
+			if err2 != nil {
+				break
+			}
+		}
+		body := stripQuotedReply(bodyBuf.String())
+		instID, action, notes := parseBodyAction(msg.Header.Get("Subject"), body)
 
-		if err := p.applyEmailAction(ctx, from, instID, action, notes); err != nil {
-			p.logger.Warn("payout email poller: apply action",
-				"from", from, "instruction_id", instID, "action", action, "err", err)
-		} else {
-			p.logger.Info("payout email poller: action applied",
-				"from", from, "instruction_id", instID, "action", action)
+		if instID != "" && action != "" {
+			if err := p.applyAction(ctx, from, instID, action, notes); err != nil {
+				p.logger.Warn("payout email poller: IMAP apply action", "err", err)
+			}
 		}
 		_, _ = c.cmd("STORE %d +FLAGS (\\Seen)", id)
 	}
 }
 
-// applyEmailAction resolves the instruction ID to a request UUID, verifies the
-// sender is the active step assignee, and calls ActOnStepByEmail.
-func (p *EmailPoller) applyEmailAction(ctx context.Context, from, instID, action, notes string) error {
-	// Resolve instruction ID → request UUID.
+// ── Shared action handler ─────────────────────────────────────────────────────
+
+// applyAction resolves the instruction ID to a request UUID and calls ActOnStepByEmail.
+func (p *EmailPoller) applyAction(ctx context.Context, from, instID, action, notes string) error {
 	var requestID uuid.UUID
 	err := p.svc.pool.QueryRow(ctx,
 		`SELECT id FROM payout.payment_request WHERE instruction_id = $1`, instID,
@@ -189,86 +226,21 @@ func (p *EmailPoller) applyEmailAction(ctx context.Context, from, instID, action
 	return p.svc.ActOnStepByEmail(ctx, requestID, from, action, notes)
 }
 
-// ── RFC822 fetch ──────────────────────────────────────────────────────────────
-
-func fetchMessage(c *imapClient, id int) (string, error) {
-	c.seq++
-	tag := fmt.Sprintf("A%04d", c.seq)
-	cmd := fmt.Sprintf("%s FETCH %d RFC822\r\n", tag, id)
-	if _, err := c.conn.Write([]byte(cmd)); err != nil {
-		return "", err
-	}
-
-	var body strings.Builder
-	inLiteral := false
-	for {
-		l, err := c.r.ReadString('\n')
-		if err != nil {
-			return "", err
-		}
-		stripped := strings.TrimRight(l, "\r\n")
-		// FETCH response contains: * N FETCH (RFC822 {length})
-		if !inLiteral && strings.Contains(stripped, "RFC822") {
-			inLiteral = true
-			continue
-		}
-		if strings.HasPrefix(stripped, tag+" OK") || strings.HasPrefix(stripped, tag+" NO") {
-			break
-		}
-		if inLiteral {
-			if stripped == ")" {
-				break
-			}
-			body.WriteString(l)
-		}
-	}
-	return body.String(), nil
-}
-
 // ── Email parsing ─────────────────────────────────────────────────────────────
 
-// parseApprovalReply extracts the sender email, payout instruction ID, and
-// action (approve/reject + optional reason) from a raw RFC822 email string.
-// Returns empty strings if the email is not a valid approval reply.
-func parseApprovalReply(raw string) (from, instID, action, notes string) {
-	msg, err := mail.ReadMessage(strings.NewReader(raw))
-	if err != nil {
-		return
-	}
-
-	// Sender.
-	addr, err := mail.ParseAddress(msg.Header.Get("From"))
-	if err != nil {
-		return
-	}
-	from = strings.ToLower(strings.TrimSpace(addr.Address))
-
-	// Instruction ID from Subject — look for [PAM-APR-2026-000123].
-	subject := msg.Header.Get("Subject")
-	instID = instructionIDRE.FindString(subject)
+// parseBodyAction extracts the instruction ID from the subject and
+// (approve/reject + optional reason) from the body text.
+func parseBodyAction(subject, body string) (instID, action, notes string) {
+	instID = instructionIDRE.FindString(strings.ToUpper(subject))
 	if instID == "" {
-		return // not a payout approval subject
+		return
 	}
-
-	// Read body.
-	var rawBody strings.Builder
-	buf := make([]byte, 1<<16) // 64 KiB max
-	for {
-		n, readErr := msg.Body.Read(buf)
-		if n > 0 {
-			rawBody.Write(buf[:n])
-		}
-		if readErr != nil {
-			break
-		}
-	}
-	cleaned := stripQuotedReply(rawBody.String())
+	cleaned := stripQuotedReply(body)
 	action, notes = extractAction(cleaned)
 	return
 }
 
-// stripQuotedReply keeps only the lines the user actually typed — it stops at
-// the first quoted-reply block ("> ..."), Outlook separator, or "X wrote:" line.
+// stripQuotedReply discards lines from the first quoted block onward.
 func stripQuotedReply(body string) string {
 	var out []string
 	for _, line := range strings.Split(body, "\n") {
@@ -299,12 +271,43 @@ func extractAction(body string) (action, notes string) {
 		if strings.HasPrefix(up, "REJECT") {
 			return "reject", strings.TrimSpace(line[6:])
 		}
-		break // Only the first non-blank line matters
+		break
 	}
 	return "", ""
 }
 
-// parseSearchIDs extracts integer message IDs from IMAP SEARCH response lines.
+// ── Minimal IMAP client (fallback) ───────────────────────────────────────────
+
+type imapConn struct {
+	conn net.Conn
+	r    *bufio.Reader
+	seq  int
+}
+
+func (c *imapConn) cmd(format string, args ...any) ([]string, error) {
+	c.seq++
+	tag := fmt.Sprintf("A%04d", c.seq)
+	line := fmt.Sprintf("%s %s\r\n", tag, fmt.Sprintf(format, args...))
+	if _, err := c.conn.Write([]byte(line)); err != nil {
+		return nil, err
+	}
+	var out []string
+	for {
+		l, err := c.r.ReadString('\n')
+		if err != nil {
+			return nil, err
+		}
+		l = strings.TrimRight(l, "\r\n")
+		if strings.HasPrefix(l, tag+" OK") {
+			return out, nil
+		}
+		if strings.HasPrefix(l, tag+" NO") || strings.HasPrefix(l, tag+" BAD") {
+			return nil, fmt.Errorf("imap: %s", l)
+		}
+		out = append(out, l)
+	}
+}
+
 func parseSearchIDs(lines []string) []int {
 	var ids []int
 	for _, l := range lines {
@@ -319,4 +322,35 @@ func parseSearchIDs(lines []string) []int {
 		}
 	}
 	return ids
+}
+
+func fetchMessage(c *imapConn, id int) (string, error) {
+	c.seq++
+	tag := fmt.Sprintf("A%04d", c.seq)
+	if _, err := c.conn.Write([]byte(fmt.Sprintf("%s FETCH %d RFC822\r\n", tag, id))); err != nil {
+		return "", err
+	}
+	var body strings.Builder
+	inLiteral := false
+	for {
+		l, err := c.r.ReadString('\n')
+		if err != nil {
+			return "", err
+		}
+		stripped := strings.TrimRight(l, "\r\n")
+		if !inLiteral && strings.Contains(stripped, "RFC822") {
+			inLiteral = true
+			continue
+		}
+		if strings.HasPrefix(stripped, tag+" OK") || strings.HasPrefix(stripped, tag+" NO") {
+			break
+		}
+		if inLiteral {
+			if stripped == ")" {
+				break
+			}
+			body.WriteString(l)
+		}
+	}
+	return body.String(), nil
 }

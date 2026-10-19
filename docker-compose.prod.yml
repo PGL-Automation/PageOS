@@ -72,7 +72,7 @@ services:
       PAGEOS_APPROVALS_EMAIL_PASS:   ${PAGEOS_APPROVALS_EMAIL_PASS:-}
       # Bank statement inbound email (IMAP — set in .env)
       PAGEOS_BANKSTMT_IMAP_HOST:     ${PAGEOS_BANKSTMT_IMAP_HOST:-}
-      PAGEOS_BANKSTMT_EMAIL_USER:    ${PAGEOS_BANKSTMT_EMAIL_USER:-bankstatement@pageaml.com}
+      PAGEOS_BANKSTMT_EMAIL_USER:    ${PAGEOS_BANKSTMT_EMAIL_USER:-bankstatements@pageaml.com}
       PAGEOS_BANKSTMT_EMAIL_PASS:    ${PAGEOS_BANKSTMT_EMAIL_PASS:-}
     networks:
       - default     # reach postgres + minio
