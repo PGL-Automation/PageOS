@@ -1,0 +1,49 @@
+# Copy this file to terraform.tfvars and fill in real values.
+# terraform.tfvars is gitignored — never commit it.
+
+# ── GitHub ────────────────────────────────────────────────────────────────────
+github_token      = "ghp_xxxxxxxxxxxxxxxxxxxx"
+github_owner      = "PGL-Automation"
+github_repository = "PageOS"
+
+# ── VPS ───────────────────────────────────────────────────────────────────────
+vps_host = "187.124.112.25"
+
+# vps_ssh_key: the private key CI uses (stored as GitHub secret VPS_SSH_KEY).
+# vps_ssh_private_key: the private key Terraform uses over SSH to write .env.
+# These can be the same key.
+vps_ssh_key = <<-EOF
+-----BEGIN OPENSSH PRIVATE KEY-----
+...
+-----END OPENSSH PRIVATE KEY-----
+EOF
+
+vps_ssh_private_key = <<-EOF
+-----BEGIN OPENSSH PRIVATE KEY-----
+...
+-----END OPENSSH PRIVATE KEY-----
+EOF
+
+vps_known_hosts = "187.124.112.25 ssh-ed25519 AAAAC3Nza..."
+
+# ── Database ──────────────────────────────────────────────────────────────────
+postgres_password = "your-strong-db-password"
+
+# ── MinIO ─────────────────────────────────────────────────────────────────────
+minio_root_password = "your-strong-minio-password"
+
+# ── SMTP ──────────────────────────────────────────────────────────────────────
+smtp_host = "smtp.yourprovider.com"
+smtp_port = 587
+smtp_user = "noreply@pageos.org"
+smtp_pass = "your-smtp-password"
+
+# ── Microsoft Graph ───────────────────────────────────────────────────────────
+# Client ID and Tenant ID have defaults set to the registered app values.
+# Only override if the app registration changes.
+# msgraph_client_id  = "7f0c1881-c644-45eb-906c-438e96c8d6dc"
+# msgraph_tenant_id  = "c5367046-962e-4f7c-bea6-24fa415cd319"
+msgraph_client_secret = "3wt8Q~..."   # replace with full secret
+
+# Generate with: openssl rand -hex 32
+msgraph_token_key = "your-64-char-hex-key"

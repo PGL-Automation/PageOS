@@ -1,0 +1,22 @@
+# Copy to terraform.tfvars and fill in values.  Never commit terraform.tfvars.
+
+vps_host = "187.124.112.25"
+
+vps_ssh_private_key = <<-EOF
+-----BEGIN OPENSSH PRIVATE KEY-----
+...
+-----END OPENSSH PRIVATE KEY-----
+EOF
+
+# Use the same passwords as prod — the DB name and bucket name keep data isolated.
+postgres_password   = "same-as-prod-db-password"
+minio_root_password = "same-as-prod-minio-password"
+
+smtp_host = "smtp.yourprovider.com"
+smtp_port = 587
+smtp_user = "noreply@pageos.org"
+smtp_pass = "your-smtp-password"
+
+# msgraph_client_id and msgraph_tenant_id have defaults.
+msgraph_client_secret = "3wt8Q~..."   # full secret value
+msgraph_token_key     = "your-64-char-hex-key"
